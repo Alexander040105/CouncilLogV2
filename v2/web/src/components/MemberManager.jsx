@@ -29,6 +29,7 @@ export function MemberManager() {
   const members = useQuery({
     queryKey: ['members', org],
     queryFn: () => get(`/orgs/${org}/members?pageSize=100`),
+    enabled: !!org,
   });
 
   const update = useMutation({

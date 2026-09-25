@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import {
   CalendarCheck, FileText, FolderKanban, LogOut, MoreHorizontal,
@@ -27,6 +27,7 @@ const TAB_COUNT = 4;
 export function AppShell() {
   const { session, loading } = useAuth();
   const nav = useNavigate();
+  const { pathname } = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
   const me = useQuery({
     queryKey: ['me'],
@@ -48,8 +49,9 @@ export function AppShell() {
   const overflow = visible.slice(TAB_COUNT);
 
   useEffect(() => {
-    if (me.isSuccess && memberships.length === 0) nav('/onboarding');
-  }, [me.isSuccess, memberships.length, nav]);
+    // /account must stay reachable for org-less users (delete, password, etc.)
+    if (me.isSuccess && memberships.length === 0 && pathname !== '/account') nav('/onboarding');
+  }, [me.isSuccess, memberships.length, pathname, nav]);
 
   if (loading || !session) return null;
 
@@ -95,15 +97,24 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <div className="mt-4 flex items-center justify-between">
-          <button
-            className="flex items-center gap-2 text-sm text-[var(--color-ink-3)]"
-            onClick={signOut}
+        <div className="mt-4 flex items-center justify-between gap-2">
+          <Link
+            to="/account"
+            title="Your account"
+            className="flex min-w-0 items-center gap-2 text-sm text-[var(--color-ink-2)] hover:text-[var(--color-ink)]"
           >
             <Avatar name={me.data?.profile?.display_name} url={me.data?.profile?.avatar_url} />
-            <span className="flex items-center gap-1"><LogOut size={14} aria-hidden />Sign out</span>
-          </button>
-          <ThemeToggle />
+            <span className="max-w-[5rem] truncate">{me.data?.profile?.display_name ?? 'Account'}</span>
+          </Link>
+          <div className="flex items-center">
+            <button
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-input)] text-[var(--color-ink-2)] hover:bg-[var(--color-surface-3)]"
+              onClick={signOut} aria-label="Sign out" title="Sign out"
+            >
+              <LogOut size={18} aria-hidden />
+            </button>
+            <ThemeToggle />
+          </div>
         </div>
       </aside>
 
@@ -149,11 +160,23 @@ export function AppShell() {
             ))}
           </nav>
           <div className="flex items-center justify-between border-t border-[var(--color-line)] pt-3">
-            <button className="flex items-center gap-2 text-sm text-[var(--color-ink-3)]" onClick={signOut}>
+            <Link
+              to="/account"
+              onClick={() => setMoreOpen(false)}
+              className="flex min-w-0 items-center gap-2 text-sm text-[var(--color-ink-2)]"
+            >
               <Avatar name={me.data?.profile?.display_name} url={me.data?.profile?.avatar_url} />
-              <span className="flex items-center gap-1"><LogOut size={14} aria-hidden />Sign out</span>
-            </button>
-            <ThemeToggle />
+              <span className="max-w-[8rem] truncate">{me.data?.profile?.display_name ?? 'Account'}</span>
+            </Link>
+            <div className="flex items-center">
+              <button
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center text-[var(--color-ink-2)]"
+                onClick={signOut} aria-label="Sign out" title="Sign out"
+              >
+                <LogOut size={18} aria-hidden />
+              </button>
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </Sheet>

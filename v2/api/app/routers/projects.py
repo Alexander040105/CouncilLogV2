@@ -1,17 +1,28 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from ..deps import Membership, Session, authorize, require_user_in_org
 from ..errors import APIError, not_found
-from ..models import (ChecklistTemplate, ChecklistTemplateItem, Project,
-                      ProjectChecklistItem)
+from ..models import (ChecklistTemplate, ChecklistTemplateItem, Organization,
+                      Project, ProjectChecklistItem)
 from ..pagination import envelope, page_params
 from ..services import instantiate
 from ..services.audit import audit
+from ..services.notify import notify_assignment
+
+
+async def _maybe_notify_assignment(bg: BackgroundTasks, session: Session, org_id: uuid.UUID,
+                                   kind: str, title: str, assignee_id, actor_id: str) -> None:
+    """Queue an assignment email when the assignee isn't the actor."""
+    if not assignee_id or str(assignee_id) == actor_id:
+        return
+    org = await session.get(Organization, org_id)
+    bg.add_task(notify_assignment, org_name=org.name if org else "your org",
+                kind=kind, title=title, assignee_id=assignee_id)
 
 router = APIRouter(tags=["projects"])
 
@@ -41,7 +52,7 @@ async def list_projects(org_id: uuid.UUID, session: Session, status: str | None 
 
 
 @router.post("/orgs/{org_id}/projects", status_code=201)
-async def create_project(org_id: uuid.UUID, body: ProjectIn, session: Session, member: Membership = Depends(authorize("adviser"))):
+async def create_project(org_id: uuid.UUID, body: ProjectIn, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("adviser"))):
     if body.owner_id:
         await require_user_in_org(session, org_id, str(body.owner_id))
     p = Project(org_id=org_id, owner_id=body.owner_id or uuid.UUID(member.user_id),
@@ -50,6 +61,7 @@ async def create_project(org_id: uuid.UUID, body: ProjectIn, session: Session, m
     await audit(session, org_id=org_id, actor_id=member.user_id, action="project.created",
                 entity_type="project", entity_id=p.id, metadata={"title": p.title})
     await session.commit()
+    await _maybe_notify_assignment(bg, session, org_id, "project", p.title, p.owner_id, member.user_id)
     return {"data": p}
 
 
@@ -64,15 +76,23 @@ async def get_project(org_id: uuid.UUID, project_id: uuid.UUID, session: Session
 
 
 @router.patch("/orgs/{org_id}/projects/{project_id}")
-async def patch_project(org_id: uuid.UUID, project_id: uuid.UUID, body: ProjectIn, session: Session, member: Membership = Depends(authorize("adviser"))):
+async def patch_project(org_id: uuid.UUID, project_id: uuid.UUID, body: ProjectIn, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("adviser"))):
     p = await session.get(Project, project_id)
     if p is None or p.org_id != org_id:
         raise not_found("project")
+    if body.owner_id and body.owner_id != p.owner_id:
+        await require_user_in_org(session, org_id, str(body.owner_id))
+    changed_lead = bool(body.owner_id) and body.owner_id != p.owner_id
     for k, v in body.model_dump(exclude={"flags"}, exclude_none=True).items():
         setattr(p, k, v)
     await audit(session, org_id=org_id, actor_id=member.user_id, action="project.updated",
                 entity_type="project", entity_id=p.id)
+    if changed_lead:
+        await audit(session, org_id=org_id, actor_id=member.user_id, action="project.assigned",
+                    entity_type="project", entity_id=p.id, metadata={"assignee_id": str(body.owner_id)})
     await session.commit()
+    if changed_lead:
+        await _maybe_notify_assignment(bg, session, org_id, "project", p.title, body.owner_id, member.user_id)
     return {"data": p}
 
 
@@ -164,20 +184,45 @@ async def instantiate_checklists(org_id: uuid.UUID, project_id: uuid.UUID, body:
     return {"instantiated_items": created, "templates_used": len(templates)}
 
 
-class CheckBody(BaseModel):
-    done: bool
+class ChecklistItemPatch(BaseModel):
+    done: bool | None = None
+    assignee_id: uuid.UUID | None = None  # send explicit null to unassign
 
 
 @router.patch("/orgs/{org_id}/checklist-items/{item_id}")
-async def check_item(org_id: uuid.UUID, item_id: uuid.UUID, body: CheckBody, session: Session, member: Membership = Depends(authorize("officer"))):
+async def patch_item(org_id: uuid.UUID, item_id: uuid.UUID, body: ChecklistItemPatch, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("officer"))):
     it = await session.get(ProjectChecklistItem, item_id)
     if it is None or it.org_id != org_id:
         raise not_found("checklist item")
-    it.done = body.done
-    it.done_by = uuid.UUID(member.user_id) if body.done else None
-    it.done_at = datetime.now(timezone.utc) if body.done else None
-    await audit(session, org_id=org_id, actor_id=member.user_id,
-                action="checklist_item.checked" if body.done else "checklist_item.unchecked",
-                entity_type="project_checklist_item", entity_id=it.id)
+
+    assigned = None
+    if "assignee_id" in body.model_fields_set:
+        target = body.assignee_id
+        # officers may (un)assign themselves; assigning someone else needs adviser+
+        self_change = (str(target) == member.user_id
+                       or (target is None and str(it.assignee_id) == member.user_id))
+        if not self_change and not member.at_least("adviser"):
+            raise APIError(403, "FORBIDDEN", "Only adviser+ can assign items to other members")
+        if target is not None:
+            await require_user_in_org(session, org_id, str(target))
+        if it.assignee_id != target:
+            it.assignee_id = target
+            assigned = target
+            await audit(session, org_id=org_id, actor_id=member.user_id,
+                        action="checklist_item.assigned" if target else "checklist_item.unassigned",
+                        entity_type="project_checklist_item", entity_id=it.id,
+                        metadata={"assignee_id": str(target) if target else None})
+
+    if body.done is not None:
+        it.done = body.done
+        it.done_by = uuid.UUID(member.user_id) if body.done else None
+        it.done_at = datetime.now(timezone.utc) if body.done else None
+        await audit(session, org_id=org_id, actor_id=member.user_id,
+                    action="checklist_item.checked" if body.done else "checklist_item.unchecked",
+                    entity_type="project_checklist_item", entity_id=it.id)
+
     await session.commit()
+    if assigned is not None:
+        await _maybe_notify_assignment(bg, session, org_id, "task", it.label,
+                                       assigned, member.user_id)
     return {"data": it}

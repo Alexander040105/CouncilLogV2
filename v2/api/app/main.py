@@ -20,6 +20,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.web_origin],
+    # Dev previews/proxies land on arbitrary 127.0.0.1 ports; safe because
+    # auth is Bearer headers, not cookies, and credentials are off anyway.
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?" if settings.env == "dev" else None,
     allow_credentials=False,  # Bearer tokens, not cookies
     allow_methods=["*"],
     allow_headers=["authorization", "content-type", "x-org-id"],

@@ -100,10 +100,12 @@ function Positions() {
   const pos = useQuery({
     queryKey: ['positions', org],
     queryFn: () => get(`/orgs/${org}/positions`),
+    enabled: !!org,
   });
   const members = useQuery({
     queryKey: ['members', org],
     queryFn: () => get(`/orgs/${org}/members`),
+    enabled: !!org,
   });
   const add = useMutation({
     mutationFn: () => post(`/orgs/${org}/positions`, { title, holder: holder || null }),
@@ -154,10 +156,12 @@ function Duty() {
   const duty = useQuery({
     queryKey: ['duty', org],
     queryFn: () => get(`/orgs/${org}/duty-schedule`),
+    enabled: !!org,
   });
   const members = useQuery({
     queryKey: ['members', org],
     queryFn: () => get(`/orgs/${org}/members`),
+    enabled: !!org,
   });
   const save = useMutation({
     mutationFn: (schedule) => put(`/orgs/${org}/duty-schedule`, { schedule }),
@@ -225,6 +229,7 @@ function Templates() {
   const t = useQuery({
     queryKey: ['templates', org],
     queryFn: () => get(`/orgs/${org}/checklist-templates`),
+    enabled: !!org,
   });
   const add = useMutation({
     mutationFn: () => post(`/orgs/${org}/checklist-templates`, {
@@ -284,6 +289,7 @@ function Chains() {
   const c = useQuery({
     queryKey: ['chains', org],
     queryFn: () => get(`/orgs/${org}/signatory-chains`),
+    enabled: !!org,
   });
   const add = useMutation({
     mutationFn: () => post(`/orgs/${org}/signatory-chains`, {
@@ -338,6 +344,7 @@ function Contacts() {
   const c = useQuery({
     queryKey: ['contacts', org],
     queryFn: () => get(`/orgs/${org}/contacts`),
+    enabled: !!org,
   });
   const add = useMutation({
     mutationFn: () => post(`/orgs/${org}/contacts`, { label, value }),
@@ -380,10 +387,12 @@ function Invites() {
   const inv = useQuery({
     queryKey: ['invites', org],
     queryFn: () => get(`/orgs/${org}/invites`),
+    enabled: !!org,
   });
   const reqs = useQuery({
     queryKey: ['joinreqs', org],
     queryFn: () => get(`/orgs/${org}/join-requests`),
+    enabled: !!org,
   });
   const mint = useMutation({
     mutationFn: () => post(`/orgs/${org}/invites`, { role }),
@@ -474,6 +483,7 @@ function Audit() {
   const a = useQuery({
     queryKey: ['audit', org],
     queryFn: () => get(`/orgs/${org}/audit?pageSize=50`),
+    enabled: !!org,
   });
   if (a.isLoading) return <Skeleton className="h-48" />;
   if (a.error) return <Empty title="Adviser or owner role required" />;

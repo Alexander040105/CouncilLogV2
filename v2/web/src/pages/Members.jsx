@@ -25,11 +25,12 @@ export default function Members() {
   const members = useQuery({
     queryKey: ['members', org],
     queryFn: () => get(`/orgs/${org}/members?pageSize=100`),
+    enabled: !!org,
   });
   const chart = useQuery({
     queryKey: ['orgchart', org],
     queryFn: () => get(`/orgs/${org}/org-chart`),
-    enabled: tab === 'chart',
+    enabled: !!org && tab === 'chart',
   });
   const nameOf = (id) =>
     id ? (members.data?.data.find((m) => m.user_id === id)?.display_name ?? id.slice(0, 8)) : 'vacant';

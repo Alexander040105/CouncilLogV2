@@ -564,6 +564,9 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 38 | `GET /orgs/{org}/audit` | owner, adviser | audit log paged |
 | 39 | `GET /orgs/{org}/export` | owner | org data export (JSON/zip) — P5 |
 | 40 | `GET /orgs/{org}/attendance/{member}` | member | member history (self or owner/adviser view all) |
+| 41 | `PATCH /me` | self | update own `display_name`/`avatar_url` only — allowlist, no role/org writes |
+| 42 | `POST /me/avatar/sign` | self | mint signed upload URL to public `avatars` bucket |
+| 43 | `DELETE /me` | self | anonymize + remove memberships + ban auth user (409 if sole owner) |
 
 **Auth plumbing:** `GET /me` returns `memberships[]`; the client sends
 `X-Org-Id` per call or uses `/orgs/{org}/…` paths. OAuth: Supabase Google
@@ -587,6 +590,7 @@ search + sidebar Home/Projects/Members/Calendar/Files + Dailies).
 | `/documents`, `/documents/{id}` | Files | logbook list; detail = movement+signature timeline, "move paper" action w/ camera |
 | `/members` | Members | roster; `/members/chart` = org chart per SY |
 | `/settings` (owner/adviser) | — | positions, duty schedule, checklist templates, signatory chains, contacts, invites, audit |
+| `/account` | — | own profile (name/avatar), per-org capability summary, password/email change, theme, sign-out, delete account — reached via the shell avatar, not the nav |
 | global navbar | search | org switcher, notifications slot (P5), profile/logout |
 
 Every screen spec includes loading / empty / error / 403 states.
@@ -694,6 +698,12 @@ primary path given 10s function limit — see OQ).
 - School-year rollover: previous `school_years.is_current=false`; its
   positions/duty/journal remain read-only history.
 - Member removal: `status='removed'` (soft) — journal/audit retained.
+- **Account deletion:** `DELETE /me` never hard-deletes — `org_members` and
+  the journal/attendance/duty composite FKs reference `profiles`, so
+  removing the auth user would orphan history. Instead: all memberships →
+  `removed`, profile anonymized (`display_name='Former member'`, avatar
+  cleared + object deleted), auth user **banned** via admin API. Sole owner
+  of any org → `409` until the org is deleted or ownership handed off.
 - Org offboard: owner export (§5 #39) then hard-delete org → cascades.
 - No auto-deletion of journals/photos in MVP; retention review at P5.
 

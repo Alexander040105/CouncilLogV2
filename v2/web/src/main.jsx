@@ -19,6 +19,7 @@ import Documents from './pages/Documents';
 import DocumentDetail from './pages/DocumentDetail';
 import Members from './pages/Members';
 import Settings from './pages/Settings';
+import Account from './pages/Account';
 import './index.css';
 
 const qc = new QueryClient();
@@ -45,6 +46,7 @@ createRoot(document.getElementById('root')).render(
               <Route path="documents/:id" element={<DocumentDetail />} />
               <Route path="members" element={<Members />} />
               <Route path="settings/*" element={<Settings />} />
+              <Route path="account" element={<Account />} />
             </Route>
           </Routes>
           </ErrorBoundary>

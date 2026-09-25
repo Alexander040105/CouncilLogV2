@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Camera } from 'lucide-react';
 import { get, post } from '../lib/api';
 import { currentOrgId } from '../lib/org';
 import { useToast } from '../lib/toast';
+import { PhotoPicker } from '../components/PhotoPicker';
 import { Button, Card, Chip, Empty, Field, Input, Sheet, Skeleton } from '../components/ui';
 
 export default function DocumentDetail() {
@@ -15,24 +16,25 @@ export default function DocumentDetail() {
   const [moveOpen, setMoveOpen] = useState(false);
   const [location, setLocation] = useState('');
   const [note, setNote] = useState('');
-  const [file, setFile] = useState(null);
+  const [photos, setPhotos] = useState([]);
   const [err, setErr] = useState(null);
   const [skipStep, setSkipStep] = useState(null);
   const [skipNote, setSkipNote] = useState('');
-  const fileRef = useRef(null);
 
   const q = useQuery({
     queryKey: ['document', org, id],
     queryFn: () => get(`/orgs/${org}/documents/${id}`),
+    enabled: !!org,
   });
 
   const move = useMutation({
     mutationFn: async () => {
       let photo_path = null;
-      if (file) {
+      const f = photos[0];
+      if (f) {
         const sign = await post(
-          `/orgs/${org}/journal/photos/sign`, { mime: file.type, byte_size: file.size });
-        const put = await fetch(sign.upload_url, { method: 'PUT', body: file });
+          `/orgs/${org}/journal/photos/sign`, { mime: f.type, byte_size: f.size });
+        const put = await fetch(sign.upload_url, { method: 'PUT', body: f });
         if (!put.ok) throw new Error('Photo upload failed');
         photo_path = sign.path;
       }
@@ -40,7 +42,7 @@ export default function DocumentDetail() {
     },
     onSuccess: () => {
       toast.success('Movement logged.');
-      setMoveOpen(false); setLocation(''); setNote(''); setFile(null);
+      setMoveOpen(false); setLocation(''); setNote(''); setPhotos([]);
       qc.invalidateQueries({ queryKey: ['document', org, id] });
     },
     onError: (e) => { setErr(e.message); toast.error(e.message); },
@@ -134,15 +136,8 @@ export default function DocumentDetail() {
         <div className="space-y-3">
           <Field label="Where is it now?"><Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="SD office" /></Field>
           <Field label="Note (optional)"><Input value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-          <button
-            className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-card)] border border-dashed border-[var(--color-line)] py-6 text-sm text-[var(--color-ink-3)]"
-            onClick={() => fileRef.current?.click()}
-          >
-            <Camera size={16} />
-            {file ? file.name : 'Photo of the paper/location (optional)'}
-          </button>
-          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment"
-                 className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <div className="text-xs text-[var(--color-ink-3)]">Photo of the paper/location (optional)</div>
+          <PhotoPicker photos={photos} onChange={setPhotos} max={1} />
           {err && <p className="text-sm text-[var(--color-status-alert)]">{err}</p>}
           <Button className="w-full" onClick={() => move.mutate()} disabled={!location || move.isPending}>Record movement</Button>
         </div>

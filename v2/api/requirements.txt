@@ -12,3 +12,4 @@ pytest>=8.3
 pytest-asyncio>=0.24
 aiosqlite>=0.20
 tzdata>=2024.1
+aiosmtplib>=3.0

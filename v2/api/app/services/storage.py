@@ -6,10 +6,14 @@ Download: POST {url}/storage/v1/object/sign/{bucket}/{path}
          body {"expiresIn": seconds} → { "signedURL": "..." }
 """
 
+import logging
+
 import httpx
 
 from ..config import get_settings
 from ..errors import APIError
+
+log = logging.getLogger("councilog.storage")
 
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp"}
 MAX_BYTES = 5 * 1024 * 1024
@@ -42,8 +46,8 @@ def _base() -> str:
     return f"{get_settings().supabase_url.rstrip('/')}/storage/v1"
 
 
-async def signed_upload_url(path: str) -> str:
-    bucket = get_settings().storage_bucket
+async def signed_upload_url(path: str, bucket: str | None = None) -> str:
+    bucket = bucket or get_settings().storage_bucket
     async with httpx.AsyncClient() as c:
         r = await c.post(
             f"{_base()}/object/upload/sign/{bucket}/{path}",
@@ -74,6 +78,12 @@ async def signed_download_url(path: str) -> str:
         return f"{_base()}/{signed.lstrip('/')}"
 
 
+def public_object_url(path: str, bucket: str | None = None) -> str:
+    """Plain GET URL — only usable for public buckets (e.g. avatars)."""
+    bucket = bucket or get_settings().storage_bucket
+    return f"{_base()}/object/public/{bucket}/{path}"
+
+
 async def object_head(path: str) -> bytes | None:
     """Fetch first bytes of an object for magic-byte verification."""
     bucket = get_settings().storage_bucket
@@ -86,3 +96,15 @@ async def object_head(path: str) -> bytes | None:
         if r.status_code >= 400:
             return None
         return r.content[:16]
+
+
+async def delete_object(path: str, bucket: str | None = None) -> None:
+    """Best-effort object removal — never raises."""
+    bucket = bucket or get_settings().storage_bucket
+    try:
+        async with httpx.AsyncClient() as c:
+            r = await c.delete(f"{_base()}/object/{bucket}/{path}", headers=_headers(), timeout=10)
+            if r.status_code >= 400:
+                log.warning("delete %s/%s failed: %s", bucket, path, r.status_code)
+    except Exception:
+        log.warning("delete %s/%s failed", bucket, path)

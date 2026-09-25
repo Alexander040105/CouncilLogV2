@@ -1,4 +1,4 @@
-import { Component, useState } from 'react';
+import { Component, useEffect, useState } from 'react';
 import { AlertTriangle, Info, Moon, Sun, X } from 'lucide-react';
 import { useTheme } from '../lib/theme';
 import { supabase } from '../lib/supabase';
@@ -143,15 +143,25 @@ export function Sheet({ open, onClose, children, title }) {
   );
 }
 
-/** Confirmation for destructive/irreversible actions. */
-export function ConfirmDialog({ open, onClose, onConfirm, title, body, confirmLabel = 'Confirm', danger = true, busy }) {
+/** Confirmation for destructive/irreversible actions. `requireText` adds a
+ *  type-to-confirm gate: the confirm button stays disabled until the input
+ *  matches exactly (used for account deletion). */
+export function ConfirmDialog({ open, onClose, onConfirm, title, body, confirmLabel = 'Confirm', danger = true, busy, requireText }) {
+  const [typed, setTyped] = useState('');
+  useEffect(() => { if (!open) setTyped(''); }, [open]);
+  const confirmed = !requireText || typed === requireText;
   return (
     <Sheet open={open} onClose={onClose} title={title}>
       <div className="space-y-4">
         <p className="text-sm text-[var(--color-ink-2)]">{body}</p>
+        {requireText && open && (
+          <Field label={`Type ${requireText} to confirm`}>
+            <Input autoFocus value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
+          </Field>
+        )}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} disabled={busy}>
+          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} disabled={busy || !confirmed}>
             {busy ? '…' : confirmLabel}
           </Button>
         </div>
@@ -160,12 +170,12 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, body, confirmLa
   );
 }
 
-export function Avatar({ name, url }) {
+export function Avatar({ name, url, size = 'h-7 w-7', textSize = 'text-xs' }) {
   const initials = (name ?? '?').split(' ').map((s) => s[0]).join('').slice(0, 2).toUpperCase();
   return url ? (
-    <img src={url} alt={name ?? ''} className="h-7 w-7 rounded-full object-cover" />
+    <img src={url} alt={name ?? ''} className={`${size} rounded-full object-cover`} />
   ) : (
-    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-accent)] text-xs font-semibold text-[var(--color-accent-fg)]">
+    <span className={`flex ${size} items-center justify-center rounded-full bg-[var(--color-accent)] ${textSize} font-semibold text-[var(--color-accent-fg)]`}>
       {initials}
     </span>
   );

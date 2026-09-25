@@ -14,23 +14,32 @@ export default function Projects() {
   const qc = useQueryClient();
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false });
+  const [form, setForm] = useState({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false, assignee: '' });
   const [err, setErr] = useState(null);
 
   const list = useQuery({
     queryKey: ['projects', org],
     queryFn: () => get(`/orgs/${org}/projects?pageSize=100`),
+    enabled: !!org,
   });
+  const members = useQuery({
+    queryKey: ['members', org],
+    queryFn: () => get(`/orgs/${org}/members?pageSize=100`),
+    enabled: !!org,
+  });
+  const nameOf = (id) =>
+    members.data?.data.find((m) => m.user_id === id)?.display_name ?? null;
   const create = useMutation({
     mutationFn: () => post(`/orgs/${org}/projects`, {
       title: form.title, details: form.details || null,
       event_type: form.event_type || null, target_date: form.target_date || null,
+      owner_id: form.assignee || null,
       needs_paper_processing: form.paper, needs_logistics: form.logistics,
     }),
     onSuccess: () => {
-      toast.success('Project created.');
+      toast.success(form.assignee ? 'Project created — assignee will be emailed.' : 'Project created.');
       setOpen(false);
-      setForm({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false });
+      setForm({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false, assignee: '' });
       qc.invalidateQueries({ queryKey: ['projects', org] });
     },
     onError: (e) => { setErr(e.message); toast.error(e.message); },
@@ -64,6 +73,7 @@ export default function Projects() {
                 <Card className="space-y-1 hover:border-[var(--color-accent)]">
                   <div className="text-sm font-medium">{p.title}</div>
                   {p.target_date && <div className="text-xs text-[var(--color-ink-3)]">target {p.target_date}</div>}
+                  {nameOf(p.owner_id) && <div className="text-xs text-[var(--color-ink-3)]">lead: {nameOf(p.owner_id)}</div>}
                   <div className="flex gap-1">
                     {p.needs_paper_processing && <Chip kind="pending" label="papers" />}
                     {p.needs_logistics && <Chip kind="extra" label="logistics" />}
@@ -83,6 +93,15 @@ export default function Projects() {
             <Input value={form.event_type} onChange={(e) => setForm({ ...form, event_type: e.target.value })} />
           </Field>
           <Field label="Target date"><Input type="date" value={form.target_date} onChange={(e) => setForm({ ...form, target_date: e.target.value })} /></Field>
+          <Field label="Assign to (optional)" hint="They'll get an email telling them they lead this project.">
+            <select className="min-h-[44px] w-full rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm"
+                    value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })}>
+              <option value="">Me</option>
+              {members.data?.data.filter((m) => m.status === 'active').map((m) => (
+                <option key={m.user_id} value={m.user_id}>{m.display_name}</option>
+              ))}
+            </select>
+          </Field>
           <div className="flex gap-4">
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.paper} onChange={(e) => setForm({ ...form, paper: e.target.checked })} /> Needs papers</label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.logistics} onChange={(e) => setForm({ ...form, logistics: e.target.checked })} /> Needs logistics</label>

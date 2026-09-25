@@ -48,6 +48,13 @@ def ensure_user(email):
                 {"email": email, "password": PASS, "email_confirm": True})
     if s >= 400 and "already" not in json.dumps(r):
         print("admin create failed", s, r); sys.exit(1)
+    # resolve id (create may have no-op'd on an existing user), then unban —
+    # earlier runs may have left the account banned by the DELETE /me check
+    s, r = call("GET", f"{SUPA}/auth/v1/admin/users?page=1&per_page=100", SERVICE)
+    uid = next((u["id"] for u in r.get("users", []) if u["email"] == email), None)
+    if uid:
+        call("PUT", f"{SUPA}/auth/v1/admin/users/{uid}", SERVICE,
+             {"ban_duration": "none"})
     # sign in to get token
     s, r = call("POST", f"{SUPA}/auth/v1/token?grant_type=password", ANON,
                 {"email": email, "password": PASS})
@@ -197,6 +204,60 @@ s, r2 = api("POST", "/orgs", tok_c, {"name": "Other Dept", "slug": f"{SLUG}-othe
 org_c = r2.get("id") or (r2.get("data") or {}).get("id")
 s, r = api("GET", f"/orgs/{org_c}/documents", tok_a, org=org_c)
 check("org A member cannot read org B documents", s in (403, 404), f"{s}")
+
+# ── 10. Self-service profile + account deletion ─────────────────────────
+s, r = api("PATCH", "/me", tok_b, {"display_name": "Smoke Renamed"})
+check("PATCH /me renames", s == 200 and r["data"]["display_name"] == "Smoke Renamed", f"{s} {str(r)[:120]}")
+s, ms = api("GET", f"/orgs/{org_a}/members", tok_a, org=org_a)
+check("roster reflects rename", any(m["display_name"] == "Smoke Renamed" for m in ms.get("data", [])), f"{s}")
+
+# privilege escalation through /me must be impossible
+s, r = api("PATCH", "/me", tok_b, {"role": "owner"})
+check("PATCH /me rejects role field", s == 422, f"{s} {str(r)[:120]}")
+s, ms = api("GET", f"/orgs/{org_a}/members", tok_a, org=org_a)
+check("role still officer after attempt",
+      next(m["role"] for m in ms["data"] if m["user_id"] == uid_b) == "officer")
+
+s, r = api("PATCH", "/me", tok_b, {"avatar_url": "https://evil.example.com/x.jpg"})
+check("PATCH /me rejects foreign avatar URL", s == 422, f"{s}")
+
+s, r = api("POST", "/me/avatar/sign", tok_b, {"mime": "application/x-msdownload", "byte_size": 10})
+check("avatar sign rejects bad mime", s == 422, f"{s}")
+s, sign = api("POST", "/me/avatar/sign", tok_b, {"mime": "image/png", "byte_size": 68})
+check("avatar sign mints upload+public URL",
+      s == 201 and sign.get("upload_url") and sign.get("public_url"), f"{s} {str(sign)[:120]}")
+if s == 201:
+    png = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000" + "1f15c489") + b"\x00" * 40
+    req = urllib.request.Request(sign["upload_url"], data=png, method="PUT")
+    req.add_header("Content-Type", "image/png")
+    try:
+        urllib.request.urlopen(req); up_ok = True
+    except Exception as e:
+        up_ok = False; print("   avatar upload err:", str(e)[:120])
+    check("avatar bytes PUT to storage", up_ok)
+    s, r = api("PATCH", "/me", tok_b, {"avatar_url": sign["public_url"]})
+    check("avatar_url saved", s == 200 and r["data"]["avatar_url"] == sign["public_url"], f"{s} {str(r)[:140]}")
+    s, ms = api("GET", f"/orgs/{org_a}/members", tok_a, org=org_a)
+    check("roster serves avatar_url",
+          next(m["avatar_url"] for m in ms["data"] if m["user_id"] == uid_b) == sign["public_url"])
+
+# delete: sole owner blocked, member allowed + banned
+s, r = api("DELETE", "/me", tok_a)
+check("sole owner delete blocked (409)", s == 409 and r["error"]["code"] == "SOLE_OWNER", f"{s} {str(r)[:140]}")
+
+s, r = api("DELETE", "/me", tok_b)
+check("member account deleted", s == 200 and r["data"]["deleted"], f"{s} {str(r)[:120]}")
+s, ms = api("GET", f"/orgs/{org_a}/members", tok_a, org=org_a)
+check("membership flipped to removed",
+      next(m["status"] for m in ms["data"] if m["user_id"] == uid_b) == "removed")
+check("profile anonymized",
+      next(m["display_name"] for m in ms["data"] if m["user_id"] == uid_b) == "Former member")
+# ban blocks NEW sessions; the already-issued JWT may still verify until expiry
+s, r = api("GET", f"/orgs/{org_a}/documents", tok_b, org=org_a)
+check("removed member loses org access", s in (403, 404), f"{s}")
+s, r = call("POST", f"{SUPA}/auth/v1/token?grant_type=password", ANON,
+            {"email": EMAIL_B, "password": PASS})
+check("banned user cannot sign in", s >= 400, f"{s} {str(r)[:120]}")
 
 print(f"\n=== {len(ok)} passed, {len(fail)} failed ===")
 if fail: print("FAILED:", fail); sys.exit(1)

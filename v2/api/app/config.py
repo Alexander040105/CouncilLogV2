@@ -15,9 +15,19 @@ class Settings(BaseSettings):
 
     web_origin: str = "http://localhost:5173"
     storage_bucket: str = "journal"
+    avatars_bucket: str = "avatars"  # public bucket — avatars render as plain <img src>
     signed_url_ttl_seconds: int = 900
     org_timezone: str = "Asia/Manila"
     env: str = "dev"
+
+    # Transactional email (assignment notifications) — Maileroo SMTP.
+    # Leave smtp_user/password empty to disable sending (dev default).
+    smtp_host: str = "smtp.maileroo.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    mail_from: str = ""  # verified sender, e.g. "CounciLog <no-reply@yourdomain.com>"
+    app_base_url: str = "http://localhost:5173"  # used for links inside emails
 
 
 @lru_cache

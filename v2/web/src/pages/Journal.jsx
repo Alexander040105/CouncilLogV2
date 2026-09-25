@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Camera, NotebookPen, Plus } from 'lucide-react';
+import { NotebookPen, Plus } from 'lucide-react';
 import { get, post } from '../lib/api';
 import { currentOrgId } from '../lib/org';
 import { useToast } from '../lib/toast';
+import { PhotoPicker } from '../components/PhotoPicker';
 import { Button, Card, Chip, Empty, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
 
 function PhotoThumb({ org, photo }) {
@@ -25,10 +26,9 @@ export default function Journal() {
   const [composeOpen, setComposeOpen] = useState(params.get('compose') === '1');
   const [desc, setDesc] = useState('');
   const [projectId, setProjectId] = useState('');
-  const [file, setFile] = useState(null);
+  const [photos, setPhotos] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
-  const fileRef = useRef(null);
 
   useEffect(() => {
     if (params.get('compose') === '1') setComposeOpen(true);
@@ -39,10 +39,12 @@ export default function Journal() {
   const feed = useQuery({
     queryKey: ['journal', org],
     queryFn: () => get(`/orgs/${org}/journal?pageSize=50`),
+    enabled: !!org,
   });
   const projects = useQuery({
     queryKey: ['projects', org],
     queryFn: () => get(`/orgs/${org}/projects?pageSize=100`),
+    enabled: !!org,
   });
 
   const noTasks = useMutation({
@@ -58,21 +60,21 @@ export default function Journal() {
   const submit = async () => {
     setBusy(true); setErr(null);
     try {
-      const photos = [];
-      if (file) {
+      const uploaded = [];
+      for (const f of photos) {
         const sign = await post(
-          `/orgs/${org}/journal/photos/sign`, { mime: file.type, byte_size: file.size });
-        const put = await fetch(sign.upload_url, { method: 'PUT', body: file });
+          `/orgs/${org}/journal/photos/sign`, { mime: f.type, byte_size: f.size });
+        const put = await fetch(sign.upload_url, { method: 'PUT', body: f });
         if (!put.ok) throw new Error('Photo upload failed');
-        photos.push({ storage_path: sign.path, mime: file.type, byte_size: file.size });
+        uploaded.push({ storage_path: sign.path, mime: f.type, byte_size: f.size });
       }
       await post(`/orgs/${org}/journal`, {
         description: desc,
         project_id: projectId || null,
-        photos,
+        photos: uploaded,
       });
       toast.success('Entry posted — day documented.');
-      setComposeOpen(false); setDesc(''); setFile(null); setProjectId('');
+      setComposeOpen(false); setDesc(''); setPhotos([]); setProjectId('');
       qc.invalidateQueries({ queryKey: ['journal', org] });
       qc.invalidateQueries({ queryKey: ['attendance'] });
     } catch (e) {
@@ -121,15 +123,7 @@ export default function Journal() {
 
       <Sheet open={composeOpen} onClose={() => setComposeOpen(false)} title="Log today's work">
         <div className="space-y-3">
-          <button
-            className="flex w-full items-center justify-center gap-2 rounded-[var(--radius-card)] border border-dashed border-[var(--color-line)] py-8 text-sm text-[var(--color-ink-3)]"
-            onClick={() => fileRef.current?.click()}
-          >
-            <Camera size={18} />
-            {file ? file.name : 'Add photo'}
-          </button>
-          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment"
-                 className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <PhotoPicker photos={photos} onChange={setPhotos} />
           <Field label="What did you do?">
             <Input value={desc} onChange={(e) => setDesc(e.target.value)}
                    placeholder="Delivered concept paper to SD office" />

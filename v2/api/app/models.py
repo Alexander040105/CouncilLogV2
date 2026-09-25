@@ -158,6 +158,7 @@ class ProjectChecklistItem(SQLModel, table=True):
     org_id: uuid.UUID = Field(foreign_key="organizations.id")
     project_id: uuid.UUID = Field(foreign_key="projects.id")
     template_id: uuid.UUID | None = Field(default=None, foreign_key="checklist_templates.id")
+    assignee_id: uuid.UUID | None = None
     ord: int
     label: str
     hint: str | None = None

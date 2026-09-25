@@ -18,10 +18,12 @@ export default function Documents() {
   const docs = useQuery({
     queryKey: ['documents', org],
     queryFn: () => get(`/orgs/${org}/documents?pageSize=100`),
+    enabled: !!org,
   });
   const chains = useQuery({
     queryKey: ['chains', org],
     queryFn: () => get(`/orgs/${org}/signatory-chains`),
+    enabled: !!org,
   });
   const create = useMutation({
     mutationFn: () => post(`/orgs/${org}/documents`, {

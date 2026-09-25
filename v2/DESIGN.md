@@ -70,10 +70,17 @@ checkbox list rows (checklist items: label · hint · due chip · done state ·
 done-by avatar), cards, tables that collapse to card rows under 768px,
 status chips (pending/signed/skipped/done/overdue/extra-duty/no-tasks —
 always icon + label, never color alone), photo thumbnails
-(aspect-preserving, skeleton shimmer), avatar+name pairs, bottom-sheet
+(aspect-preserving, skeleton shimmer), `PhotoPicker` (capture-or-upload:
+Take photo opens an inline `getUserMedia` viewfinder with shutter;
+Upload keeps the native file picker + `capture` attribute; thumbnail
+strip with per-photo remove; `max` prop caps attachments — 4 for journal
+entries, 1 for custody moves; camera stream is always released on
+close/cancel/unmount), avatar+name pairs, bottom-sheet
 (mobile compose/menus), `Toast` (success/error, bottom-center mobile /
 bottom-right desktop, 4.5s + manual dismiss, `aria-live`), `ConfirmDialog`
-for destructive/irreversible actions (join-request reject, step skip),
+for destructive/irreversible actions (join-request reject, step skip) —
+with an optional `requireText` type-to-confirm gate for the
+hardest-to-reverse actions (account deletion),
 `HintBanner` (first-visit one-liner, dismiss persists per-key in
 localStorage), `PageHeader` (title + one plain-language line + action slot —
 every page), empty-state blocks (icon + line + CTA — every list defines
@@ -87,6 +94,12 @@ Nav: **mobile = bottom tab bar** (Today, Journal, Attendance, Projects +
 **More** sheet holding Papers, Members, Settings, org switcher, theme
 toggle, sign out); **desktop = left sidebar** echoing the legacy IA with
 the labeled org switcher, theme toggle, and sign-out at the foot.
+**Account** (`/account`) is not a nav item — it's reached by tapping the
+avatar/name in the sidebar footer or More sheet. Its pattern: stacked
+`Card` sections — identity (avatar via `PhotoPicker` + name), "What you
+can do" capability cards per org membership, security (password/email),
+preferences (theme), and a visually quiet **danger zone** (alert-tinted
+border, sign-out + typed-confirm delete).
 
 Copy convention: plain language over jargon — "who signs, in order" not
 "signatory chain", "hasn't filed yet" not "unaccounted", "your assigned
@@ -135,7 +148,9 @@ request access" — two cards, one screen; Google button on both paths.
   widens into side-by-side panels, never stretched single columns.
 - Bottom tab bar on mobile; destructive and primary actions thumb-reachable.
 - Content max-width ~1120px; admin tables may use full width.
-- Photo capture via native picker/`capture` attribute — no custom camera UI.
+- Photo input = `PhotoPicker` everywhere: in-app webcam capture (`facingMode`
+  `ideal: 'environment'`, mirrored front-cam preview) plus file upload; denied
+  or missing cameras fall back to upload with a plain-language notice.
 
 ## 5. Accessibility floor
 

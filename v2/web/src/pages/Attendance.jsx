@@ -14,14 +14,17 @@ export default function Attendance() {
   const week = useQuery({
     queryKey: ['attendance-week', org],
     queryFn: () => get(`/orgs/${org}/attendance`),
+    enabled: !!org,
   });
   const summary = useQuery({
     queryKey: ['attendance-summary', org],
     queryFn: () => get(`/orgs/${org}/attendance/summary`),
+    enabled: !!org,
   });
   const members = useQuery({
     queryKey: ['members', org],
     queryFn: () => get(`/orgs/${org}/members`),
+    enabled: !!org,
   });
 
   const nameOf = (id) =>

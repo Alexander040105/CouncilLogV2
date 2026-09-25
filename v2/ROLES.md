@@ -19,6 +19,9 @@ Enforcement is server-side: every org-scoped endpoint checks membership
 minimum role (`403` for insufficient role). Removed members lose access on
 their next request.
 
+A user sees their own role capabilities spelled out on the **Account** page
+(`/account` → "What you can do") — one card per org they belong to.
+
 ## How people join
 
 Two doors, both handled on the **join** screen after sign-up:

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { post } from '../lib/api';
+import { post, patch } from '../lib/api';
 import { setCurrentOrg } from '../lib/org';
 import { Button, Card, Field, Input } from '../components/ui';
 
@@ -15,6 +15,12 @@ export default function Onboarding() {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [sy, setSy] = useState('');
+  const [myName, setMyName] = useState('');
+
+  const saveName = async () => {
+    // best-effort — a bad name shouldn't mask a successful create/join
+    if (myName.trim()) { try { await patch('/me', { display_name: myName.trim() }); } catch { /* ignored */ } }
+  };
 
   // Philippine school years run mid-year to mid-year — e.g. SY 2026–2027
   const now = new Date();
@@ -32,6 +38,7 @@ export default function Onboarding() {
     setBusy(true); setErr(null);
     try {
       const r = await post('/orgs', { name, slug, school_year_label: sy });
+      await saveName();
       setCurrentOrg(r.id);
       await qc.invalidateQueries({ queryKey: ['me'] });
       nav('/');
@@ -42,6 +49,7 @@ export default function Onboarding() {
     setBusy(true); setErr(null);
     try {
       const r = await post(`/invites/${code}/redeem`);
+      await saveName();
       setCurrentOrg(r.org_id);
       await qc.invalidateQueries({ queryKey: ['me'] });
       nav('/');
@@ -54,6 +62,7 @@ export default function Onboarding() {
       // join-requests need the org's uuid — slug lookup happens server-side later;
       // for MVP the user pastes the org id or gets it from an admin.
       await post(`/orgs/${orgSlug}/join-requests`, { message });
+      await saveName();
       setMode('choose');
       setErr('Request sent — an admin will approve it.');
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
@@ -71,6 +80,9 @@ export default function Onboarding() {
         )}
         {mode === 'create' && (
           <div className="space-y-3">
+            <Field label="Your name" hint="Optional — how orgmates will see you.">
+              <Input value={myName} onChange={(e) => setMyName(e.target.value)} maxLength={80} placeholder="e.g. Alex Solis" />
+            </Field>
             <Field label="Organization name"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="CCS Council" /></Field>
             <Field label="Slug" hint="lowercase, used in links"><Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="ccs-council" /></Field>
             <Field label="School year" hint="Pick the year this org starts with — you can add more in Settings later.">
@@ -96,6 +108,9 @@ export default function Onboarding() {
         )}
         {mode === 'join' && (
           <div className="space-y-3">
+            <Field label="Your name" hint="Optional — how orgmates will see you.">
+              <Input value={myName} onChange={(e) => setMyName(e.target.value)} maxLength={80} placeholder="e.g. Alex Solis" />
+            </Field>
             <Field label="Invite code" hint="Paste the code an admin gave you — instant join">
               <Input value={code} onChange={(e) => setCode(e.target.value)} />
             </Field>
