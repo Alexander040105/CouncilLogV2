@@ -62,7 +62,7 @@ export default function Dashboard() {
 
       {isFresh && (
         <Card>
-          <div className="mb-2 text-sm font-medium text-[var(--color-ink-2)]">New here? How CounciLog works</div>
+          <div className="label-strong mb-2 text-sm text-[var(--color-ink-2)]">New here? How CounciLog works</div>
           <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--color-ink-2)]">
             <li>File a journal entry each duty day — that's your attendance.</li>
             <li><Link className="text-[var(--color-accent)]" to="/documents">Papers</Link> tracks where physical documents are and who's signing them.</li>
@@ -73,7 +73,7 @@ export default function Dashboard() {
       )}
 
       <Card>
-        <div className="mb-2 text-sm font-medium text-[var(--color-ink-2)]">Duty roster today</div>
+        <div className="label-strong mb-2 text-sm text-[var(--color-ink-2)]">Duty roster today</div>
         {att.isLoading && <Skeleton className="h-16" />}
         {att.data && att.data.data.length === 0 && att.data.unaccounted_member_ids.length === 0 && (
           <Empty icon={<CalendarCheck size={24} />} title="No duty entries yet" hint="Be the first to file today." />
@@ -91,7 +91,7 @@ export default function Dashboard() {
       </Card>
 
       <Card>
-        <div className="text-sm font-medium text-[var(--color-ink-2)]">Quick links</div>
+        <div className="label-strong text-sm text-[var(--color-ink-2)]">Quick links</div>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Link to="/projects"><Button variant="secondary" className="w-full"><FolderKanban size={16} />Projects</Button></Link>
           <Link to="/documents"><Button variant="secondary" className="w-full"><FileText size={16} />Papers</Button></Link>

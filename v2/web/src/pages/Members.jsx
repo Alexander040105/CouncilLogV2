@@ -41,10 +41,10 @@ export default function Members() {
         title="Members"
         description="Roster, org chart, and this school year's positions."
         action={
-          <div className="flex gap-1 rounded border border-[var(--color-line)] p-0.5 text-sm">
+          <div className="flex gap-1 rounded-[var(--radius-input)] [border:var(--border-box)] p-0.5 text-sm">
             {['roster', 'chart'].map((t) => (
               <button key={t} onClick={() => setTab(t)}
-                      className={`rounded px-3 py-1 ${tab === t ? 'bg-[var(--color-surface-3)] font-semibold' : 'text-[var(--color-ink-3)]'}`}>
+                      className={`label-strong rounded-[var(--radius-input)] px-3 py-1 ${tab === t ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)]' : 'text-[var(--color-ink-3)]'}`}>
                 {t === 'roster' ? 'Roster' : 'Org chart'}
               </button>
             ))}

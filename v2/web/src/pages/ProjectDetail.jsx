@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import { ArrowLeft, UserCheck } from 'lucide-react';
 import { get, patch, post } from '../lib/api';
@@ -6,6 +7,8 @@ import { atLeast, currentOrgId } from '../lib/org';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import { Button, Card, Chip, Empty, Skeleton } from '../components/ui';
+import { ChecklistPreview } from '../components/ChecklistPreview';
+import { diagnoseChecklist } from '../lib/rules';
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -26,13 +29,25 @@ export default function ProjectDetail() {
     queryFn: () => get(`/orgs/${org}/members?pageSize=100`),
     enabled: !!org,
   });
+  const templates = useQuery({
+    queryKey: ['templates', org],
+    queryFn: () => get(`/orgs/${org}/checklist-templates`),
+    enabled: !!org,
+  });
+  const [pickTemplate, setPickTemplate] = useState('');
   const activeMembers = members.data?.data.filter((m) => m.status === 'active') ?? [];
   const nameOf = (id) =>
     activeMembers.find((m) => m.user_id === id)?.display_name ?? null;
   const instantiate = useMutation({
-    mutationFn: () => post(`/orgs/${org}/projects/${id}/instantiate`, {}),
+    mutationFn: (templateIds) =>
+      post(`/orgs/${org}/projects/${id}/instantiate`,
+        templateIds?.length ? { template_ids: templateIds } : {}),
     onSuccess: (r) => {
-      toast.success(`Checklist generated — ${r.instantiated_items} item(s).`);
+      if (r.instantiated_items > 0) {
+        toast.success(`Checklist generated — ${r.instantiated_items} item(s).`);
+      } else {
+        toast.error('Nothing generated — see the checklist card for why.');
+      }
       qc.invalidateQueries({ queryKey: ['project', org, id] });
     },
     onError: (e) => toast.error(e.message),
@@ -57,6 +72,10 @@ export default function ProjectDetail() {
   const p = q.data?.data;
   if (!p) return <Empty title="Project not found" />;
   const items = q.data?.checklist ?? [];
+  const diag = diagnoseChecklist(templates.data?.data, {
+    paper: p.needs_paper_processing, logistics: p.needs_logistics,
+    eventType: p.event_type, targetDate: p.target_date,
+  });
 
   return (
     <div className="space-y-4">
@@ -64,7 +83,7 @@ export default function ProjectDetail() {
         <ArrowLeft size={14} /> Projects
       </Link>
       <div>
-        <h1 className="text-2xl font-bold">{p.title}</h1>
+        <h1 className="heading-strong text-2xl">{p.title}</h1>
         <div className="mt-1 flex flex-wrap gap-2">
           <Chip kind="neutral" label={p.status} />
           {p.event_type && <Chip kind="extra" label={p.event_type} />}
@@ -80,20 +99,51 @@ export default function ProjectDetail() {
 
       <Card>
         <div className="mb-3 flex items-center justify-between">
-          <div className="text-sm font-medium text-[var(--color-ink-2)]">Checklist</div>
-          {items.length === 0 && (
-            <Button variant="secondary" onClick={() => instantiate.mutate()} disabled={instantiate.isPending}>
-              {instantiate.isPending ? 'Generating…' : 'Generate checklist'}
+          <div className="label-strong text-sm text-[var(--color-ink-2)]">Checklist</div>
+          {items.length === 0 && diag.reason === 'ok' && (
+            <Button variant="secondary" onClick={() => instantiate.mutate(null)} disabled={instantiate.isPending}>
+              {instantiate.isPending ? 'Generating…' : `Generate checklist — ${diag.items.length} items`}
             </Button>
           )}
         </div>
-        {items.length === 0 && <Empty title="No checklist yet" hint="Generate one from your org's checklist templates." />}
+        {items.length === 0 && (
+          <div className="space-y-3">
+            <ChecklistPreview
+              templates={templates.data?.data}
+              paper={p.needs_paper_processing} logistics={p.needs_logistics}
+              eventType={p.event_type} targetDate={p.target_date} />
+            {diag.reason !== 'ok' && diag.reason !== 'no_needs'
+              && (templates.data?.data.length ?? 0) > 0 && canAssign && (
+              <div className="space-y-1.5">
+                <div className="text-xs text-[var(--color-ink-3)]">
+                  Or force it — pick a template directly:
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    aria-label="Template to generate from"
+                    className="min-h-[44px] flex-1 rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 text-sm"
+                    value={pickTemplate} onChange={(e) => setPickTemplate(e.target.value)}
+                  >
+                    <option value="">choose a template…</option>
+                    {templates.data.data.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name} · {t.track}{t.event_type ? ` · ${t.event_type}` : ''}</option>
+                    ))}
+                  </select>
+                  <Button variant="secondary" disabled={!pickTemplate || instantiate.isPending}
+                          onClick={() => instantiate.mutate([pickTemplate])}>
+                    Generate
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div className="space-y-1">
           {items.map((it) => {
             const assignee = nameOf(it.assignee_id);
             const mine = it.assignee_id === session?.user?.id;
             return (
-              <div key={it.id} className="flex items-start gap-3 rounded p-2 hover:bg-[var(--color-surface-3)]">
+              <div key={it.id} className="flex items-start gap-3 rounded-[var(--radius-input)] p-2 hover:bg-[var(--color-surface-3)]">
                 <input
                   type="checkbox" checked={it.done} aria-label={`mark ${it.label} done`}
                   onChange={(e) => check.mutate({ itemId: it.id, done: e.target.checked })}
@@ -107,7 +157,7 @@ export default function ProjectDetail() {
                 {canAssign ? (
                   <select
                     aria-label={`Assign ${it.label}`}
-                    className="min-h-[36px] max-w-[8.5rem] rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 text-xs"
+                    className="min-h-[36px] max-w-[8.5rem] rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-1.5 text-xs"
                     value={it.assignee_id ?? ''}
                     onChange={(e) => assign.mutate({ itemId: it.id, assignee_id: e.target.value || null })}
                   >
@@ -118,7 +168,7 @@ export default function ProjectDetail() {
                   <Chip kind="neutral" label={mine ? 'you' : assignee} />
                 ) : !it.done ? (
                   <button
-                    className="min-h-[36px] rounded px-2 text-xs text-[var(--color-accent)]"
+                    className="min-h-[36px] rounded-[var(--radius-input)] px-2 text-xs text-[var(--color-accent)]"
                     onClick={() => assign.mutate({ itemId: it.id, assignee_id: session?.user?.id })}
                   >
                     Take it

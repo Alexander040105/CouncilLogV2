@@ -35,16 +35,19 @@ export function ToastProvider({ children }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-3)] px-3 py-2 text-sm shadow-lg md:w-auto"
+            className="pointer-events-auto flex w-full max-w-sm items-stretch overflow-hidden rounded-[var(--radius-card)] [border:var(--border-box)] bg-[var(--color-surface-3)] text-sm [box-shadow:var(--shadow-1)] md:w-auto"
           >
-            {t.kind === 'success'
-              ? <CheckCircle2 size={16} className="shrink-0 text-[var(--color-status-done)]" />
-              : <XCircle size={16} className="shrink-0 text-[var(--color-status-alert)]" />}
-            <span className="flex-1">{t.msg}</span>
-            <button onClick={() => dismiss(t.id)} aria-label="Dismiss"
-                    className="min-h-[28px] min-w-[28px] text-[var(--color-ink-3)]">
-              <X size={14} className="mx-auto" />
-            </button>
+            <div className={`w-1.5 shrink-0 ${t.kind === 'success' ? 'bg-[var(--color-status-done)]' : 'bg-[var(--color-status-alert)]'}`} />
+            <div className="flex flex-1 items-center gap-2 px-3 py-2">
+              {t.kind === 'success'
+                ? <CheckCircle2 size={16} className="shrink-0 text-[var(--color-status-done)]" />
+                : <XCircle size={16} className="shrink-0 text-[var(--color-status-alert)]" />}
+              <span className="flex-1">{t.msg}</span>
+              <button onClick={() => dismiss(t.id)} aria-label="Dismiss"
+                      className="min-h-[28px] min-w-[28px] text-[var(--color-ink-3)]">
+                <X size={14} className="mx-auto" />
+              </button>
+            </div>
           </div>
         ))}
       </div>

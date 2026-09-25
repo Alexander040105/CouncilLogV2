@@ -1,18 +1,72 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { FileText, Plus } from 'lucide-react';
+import { Link, useOutletContext } from 'react-router-dom';
+import { AlertTriangle, FileText, Plus, Route } from 'lucide-react';
 import { get, post } from '../lib/api';
-import { currentOrgId } from '../lib/org';
+import { atLeast, currentOrgId } from '../lib/org';
 import { useToast } from '../lib/toast';
+import { autoMatchedChain, visibleChainSteps } from '../lib/rules';
 import { Button, Card, Chip, Empty, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
+
+/** Live preview of the signatory route a new document will follow. */
+function ChainPreview({ chains, docType, overrideId }) {
+  const { active } = useOutletContext() ?? {};
+  const isOwner = active ? atLeast(active.role, 'owner') : false;
+  const override = (chains ?? []).find((c) => c.id === overrideId);
+  const auto = overrideId ? null : autoMatchedChain(chains, docType);
+  const chain = override ?? auto;
+  if (!docType && !override) return null;
+
+  if (!chain) {
+    return (
+      <div className="flex items-start gap-2 rounded-[var(--radius-card)] border border-[var(--color-status-alert)] p-3 text-sm text-[var(--color-ink-2)]">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[var(--color-status-alert)]" />
+        <span>
+          No signatory chain matches <span className="font-mono">{docType}</span> — this paper
+          won't be routed for signatures.{' '}
+          {isOwner
+            ? <Link to="/settings" className="text-[var(--color-accent)] underline">Add a chain in Settings</Link>
+            : 'Ask an owner to add one in Settings.'}
+        </span>
+      </div>
+    );
+  }
+
+  const steps = visibleChainSteps(chain); // doc form has no project link → eventType null, flags {}
+  return (
+    <div className="rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-3)] p-3 text-sm">
+      <div className="flex items-center gap-1.5 font-medium text-[var(--color-ink-2)]">
+        <Route size={15} />
+        {override ? 'Using' : 'Will route through'}: {chain.name}
+      </div>
+      {steps.length === 0 ? (
+        <p className="mt-1 text-xs text-[var(--color-ink-3)]">
+          This chain has no steps that apply — the document won't route anywhere.
+        </p>
+      ) : (
+        <ol className="mt-1.5 list-decimal space-y-0.5 pl-5 text-xs text-[var(--color-ink-2)]">
+          {steps.map((s) => (
+            <li key={s.id}>{s.label}{s.office ? <span className="text-[var(--color-ink-3)]"> — {s.office}</span> : ''}</li>
+          ))}
+        </ol>
+      )}
+      {!override && (
+        <p className="mt-1.5 text-xs text-[var(--color-ink-3)]">
+          Matched automatically from the document type. Pick a chain below to override.
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function Documents() {
   const org = currentOrgId();
   const qc = useQueryClient();
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: '', doc_type: '', chain_id: '' });
+  const [form, setForm] = useState({ title: '', chain_id: '' });
+  const [typeSel, setTypeSel] = useState('');
+  const [customType, setCustomType] = useState('');
   const [err, setErr] = useState(null);
 
   const docs = useQuery({
@@ -25,19 +79,24 @@ export default function Documents() {
     queryFn: () => get(`/orgs/${org}/signatory-chains`),
     enabled: !!org,
   });
+
+  const knownTypes = [...new Set((chains.data?.data ?? []).map((c) => c.doc_type))].sort();
+  const docType = typeSel === '__custom' ? customType.trim() : typeSel;
+
   const create = useMutation({
     mutationFn: () => post(`/orgs/${org}/documents`, {
-      title: form.title, doc_type: form.doc_type, chain_id: form.chain_id || null,
+      title: form.title, doc_type: docType, chain_id: form.chain_id || null,
     }),
     onSuccess: () => {
       toast.success('Document registered — custody log started.');
-      setOpen(false); qc.invalidateQueries({ queryKey: ['documents', org] });
+      setOpen(false); setForm({ title: '', chain_id: '' }); setTypeSel(''); setCustomType('');
+      qc.invalidateQueries({ queryKey: ['documents', org] });
     },
     onError: (e) => { setErr(e.message); toast.error(e.message); },
   });
 
   const statusKind = (s) =>
-    s === 'signed' ? 'done' : s === 'routing' ? 'pending' : s === 'filed' ? 'skip' : 'neutral';
+    s === 'signed' ? 'done' : ['routing', 'revision'].includes(s) ? 'pending' : s === 'filed' ? 'skip' : 'neutral';
 
   return (
     <div className="space-y-4">
@@ -64,7 +123,7 @@ export default function Documents() {
                 <div className="text-sm font-medium">{d.title}</div>
                 <div className="text-xs text-[var(--color-ink-3)]">{d.doc_type}</div>
               </div>
-              <Chip kind={statusKind(d.status)} label={d.status} />
+              <Chip kind={statusKind(d.status)} label={d.status === 'revision' ? 'in revision' : d.status} />
             </Card>
           </Link>
         ))}
@@ -73,18 +132,31 @@ export default function Documents() {
       <Sheet open={open} onClose={() => setOpen(false)} title="New document">
         <div className="space-y-3">
           <Field label="Title"><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="IoT Session concept paper" /></Field>
-          <Field label="Document type" hint="e.g. concept_paper, board_resolution, financial_report">
-            <Input value={form.doc_type} onChange={(e) => setForm({ ...form, doc_type: e.target.value })} />
+          <Field label="Document type" hint="Picks the signing route — types that already have chains are listed.">
+            <select
+              className="min-h-[44px] w-full rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm"
+              value={typeSel} onChange={(e) => setTypeSel(e.target.value)}
+            >
+              <option value="">choose…</option>
+              {knownTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+              <option value="__custom">custom…</option>
+            </select>
           </Field>
-          <Field label="Signatory chain (optional — auto-matched by doc type)">
-            <select className="min-h-[44px] w-full rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm"
+          {typeSel === '__custom' && (
+            <Field label="Custom doc type" hint="No preset — it only routes if a chain with this exact type exists.">
+              <Input value={customType} onChange={(e) => setCustomType(e.target.value)} placeholder="leave_request" />
+            </Field>
+          )}
+          <ChainPreview chains={chains.data?.data} docType={docType} overrideId={form.chain_id || null} />
+          <Field label="Override chain (optional)">
+            <select className="min-h-[44px] w-full rounded-[var(--radius-input)] border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm"
                     value={form.chain_id} onChange={(e) => setForm({ ...form, chain_id: e.target.value })}>
-              <option value="">auto</option>
+              <option value="">auto-match by type</option>
               {chains.data?.data.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
           {err && <p className="text-sm text-[var(--color-status-alert)]">{err}</p>}
-          <Button className="w-full" onClick={() => create.mutate()} disabled={!form.title || !form.doc_type || create.isPending}>
+          <Button className="w-full" onClick={() => create.mutate()} disabled={!form.title || !docType || create.isPending}>
             Register document
           </Button>
         </div>

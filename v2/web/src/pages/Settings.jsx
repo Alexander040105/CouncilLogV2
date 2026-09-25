@@ -5,7 +5,7 @@ import { Check, Copy } from 'lucide-react';
 import { get, post, put } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
 import { useToast } from '../lib/toast';
-import { Button, Card, ConfirmDialog, Empty, Field, HintBanner, Input, PageHeader, Skeleton, ThemeToggle } from '../components/ui';
+import { Button, Card, ConfirmDialog, Empty, Field, HintBanner, Input, PageHeader, Skeleton, ThemePicker } from '../components/ui';
 import { MemberManager } from '../components/MemberManager';
 
 const TABS = ['members', 'positions', 'duty', 'templates', 'chains', 'contacts', 'invites', 'audit'];
@@ -49,7 +49,7 @@ export default function Settings() {
             <div className="truncate font-mono text-xs text-[var(--color-ink-3)]">{org}</div>
           </div>
           <div className="flex items-center gap-1">
-            <ThemeToggle />
+            <ThemePicker />
             <Button variant="secondary" onClick={copyOrgId}>
               {copied ? <Check size={14} /> : <Copy size={14} />}
               {copied ? 'Copied' : 'Copy ID'}
@@ -62,10 +62,10 @@ export default function Settings() {
         </p>
       </Card>
 
-      <div className="flex flex-wrap gap-1 rounded border border-[var(--color-line)] p-0.5 text-sm">
+      <div className="flex flex-wrap gap-1 rounded-[var(--radius-input)] [border:var(--border-box)] p-0.5 text-sm">
         {TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)}
-                  className={`min-h-[36px] rounded px-3 py-1 capitalize ${tab === t ? 'bg-[var(--color-surface-3)] font-semibold' : 'text-[var(--color-ink-3)]'}`}>
+                  className={`label-strong min-h-[36px] rounded-[var(--radius-input)] px-3 py-1 capitalize ${tab === t ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)]' : 'text-[var(--color-ink-3)]'}`}>
             {t}
           </button>
         ))}
@@ -136,7 +136,7 @@ function Positions() {
       </div>
       <div className="flex gap-2">
         <Input placeholder="Position title" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <select className="rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-sm"
+        <select className="rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-2 text-sm"
                 value={holder} onChange={(e) => setHolder(e.target.value)}>
           <option value="">holder…</option>
           {members.data?.data.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
@@ -198,7 +198,7 @@ function Duty() {
           </thead>
           <tbody>
             {active.map((m) => (
-              <tr key={m.user_id} className="border-t border-[var(--color-line)]">
+              <tr key={m.user_id} className="[border-top:var(--border-box)]">
                 <td className="p-1 font-medium">{m.display_name}</td>
                 {WD.map((_, d) => {
                   const on = (schedule[String(d)] ?? schedule[d] ?? []).includes(m.user_id);
@@ -225,20 +225,28 @@ function Templates() {
   const toast = useToast();
   const [name, setName] = useState('');
   const [track, setTrack] = useState('paper');
+  const [evt, setEvt] = useState('');
   const [items, setItems] = useState('');
   const t = useQuery({
     queryKey: ['templates', org],
     queryFn: () => get(`/orgs/${org}/checklist-templates`),
     enabled: !!org,
   });
+  const projects = useQuery({
+    queryKey: ['projects', org],
+    queryFn: () => get(`/orgs/${org}/projects?pageSize=100`),
+    enabled: !!org,
+  });
+  const knownEventTypes = [...new Set(
+    (projects.data?.data ?? []).map((p) => p.event_type).filter(Boolean))].sort();
   const add = useMutation({
     mutationFn: () => post(`/orgs/${org}/checklist-templates`, {
-      name, track,
+      name, track, event_type: evt.trim() || null,
       items: items.split('\n').filter(Boolean).map((label, i) => ({ ord: i + 1, label })),
     }),
     onSuccess: () => {
       toast.success('Template created.');
-      setName(''); setItems('');
+      setName(''); setEvt(''); setItems('');
       qc.invalidateQueries({ queryKey: ['templates', org] });
     },
     onError: (e) => toast.error(e.message),
@@ -248,29 +256,41 @@ function Templates() {
     <Card className="space-y-3">
       <div className="text-sm font-medium">Checklist templates</div>
       <div className="text-xs text-[var(--color-ink-3)]">
-        Reusable step lists. When a project matches, these become its checklist.
+        Reusable step lists that become a project's checklist. A project picks up a
+        template when it needs that track (papers / logistics) AND the event types
+        match — or the template has no event type.
       </div>
       {t.isLoading && <Skeleton className="h-24" />}
       {t.data && t.data.data.length === 0 && (
-        <Empty title="No templates" hint="e.g. a paper-processing checklist for events." />
+        <Empty title="No templates" hint="e.g. a paper-processing checklist for events. Projects will show 'no templates exist' until you add one." />
       )}
       {t.data?.data.map((x) => (
-        <div key={x.id} className="rounded border border-[var(--color-line)] p-2">
-          <div className="text-sm font-medium">{x.name} <span className="text-xs text-[var(--color-ink-3)]">· {x.track}</span></div>
+        <div key={x.id} className="rounded-[var(--radius-card)] [border:var(--border-box)] p-2">
+          <div className="text-sm font-medium">{x.name}</div>
+          <div className="text-xs text-[var(--color-ink-3)]">
+            {x.track === 'both' ? 'any project' : `projects needing ${x.track}`}
+            {x.event_type ? ` · only "${x.event_type}" events` : ' · any event type'}
+          </div>
           <ul className="ml-4 list-disc text-xs text-[var(--color-ink-2)]">
             {x.items.map((i, k) => <li key={k}>{i.label}</li>)}
           </ul>
         </div>
       ))}
       <Field label="New template name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-      <Field label="Track" hint="paper = signatory-routed docs · logistics = venue/equipment · both">
-        <select className="min-h-[44px] w-full rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm"
+      <Field label="Track" hint="paper = signatory-routed docs · logistics = venue/equipment · both = applies to either">
+        <select className="min-h-[44px] w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 text-sm"
                 value={track} onChange={(e) => setTrack(e.target.value)}>
           <option value="paper">paper</option><option value="logistics">logistics</option><option value="both">both</option>
         </select>
       </Field>
-      <Field label="Items (one per line)">
-        <textarea className="min-h-24 w-full rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] p-2 text-sm"
+      <Field label="Event type (optional)" hint="Leave blank to match every event type — or scope to one, e.g. webinar_intl.">
+        <Input list="tmpl-event-types" value={evt} onChange={(e) => setEvt(e.target.value)} placeholder="any" />
+        <datalist id="tmpl-event-types">
+          {knownEventTypes.map((t2) => <option key={t2} value={t2} />)}
+        </datalist>
+      </Field>
+      <Field label="Items (one per line)" hint="Each line becomes one checklist item, in this order.">
+        <textarea className="min-h-24 w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] p-2 text-sm"
                   value={items} onChange={(e) => setItems(e.target.value)} />
       </Field>
       <Button onClick={() => add.mutate()} disabled={!name || !items || add.isPending}>Create template</Button>
@@ -279,6 +299,8 @@ function Templates() {
 }
 
 // ── Signatory chains ─────────────────────────────────────────────────────
+const STANDARD_DOC_TYPES = ['concept_paper', 'board_resolution', 'financial_report',
+                            'activity_report', 'ces_concept_paper', 'letter'];
 function Chains() {
   const org = currentOrgId();
   const qc = useQueryClient();
@@ -291,6 +313,14 @@ function Chains() {
     queryFn: () => get(`/orgs/${org}/signatory-chains`),
     enabled: !!org,
   });
+  const docs = useQuery({
+    queryKey: ['documents', org],
+    queryFn: () => get(`/orgs/${org}/documents?pageSize=100`),
+    enabled: !!org,
+  });
+  const usedTypes = [...new Set((docs.data?.data ?? []).map((d) => d.doc_type))];
+  const typeSuggestions = [...new Set([...usedTypes, ...STANDARD_DOC_TYPES])].sort();
+  const matchCount = (dt) => (docs.data?.data ?? []).filter((d) => d.doc_type === dt).length;
   const add = useMutation({
     mutationFn: () => post(`/orgs/${org}/signatory-chains`, {
       name, doc_type: docType,
@@ -308,24 +338,41 @@ function Chains() {
     <Card className="space-y-3">
       <div className="text-sm font-medium">Signatory chains</div>
       <div className="text-xs text-[var(--color-ink-3)]">
-        Who signs a document, in order. New documents auto-pick the chain matching their type.
+        A chain is the signing route for a paper. When an officer registers a document
+        whose type matches a chain's doc type, these steps attach in order —
+        automatically. The doc type must match <span className="font-medium">exactly</span>.
       </div>
       {c.isLoading && <Skeleton className="h-24" />}
       {c.data && c.data.data.length === 0 && (
-        <Empty title="No chains" hint="e.g. Concept paper → Adviser → SAS → School Director." />
+        <Empty title="No chains" hint="e.g. Concept paper → Adviser → SAS → School Director. Documents will register unrouted until you add chains." />
       )}
-      {c.data?.data.map((x) => (
-        <div key={x.id} className="rounded border border-[var(--color-line)] p-2">
-          <div className="text-sm font-medium">{x.name} <span className="text-xs text-[var(--color-ink-3)]">· {x.doc_type}</span></div>
-          <ol className="ml-4 list-decimal text-xs text-[var(--color-ink-2)]">
-            {x.steps.map((s, k) => <li key={k}>{s.label}</li>)}
-          </ol>
-        </div>
-      ))}
-      <Field label="Chain name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-      <Field label="Doc type"><Input value={docType} onChange={(e) => setDocType(e.target.value)} placeholder="concept_paper" /></Field>
-      <Field label="Steps in order (one per line)">
-        <textarea className="min-h-24 w-full rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] p-2 text-sm"
+      {c.data?.data.map((x) => {
+        const n = matchCount(x.doc_type);
+        return (
+          <div key={x.id} className="rounded-[var(--radius-card)] [border:var(--border-box)] p-2">
+            <div className="text-sm font-medium">
+              {x.name} <span className="font-mono text-xs text-[var(--color-ink-3)]">· {x.doc_type}</span>
+            </div>
+            <div className={`text-xs ${n === 0 ? 'text-[var(--color-status-alert)]' : 'text-[var(--color-ink-3)]'}`}>
+              {n === 0
+                ? 'matches no registered papers — check the doc type spelling'
+                : `covers ${n} registered paper${n === 1 ? '' : 's'}`}
+            </div>
+            <ol className="ml-4 list-decimal text-xs text-[var(--color-ink-2)]">
+              {x.steps.map((s, k) => <li key={k}>{s.label}</li>)}
+            </ol>
+          </div>
+        );
+      })}
+      <Field label="Chain name" hint="e.g. Standard concept paper route"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
+      <Field label="Doc type" hint="Types already in use are suggested — must match the document's type exactly.">
+        <Input list="doc-types" value={docType} onChange={(e) => setDocType(e.target.value)} placeholder="concept_paper" />
+        <datalist id="doc-types">
+          {typeSuggestions.map((t2) => <option key={t2} value={t2} />)}
+        </datalist>
+      </Field>
+      <Field label="Steps in order (one per line)" hint="Each line is one signer, top to bottom — 1st signs first.">
+        <textarea className="min-h-24 w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] p-2 text-sm"
                   value={steps} onChange={(e) => setSteps(e.target.value)}
                   placeholder={'SSC President\nSAS routing\nSchool Director'} />
       </Field>
@@ -426,7 +473,7 @@ function Invites() {
             <span className="flex items-center gap-1">
               <select
                 aria-label="Role to grant"
-                className="min-h-[36px] rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-xs"
+                className="min-h-[36px] rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-2 text-xs"
                 value={approveRoles[r.id] ?? 'member'}
                 onChange={(e) => setApproveRoles({ ...approveRoles, [r.id]: e.target.value })}
               >
@@ -451,7 +498,7 @@ function Invites() {
           <div className="text-xs text-[var(--color-ink-3)]">no active invites</div>
         )}
         <div className="flex gap-2">
-          <select className="rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-sm"
+          <select className="rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-2 text-sm"
                   value={role} onChange={(e) => setRole(e.target.value)}>
             <option value="officer">officer</option><option value="adviser">adviser</option><option value="member">member</option>
           </select>
@@ -459,7 +506,7 @@ function Invites() {
         </div>
         {inv.data?.data.map((i) => (
           <div key={i.id} className="flex items-center justify-between text-xs">
-            <code className="rounded bg-[var(--color-surface-3)] px-2 py-1">{i.code}</code>
+            <code className="rounded-[var(--radius-input)] bg-[var(--color-surface-3)] px-2 py-1">{i.code}</code>
             <span className="text-[var(--color-ink-3)]">{i.role} · {i.uses}/{i.max_uses} uses</span>
           </div>
         ))}

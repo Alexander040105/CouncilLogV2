@@ -177,11 +177,17 @@ There is no clock-in — **a filed day is attendance**.
      week — you have ~2-week windows.
    - **Assign a lead** with "Assign to" — defaults to you. The assignee gets an
      email (when email is configured).
-2. **Generate the checklist.** Open the project → "Generate checklist". Matching
-   templates snapshot into live items — paper-track items when it needs papers,
-   logistics-track when it needs logistics (a `both` template lands either way).
-   Editing a template later won't rewrite existing checklists — snapshots are
-   frozen.
+   - The sheet **previews the checklist** that will generate from your
+     papers/logistics + event type choices — matching templates and their
+     items, with due dates when a target date is set.
+2. **Generate the checklist.** Open the project → the checklist card shows what
+   will generate before you click — matching templates, their items, and due
+   dates — and the button says how many items it will create. If nothing can
+   match, the card says exactly why (no templates on the right track, event-type
+   mismatch, project not flagged for papers/logistics) and points you to the
+   fix. When templates exist but none auto-match, adviser+ can force-pick a
+   template from the dropdown. Editing a template later won't rewrite existing
+   checklists — snapshots are frozen.
 3. **Assign tasks.** Adviser+ can assign any checklist item to a member via the
    per-item dropdown — they're emailed. Officers can self-assign an unassigned
    item with "Take it".
@@ -197,9 +203,11 @@ There is no clock-in — **a filed day is attendance**.
 Papers is a **custody logbook for physical documents** — the newest movement is
 where the paper physically sits.
 
-1. **Register it** (officer+): Papers → New document → title + `doc_type`. If a
-   chain matches the doc type, its steps attach automatically — you can also
-   pick a chain manually. `doc_type` values to standardize on:
+1. **Register it** (officer+): Papers → New document → title + doc type. The
+   doc-type dropdown lists types that already have chains — as soon as you pick
+   one, the sheet previews the exact signing route it will follow (or warns
+   that nothing will route). Use "custom…" for new types, or "Override chain"
+   to pick a route manually. `doc_type` values to standardize on:
    `concept_paper`, `board_resolution`, `financial_report`, `activity_report`,
    `ces_concept_paper`, `letter`.
 2. **Every hand-off = "Move paper"**: where it is now (e.g. "SD office",
@@ -208,7 +216,24 @@ where the paper physically sits.
 3. **Advance the chain** (officer+): mark each step **Sign** when done, or
    **Skip** with a required reason (recorded for the next signer — e.g. "office
    closed this week").
-4. **Status flow:** `drafting → routing → signed → filed`.
+4. **Status flow:** `drafting → routing → signed → filed` — and `in revision`
+   when an office sends the paper back.
+5. **Registered before its chain existed?** The detail page explains why it's
+   unrouted and offers an "attach a chain" picker (officer+) — no need to
+   recreate the document. Owners: Settings → chains shows which doc types each
+   chain covers and warns when a chain matches zero registered papers.
+
+**Sent back for revision?** When an office returns the paper:
+
+1. Tap **Send back** on the step that's holding it (or the header button on a
+   signed/filed doc).
+2. Say *what needs changing* — it becomes the note in the log.
+3. Tick which offices must **re-sign** (all are pre-checked; untick any that
+   don't need to). The paper re-routes through them, then returns to the
+   requesting desk — as a new "Round" in the log. Old signatures are never
+   erased.
+4. **Fast path:** when everyone re-signs the same day, **Sign all pending**
+   marks the whole round at once (with a confirm).
 
 ### A6. Handbook edge cases
 

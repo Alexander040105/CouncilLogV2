@@ -219,10 +219,24 @@ class DocumentSignatoryStep(SQLModel, table=True):
     ord: int
     label: str
     office: str | None = None
-    status: str = "pending"
+    status: str = "pending"  # pending|signed|skipped|revision_requested|superseded
+    round_no: int = 1
+    revises: uuid.UUID | None = Field(default=None, foreign_key="document_signatory_steps.id")
     signed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     noted_by: uuid.UUID | None = None
     note: str | None = None
+
+
+class DocumentRevision(SQLModel, table=True):
+    __tablename__ = "document_revisions"
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    org_id: uuid.UUID = Field(foreign_key="organizations.id")
+    document_id: uuid.UUID = Field(foreign_key="documents.id")
+    requested_at_step_id: uuid.UUID | None = Field(default=None, foreign_key="document_signatory_steps.id")
+    round_no: int
+    note: str
+    created_by: uuid.UUID | None = Field(default=None, foreign_key="profiles.id")
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
 
 class Invite(SQLModel, table=True):

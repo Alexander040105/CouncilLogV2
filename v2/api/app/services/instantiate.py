@@ -77,3 +77,27 @@ def instantiate_chain(
         for s in sorted(steps, key=lambda x: x["ord"])
         if _event_ok(s.get("condition_json"), event_type) and flag_ok(s.get("condition_json"), flags)
     ]
+
+
+# reason values — mirrored client-side in web/src/lib/rules.js (keep in sync)
+def diagnose_checklist(
+    templates_all: list[Any],
+    *,
+    needs_paper: bool,
+    needs_logistics: bool,
+    event_type: str | None,
+) -> str:
+    """Why auto-match will produce zero items. Caller adds 'ok'/'items_filtered'
+    once actual generation is known; explicit-ids path uses 'templates_not_found'."""
+    if not needs_paper and not needs_logistics:
+        return "no_needs"
+    if not templates_all:
+        return "no_templates"
+    wanted = (["paper", "both"] if needs_paper else []) + \
+             (["logistics", "both"] if needs_logistics else [])
+    on_track = [t for t in templates_all if t.track in wanted]
+    if not on_track:
+        return "track_mismatch"
+    if not [t for t in on_track if t.event_type is None or t.event_type == event_type]:
+        return "event_type_mismatch"
+    return "items_filtered"  # templates matched → zero items means rules/empty filtered all

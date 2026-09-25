@@ -43,7 +43,7 @@ export default function Login() {
   return (
     <div className="flex min-h-dvh items-center justify-center p-4">
       <Card className="w-full max-w-sm space-y-4">
-        <h1 className="text-xl font-bold">CounciLog</h1>
+        <h1 className="heading-strong label-strong text-xl">CounciLog</h1>
         <p className="text-sm text-[var(--color-ink-3)]">
           Council ops: duty, journal, papers — logged with proof.
         </p>

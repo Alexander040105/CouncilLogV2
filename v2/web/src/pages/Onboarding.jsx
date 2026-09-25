@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
-import { post, patch } from '../lib/api';
-import { setCurrentOrg } from '../lib/org';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft } from 'lucide-react';
+import { get, post, patch } from '../lib/api';
+import { currentOrgId, setCurrentOrg } from '../lib/org';
+import { useAuth } from '../lib/auth';
+import { useToast } from '../lib/toast';
 import { Button, Card, Field, Input } from '../components/ui';
 
 export default function Onboarding() {
@@ -11,6 +14,14 @@ export default function Onboarding() {
   const [mode, setMode] = useState('choose');
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  const { session } = useAuth();
+  const toast = useToast();
+
+  // /onboarding is also reachable from the org switcher, so members may land
+  // here with somewhere to go back to — org-less users get no escape link.
+  const me = useQuery({ queryKey: ['me'], queryFn: () => get('/me'), enabled: !!session });
+  const memberships = me.data?.memberships ?? [];
+  const backTo = memberships.find((m) => m.org_id === currentOrgId()) ?? memberships[0];
 
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -64,19 +75,45 @@ export default function Onboarding() {
       await post(`/orgs/${orgSlug}/join-requests`, { message });
       await saveName();
       setMode('choose');
-      setErr('Request sent — an admin will approve it.');
+      setCode(''); setOrgSlug(''); setMessage('');
+      toast.success('Request sent — an admin will approve it.');
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
 
   return (
     <div className="flex min-h-dvh items-center justify-center p-4">
       <Card className="w-full max-w-md space-y-4">
-        <h1 className="text-xl font-bold">Get started</h1>
-        {mode === 'choose' && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Button onClick={() => setMode('create')}>Start your organization</Button>
-            <Button variant="secondary" onClick={() => setMode('join')}>Join with code</Button>
+        {mode === 'choose' ? (
+          <h1 className="heading-strong label-strong text-xl">Get started</h1>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              className="px-3"
+              onClick={() => { setMode('choose'); setErr(null); }}
+            >
+              <ArrowLeft size={16} aria-hidden /> Back
+            </Button>
+            <h1 className="heading-strong label-strong text-xl">
+              {mode === 'create' ? 'Start your organization' : 'Join an organization'}
+            </h1>
           </div>
+        )}
+        {mode === 'choose' && (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button onClick={() => setMode('create')}>Start your organization</Button>
+              <Button variant="secondary" onClick={() => setMode('join')}>Join with code</Button>
+            </div>
+            {backTo && (
+              <button
+                className="w-full text-center text-sm text-[var(--color-ink-3)] hover:text-[var(--color-ink-2)]"
+                onClick={() => nav('/')}
+              >
+                Back to {backTo.org_name}
+              </button>
+            )}
+          </>
         )}
         {mode === 'create' && (
           <div className="space-y-3">
@@ -90,7 +127,7 @@ export default function Onboarding() {
                 <Input value={sy} onChange={(e) => setSy(e.target.value)} placeholder="e.g. AY 2026–2027" autoFocus />
               ) : (
                 <select
-                  className="min-h-[44px] w-full rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm"
+                  className="min-h-[44px] w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 text-sm"
                   value={sy}
                   onChange={(e) => {
                     if (e.target.value === '__custom') { setSyCustom(true); setSy(''); }
@@ -125,9 +162,6 @@ export default function Onboarding() {
           </div>
         )}
         {err && <p className="text-sm text-[var(--color-status-alert)]">{err}</p>}
-        {mode !== 'choose' && (
-          <button className="text-sm text-[var(--color-ink-3)]" onClick={() => { setMode('choose'); setErr(null); }}>← back</button>
-        )}
       </Card>
     </div>
   );

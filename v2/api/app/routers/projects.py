@@ -177,11 +177,22 @@ async def instantiate_checklists(org_id: uuid.UUID, project_id: uuid.UUID, body:
                 ord=inst["ord"], label=inst["label"], hint=inst.get("hint"),
                 required=inst.get("required", True), due_date=inst.get("due_date")))
             created += 1
+    if created > 0:
+        reason = "ok"
+    elif body.template_ids:
+        reason = "templates_not_found" if not templates else "items_filtered"
+    else:
+        all_templates = (await session.execute(select(ChecklistTemplate).where(
+            ChecklistTemplate.org_id == org_id))).scalars().all()
+        reason = instantiate.diagnose_checklist(
+            all_templates, needs_paper=p.needs_paper_processing,
+            needs_logistics=p.needs_logistics, event_type=p.event_type)
+
     await audit(session, org_id=org_id, actor_id=member.user_id, action="checklist.instantiated",
                 entity_type="project", entity_id=p.id,
                 metadata={"templates": [str(t.id) for t in templates], "items": created})
     await session.commit()
-    return {"instantiated_items": created, "templates_used": len(templates)}
+    return {"instantiated_items": created, "templates_used": len(templates), "reason": reason}
 
 
 class ChecklistItemPatch(BaseModel):

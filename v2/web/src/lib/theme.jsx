@@ -1,11 +1,17 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 
 const KEY = 'councilog.theme';
-const ThemeCtx = createContext({ theme: 'dark', setTheme: () => {} });
+export const THEMES = [
+  { id: 'brutalist-light', label: 'Neo-brutalist' },
+  { id: 'brutalist-dark', label: 'Neo-brutalist dark' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'light', label: 'Light' },
+];
+const ThemeCtx = createContext({ theme: 'brutalist-light', setTheme: () => {} });
 
 export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState(
-    () => document.documentElement.dataset.theme || 'dark'
+    () => document.documentElement.dataset.theme || 'brutalist-light'
   );
 
   const setTheme = (t) => {

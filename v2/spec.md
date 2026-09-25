@@ -172,19 +172,29 @@ Roles are **per-org** (stored on `org_members`, not on the user). One human
 
 - `documents` — title, `doc_type` (concept_paper, board_resolution,
   financial_report, activity_report, letter…), `status`
-  (`drafting|routing|signed|filed`), optional `project_id`.
+  (`drafting|routing|revision|signed|filed`), optional `project_id`.
 - `document_movements` — **append-only** logbook: each row = one custody
   record (`location_text` free-form e.g. "SD office", `note`, optional
   `photo_path`, `moved_by`, `created_at`). Never UPDATEd/DELETEd — DB-level
   revoke + audit trigger.
 - `document_signatory_steps` — instantiated snapshot of a `signatory_chain`;
-  each step `pending|signed|skipped`, advanced by officers via API (records
-  `signed_at`, `noted_by`). Conditional steps are materialized at
-  instantiation per §7 rules (e.g., international webinar ⇒ RFP step inserted).
+  each step `pending|signed|skipped|revision_requested|superseded`, advanced
+  by officers via API (records `signed_at`, `noted_by`). `round_no` groups
+  rows into signing rounds; `revises` points at the step a round-N row
+  re-signs. Conditional steps are materialized at instantiation per §7 rules
+  (e.g., international webinar ⇒ RFP step inserted).
+- `document_revisions` — append-only revision requests: `document_id`,
+  `requested_at_step_id` (null when the whole resolved doc is sent back),
+  `round_no`, required `note`, `created_by`. A revision supersedes stale
+  pendings and appends fresh `pending` copies of the chosen resolved steps —
+  history is never overwritten. Late revisions are allowed on `signed` and
+  `filed` docs.
 - Logbook view = vertical timeline: signature steps interleaved with
   movement records — "where is the paper" is always the latest movement row.
 - **Edge cases:** a paper can skip a step (`skipped` + note, audited); a doc
-  with no chain still gets movements; photos optional but encouraged.
+  with no chain still gets movements and can be routed later via
+  `attach-chain`; photos optional but encouraged; "sign all pending"
+  bulk-signs the current round.
 
 ### 3.6 SaaS configurability
 
@@ -408,12 +418,27 @@ create table document_signatory_steps (       -- instantiated snapshot
   ord         int not null,
   label       text not null,
   office      text,
-  status      text not null default 'pending' check (status in ('pending','signed','skipped')),
+  status      text not null default 'pending'
+             check (status in ('pending','signed','skipped','revision_requested','superseded')),
+  round_no    int not null default 1,
+  revises     uuid references document_signatory_steps(id),
   signed_at   timestamptz,
   noted_by    uuid,
   note        text
 );
 create index dss_by_doc on document_signatory_steps (document_id, ord);
+
+create table document_revisions (             -- append-only revision requests
+  id                   uuid primary key default gen_random_uuid(),
+  org_id               uuid not null references organizations(id) on delete cascade,
+  document_id          uuid not null references documents(id) on delete cascade,
+  requested_at_step_id uuid references document_signatory_steps(id),
+  round_no             int not null,
+  note                 text not null,
+  created_by           uuid references profiles(id),
+  created_at           timestamptz not null default now()
+);
+create index revisions_by_doc on document_revisions (document_id, created_at);
 
 -- ── Membership flows ──────────────────────────────────────────────────
 create table invites (
@@ -559,6 +584,9 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 33 | `GET /orgs/{org}/documents/{id}` | member | detail = timeline |
 | 34 | `POST /orgs/{org}/documents/{id}/movements` | officer+ | append movement (where/who/photo) |
 | 35 | `POST /orgs/{org}/documents/{id}/steps/{sid}` | officer+ | mark step signed/skipped |
+| 35a | `POST /orgs/{org}/documents/{id}/attach-chain` | officer+ | route an unrouted doc to a chosen chain |
+| 35b | `POST /orgs/{org}/documents/{id}/revisions` | officer+ | send back for revision → new round of re-sign steps |
+| 35c | `POST /orgs/{org}/documents/{id}/steps/sign-all` | officer+ | bulk-sign current-round pending steps |
 | 36 | `GET/POST /orgs/{org}/signatory-chains` | member / owner | chain templates + steps |
 | 37 | `GET/POST /orgs/{org}/contacts` | member / owner | quick-ref directory |
 | 38 | `GET /orgs/{org}/audit` | owner, adviser | audit log paged |

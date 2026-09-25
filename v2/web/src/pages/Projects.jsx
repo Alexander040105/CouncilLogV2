@@ -5,6 +5,7 @@ import { FolderKanban, Plus } from 'lucide-react';
 import { get, post } from '../lib/api';
 import { currentOrgId } from '../lib/org';
 import { useToast } from '../lib/toast';
+import { ChecklistPreview } from '../components/ChecklistPreview';
 import { Button, Card, Chip, Empty, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
 
 const STATUS = ['draft', 'active', 'done', 'archived'];
@@ -27,6 +28,13 @@ export default function Projects() {
     queryFn: () => get(`/orgs/${org}/members?pageSize=100`),
     enabled: !!org,
   });
+  const templates = useQuery({
+    queryKey: ['templates', org],
+    queryFn: () => get(`/orgs/${org}/checklist-templates`),
+    enabled: !!org,
+  });
+  const knownEventTypes = [...new Set(
+    (templates.data?.data ?? []).map((t) => t.event_type).filter(Boolean))].sort();
   const nameOf = (id) =>
     members.data?.data.find((m) => m.user_id === id)?.display_name ?? null;
   const create = useMutation({
@@ -89,12 +97,15 @@ export default function Projects() {
         <div className="space-y-3">
           <Field label="Title"><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
           <Field label="Details"><Input value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} /></Field>
-          <Field label="Event type" hint="e.g. seminar, competition, webinar_intl, ces">
-            <Input value={form.event_type} onChange={(e) => setForm({ ...form, event_type: e.target.value })} />
+          <Field label="Event type" hint="Drives which templates match — known types are suggested.">
+            <Input list="event-types" value={form.event_type} onChange={(e) => setForm({ ...form, event_type: e.target.value })} placeholder="seminar, competition, webinar_intl…" />
+            <datalist id="event-types">
+              {knownEventTypes.map((t) => <option key={t} value={t} />)}
+            </datalist>
           </Field>
           <Field label="Target date"><Input type="date" value={form.target_date} onChange={(e) => setForm({ ...form, target_date: e.target.value })} /></Field>
           <Field label="Assign to (optional)" hint="They'll get an email telling them they lead this project.">
-            <select className="min-h-[44px] w-full rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm"
+            <select className="min-h-[44px] w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 text-sm"
                     value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })}>
               <option value="">Me</option>
               {members.data?.data.filter((m) => m.status === 'active').map((m) => (
@@ -106,6 +117,10 @@ export default function Projects() {
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.paper} onChange={(e) => setForm({ ...form, paper: e.target.checked })} /> Needs papers</label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.logistics} onChange={(e) => setForm({ ...form, logistics: e.target.checked })} /> Needs logistics</label>
           </div>
+          <ChecklistPreview
+            templates={templates.data?.data}
+            paper={form.paper} logistics={form.logistics}
+            eventType={form.event_type || null} targetDate={form.target_date || null} />
           {err && <p className="text-sm text-[var(--color-status-alert)]">{err}</p>}
           <Button className="w-full" onClick={() => create.mutate()} disabled={!form.title || create.isPending}>Create</Button>
         </div>

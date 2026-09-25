@@ -42,13 +42,13 @@ def check(name, cond, extra=""):
     (ok if cond else fail).append(name)
     print(("PASS " if cond else "FAIL ") + name + (f"  | {extra}" if extra else ""))
 
-# ── 1. Create users (admin API → already confirmed) ─────────────────────
+# ── 1. Create users (admin API -> already confirmed) ─────────────────────
 def ensure_user(email):
     s, r = call("POST", f"{SUPA}/auth/v1/admin/users", SERVICE,
                 {"email": email, "password": PASS, "email_confirm": True})
     if s >= 400 and "already" not in json.dumps(r):
         print("admin create failed", s, r); sys.exit(1)
-    # resolve id (create may have no-op'd on an existing user), then unban —
+    # resolve id (create may have no-op'd on an existing user), then unban -
     # earlier runs may have left the account banned by the DELETE /me check
     s, r = call("GET", f"{SUPA}/auth/v1/admin/users?page=1&per_page=100", SERVICE)
     uid = next((u["id"] for u in r.get("users", []) if u["email"] == email), None)
@@ -84,7 +84,7 @@ check("/me returns membership", any(m["org_id"] == org_a for m in me_a["membersh
 s, _ = api("GET", f"/orgs/{org_a}", tok_c, org=org_a)
 check("cross-org read denied (404)", s in (403, 404), f"{s}")
 
-# owner mints invite → member redeems
+# owner mints invite -> member redeems
 s, inv = api("POST", f"/orgs/{org_a}/invites", tok_a, {"role": "officer"}, org=org_a)
 check("owner mints invite", s == 201 and inv.get("code"), f"{s}")
 s, r = api("POST", f"/invites/{inv['code']}/redeem", tok_b)
@@ -122,7 +122,7 @@ check("attendance list + unaccounted", s == 200 and "unaccounted_member_ids" in 
 s, r = api("GET", f"/orgs/{org_a}/attendance/summary", tok_a, org=org_a)
 check("attendance summary", s == 200 and "data" in r, f"{s} {str(r)[:120]}")
 
-# photo sign → upload (tiny png) → attach → view url
+# photo sign -> upload (tiny png) -> attach -> view url
 s, sign = api("POST", f"/orgs/{org_a}/journal/photos/sign", tok_b,
               {"mime": "image/png", "byte_size": 68}, org=org_a)
 check("photo upload signed URL minted", s == 201 and sign.get("upload_url"), f"{s} {str(sign)[:100]}")
@@ -188,6 +188,80 @@ s, r = api("POST", f"/orgs/{org_a}/documents/{did}/steps/{step['id']}", tok_b, {
 check("signatory step signed", s == 200, f"{s}")
 s, d = api("GET", f"/orgs/{org_a}/documents/{did}", tok_a, org=org_a)
 check("current_location = SD office", d.get("current_location") == "SD office inbox tray")
+
+# ── 7b. Revision rounds ─────────────────────────────────────────────────
+s, ch2 = api("POST", f"/orgs/{org_a}/signatory-chains", tok_a,
+             {"name": "Three-desk route", "doc_type": "board_resolution",
+              "steps": [{"ord": 1, "label": "Dean"},
+                        {"ord": 2, "label": "SSC President"},
+                        {"ord": 3, "label": "SD"}]}, org=org_a)
+check("owner creates 3-step chain", s == 201, f"{s}")
+s, doc2 = api("POST", f"/orgs/{org_a}/documents", tok_b,
+              {"title": "Budget request", "doc_type": "board_resolution"}, org=org_a)
+did2 = doc2["data"]["id"] if s == 201 else None
+s, d2 = api("GET", f"/orgs/{org_a}/documents/{did2}", tok_b, org=org_a)
+st = d2["signatory_steps"]
+check("3 steps at round 1", len(st) == 3 and all(x["round_no"] == 1 for x in st), f"{s}")
+
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/steps/{st[0]['id']}", tok_b,
+           {"status": "signed"}, org=org_a)
+check("step 1 signed", s == 200, f"{s}")
+
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/revisions", tok_b,
+           {"at_step_id": st[2]["id"], "resend_step_ids": [st[0]["id"]]}, org=org_a)
+check("revision without note -> 422", s == 422, f"{s}")
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/revisions", tok_b,
+           {"at_step_id": st[2]["id"], "note": "fix", "resend_step_ids": [st[1]["id"]]}, org=org_a)
+check("pending resend id -> 422", s == 422, f"{s}")
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/revisions", tok_b,
+           {"at_step_id": st[2]["id"], "note": "revise budget table",
+            "resend_step_ids": [st[0]["id"]]}, org=org_a)
+check("mid-route revision created", s == 201, f"{s} {str(r)[:140]}")
+s, d2 = api("GET", f"/orgs/{org_a}/documents/{did2}", tok_b, org=org_a)
+st2 = d2["signatory_steps"]
+r2 = [x for x in st2 if x["round_no"] == 2]
+check("doc status revision", d2["data"]["status"] == "revision", d2["data"]["status"])
+check("requester marked revision_requested",
+      next(x for x in st2 if x["id"] == st[2]["id"])["status"] == "revision_requested")
+check("stale pending superseded",
+      next(x for x in st2 if x["id"] == st[1]["id"])["status"] == "superseded")
+check("round 2 = resend + requester copy",
+      len(r2) == 2 and all(x["status"] == "pending" and x["revises"] for x in r2),
+      str(r2)[:140])
+check("revisions list + current_round=2",
+      len(d2.get("revisions", [])) == 1 and d2.get("current_round") == 2)
+
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/steps/{st[1]['id']}", tok_b,
+           {"status": "signed"}, org=org_a)
+check("superseded step closed -> 409", s == 409, f"{s}")
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/steps/sign-all", tok_b,
+           {"step_ids": [st[0]["id"]]}, org=org_a)
+check("sign-all stale id -> 409", s == 409, f"{s}")
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/steps/sign-all", tok_b, {}, org=org_a)
+check("sign-all current round", s == 200, f"{s} {str(r)[:100]}")
+s, d2 = api("GET", f"/orgs/{org_a}/documents/{did2}", tok_a, org=org_a)
+check("doc signed after round 2", d2["data"]["status"] == "signed", d2["data"]["status"])
+check("round-1 history intact",
+      next(x for x in d2["signatory_steps"] if x["id"] == st[0]["id"])["status"] == "signed")
+
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/revisions", tok_a,
+           {"note": "late", "resend_step_ids": []}, org=org_a)
+check("late revision empty resend -> 422", s == 422, f"{s}")
+resolved2 = [x for x in d2["signatory_steps"] if x["status"] == "signed"]
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/revisions", tok_a,
+           {"note": "SD wants page 2 re-signed", "resend_step_ids": [resolved2[0]["id"]]},
+           org=org_a)
+check("late revision on signed doc", s == 201, f"{s} {str(r)[:120]}")
+s, d2 = api("GET", f"/orgs/{org_a}/documents/{did2}", tok_a, org=org_a)
+check("doc back to revision, round 3",
+      d2["data"]["status"] == "revision" and d2.get("current_round") == 3)
+
+s, doc3 = api("POST", f"/orgs/{org_a}/documents", tok_b,
+              {"title": "No chain", "doc_type": "letter"}, org=org_a)
+did3 = doc3["data"]["id"] if s == 201 else None
+s, r = api("POST", f"/orgs/{org_a}/documents/{did3}/revisions", tok_b,
+           {"note": "x"}, org=org_a)
+check("unrouted doc revision -> 409", s == 409, f"{s}")
 
 # ── 8. Contacts + audit ─────────────────────────────────────────────────
 s, r = api("POST", f"/orgs/{org_a}/contacts", tok_a, {"label": "Concept papers", "value": "SAS office, 2nd floor"}, org=org_a)

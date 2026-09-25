@@ -4,42 +4,79 @@
 > task-completion tool officers open on phones between classes. Scanability,
 > consistency, and speed outrank decoration; brand lives in precise details.
 > All tokens are org-white-label-able: nothing below hardcodes CCS branding.
+>
+> **Canonical visual system: Neo-Brutalist** (see `neo-brutalist-style-guide.md`) —
+> white base, navy `#27146e`, amber `#f4be04`, black strokes, squared corners,
+> hard offset shadows, uppercase labels. The pre-brutalist "classic" dark and
+> light themes ship as opt-in variants.
 
 ---
 
 ## 1. Design tokens
 
-### Color
+### Theme variants
 
-**Dark is the shipped default theme** — officers file at night between and
-after classes, and dark surfaces keep photo content legible. Light is opt-in
-via the sun/moon toggle (sidebar footer + mobile More sheet + Settings),
-persisted in `localStorage['councilog.theme']`; an inline `<head>` script in
-`index.html` applies `data-theme` before first paint so there's no theme
-flash. The mechanism is a CSS-var swap on `<html>` — components never use
-`dark:` classes or hardcoded hex.
+**Neo-Brutalist Light (`brutalist-light`) is the shipped default** — it also
+applies on bare `:root`, so first paint is already branded. Users pick among
+four variants via the `ThemePicker` (a labeled `<select>` — not a binary
+toggle), shown in three places: desktop sidebar footer, mobile More sheet,
+and `/account` preferences + Settings. The choice persists in
+`localStorage['councilog.theme']`; an inline `<head>` script in `index.html`
+applies `data-theme` before first paint so there's no flash.
 
-| Token | Dark (default) | Light | Role |
+| `data-theme` | Character | Notes |
+|---|---|---|
+| `brutalist-light` (default) | white surfaces · black 2px strokes · amber accents · navy fills/text · 0 radii · hard offset shadows | guide §1 palette verbatim |
+| `brutalist-dark` | near-black surfaces · bone `#f2f0ea` strokes · amber accents · navy as fills only | derived — the guide is light-only |
+| `light` / `dark` | the original classic themes, unchanged | retained for users who prefer them |
+
+**Contrast rules (hard requirements):**
+- Amber `#f4be04` is always a *fill* with black text — never amber text on
+  white (fails AA).
+- Navy `#27146e` is a fill or text color in light mode; in `brutalist-dark`
+  it may be a fill but **never a stroke** (too dark against near-black).
+- Danger = `--status-alert` fill + white text.
+
+### Divergence mechanism
+
+One component tree serves all four themes. Everything variant-specific is a
+CSS var scoped to `html[data-theme="…"]`; components never branch on theme or
+use `dark:` classes / hardcoded hex.
+
+**Color tokens** (semantic roles, per-variant values in `index.css`):
+
+`--surface` page bg · `--surface-2` cards · `--surface-3` raised/hover ·
+`--ink` / `--ink-2` / `--ink-3` text ramp (all ≥4.5:1 on surface-2) ·
+`--line` borders/dividers · `--accent`/`--accent-fg` primary actions,
+active nav, selection · `--brand`/`--brand-fg` fills, caret ·
+`--status-pending` / `--status-done` / `--status-skip` / `--status-alert` ·
+`--duty-extra` extra-duty flag.
+
+**Structural tokens** — this is where the variants actually differ:
+
+| Token | Brutalist | Classic | Controls |
 |---|---|---|---|
-| `--accent` | `#6b76ff` | `#3f4dd1` | primary actions, links, active nav; per-org override later |
-| `--accent-fg` | `#ffffff` | `#ffffff` | text/icons on accent |
-| `--surface` | `#0f1115` | `#f7f8fa` | page bg — never pure `#000` (kills elevation cues) |
-| `--surface-2` | `#161a22` | `#ffffff` | cards |
-| `--surface-3` | `#1f2430` | `#f0f2f6` | raised/hover |
-| `--ink` | `#f2f4f8` | `#14171f` | primary text — AA on all surfaces (aim AAA body) |
-| `--ink-2` | `#c3cad6` | `#3d4454` | secondary text |
-| `--ink-3` | `#8b93a5` | `#6b7280` | tertiary/hints — still ≥4.5:1 on surface-2 |
-| `--line` | `#272d3a` | `#e3e6ec` | borders/dividers |
-| `--status-pending` | `#f5a524` | `#b45309` | checklist/signatory pending — amber |
-| `--status-done` | `#4ade80` | `#15803d` | signed / done / documented — green |
-| `--status-skip` | `#9aa3b2` | `#6b7280` | skipped step / archived — neutral |
-| `--status-alert` | `#f87171` | `#b91c1c` | unaccounted day, overdue — red, never color-only |
-| `--duty-extra` | `#a78bfa` | `#6d28d9` | extra-duty flag — violet, distinct from alert |
+| `--radius-input` / `--radius-card` / `--radius-sheet` | `0` | `6`/`10`/`16` px | all corners |
+| `--avatar-radius` | `2px` | full round | avatar shape |
+| `--border-el` | `2px solid` ink | `0` | element outlines (buttons, avatars) |
+| `--border-box` | `2px solid` ink | `1px solid line` | boxes (cards, inputs, sheets, tables) |
+| `--border-dash` | `2px dashed` ink | `1px dashed line` | upload affordances |
+| `--shadow-1` / `--shadow-2` | `4px`/`12px` hard offset | `none` | hover lift / modals+sheets |
+| `--press-transform` | `translate(2px,2px)` | `none` | button press-shift |
+| `--nav-active-bg` / `--nav-active-fg` | accent fill + black text | `surface-3` + ink | active nav/tab/tab-group state |
+| `--hover-fill` | darker surface tone | `line` | secondary-button hover |
+| `--focus-color` / `--focus-width` | navy, `3px` / amber `3px` | accent, `2px` | `:focus-visible` ring |
+| `--label-transform` / `--label-tracking` / `--label-weight` | `uppercase` · `0.05em` · `700` | `none` · `normal` · `600` | `.label-strong` — buttons, field labels, nav items, section eyebrows, chips |
+| `--heading-weight` | `800` | `700` | `.heading-strong` — page/card titles |
+| `--border-empty` | `2px dashed line` | `none` | `Empty` state frame |
 
-Status colors lighten ~15% on dark to hold AA on `surface-2`. Browser
-surfaces are themed too: `color-scheme` follows `data-theme`, selection =
-accent, caret = accent, scrollbar thumb = `surface-3`, `:focus-visible` gets
-a 2px accent ring.
+**Chips** are fully tokenized per kind — `--chip-{kind}-{bg,bd,fg}` +
+`--chip-radius`. Brutalist = solid fills with black text (amber) or white
+text (navy/red/green) inside 2px strokes; classic = transparent fill,
+1px colored outline, colored text (the pre-existing look).
+
+Browser surfaces follow the theme: `color-scheme`, `::selection` = accent,
+caret = brand, scrollbar thumb = `surface-3`, `:focus-visible` ring.
 
 Every status chip renders `label + icon + color` — color is never the only
 signal (a11y + projector/print contexts).
@@ -51,14 +88,19 @@ One family — a humanist sans with strong legibility at small sizes
 
 `12 caption · 14 body-sm · 16 body · 18 lead · 20 h4 · 24 h3 · 30 h2 · 36 h1`
 
-Weights 400/500/600/700 only. Tabular numerals for dates/counts.
+Weights 400/500/600/700 only — plus `800` on `.heading-strong` in brutalist
+variants. In brutalist themes, `.label-strong` (buttons, field labels, nav
+items, section eyebrows, chips, tab labels) renders uppercase with `0.05em`
+tracking; classic themes render it at normal case/weight 600. Tabular
+numerals for dates/counts.
 
 ### Space, shape, depth
 
 - **Spacing scale:** 4pt base — `4 8 12 16 20 24 32 48`.
-- **Radii:** `6` inputs/chips · `10` cards · `16` sheets/modals.
-- **Elevation:** restrained — cards sit on `surface-2` with 1px `line` +
-  faint shadow; sheets/modals get real elevation; no floating-everything.
+- **Radii/borders/elevation:** tokenized (see §1 structural table) —
+  brutalist: squared corners, 2px ink strokes, hard offset shadows,
+  press-shift on buttons; classic: `6`/`10`/`16` radii, 1px lines, faint
+  shadows.
 - **Density:** Operate-mode default is compact-comfortable; journal feed can
   breathe more than admin tables.
 
@@ -92,8 +134,8 @@ No unicode glyphs or emoji as icons.
 
 Nav: **mobile = bottom tab bar** (Today, Journal, Attendance, Projects +
 **More** sheet holding Papers, Members, Settings, org switcher, theme
-toggle, sign out); **desktop = left sidebar** echoing the legacy IA with
-the labeled org switcher, theme toggle, and sign-out at the foot.
+picker, sign out); **desktop = left sidebar** echoing the legacy IA with
+the labeled org switcher, theme picker, and sign-out at the foot.
 **Account** (`/account`) is not a nav item — it's reached by tapping the
 avatar/name in the sidebar footer or More sheet. Its pattern: stacked
 `Card` sections — identity (avatar via `PhotoPicker` + name), "What you
@@ -125,6 +167,30 @@ Day roster: filed vs not, tap → their entries.
 chip) → two checklist tracks side-by-side on desktop, stacked tabs on
 mobile (Papers · Logistics), each item with due chip computed from rules;
 linked documents strip; linked journal strip.
+
+**Creation previews.** New document and new project sheets show a live
+preview of the automation before it's committed — the doc-type select
+resolves the matched signatory chain and lists its steps (or warns the
+paper won't route), and the papers/logistics + event-type inputs list the
+checklist templates and items that will instantiate. Client mirrors the
+server match rules (`web/src/lib/rules.js` ↔ `instantiate.py`); empty
+matches warn and route owners to Settings.
+
+**Diagnosis over silence.** The same preview doubles as the project-detail
+empty state: it names the exact blocker (`no_needs`, `no_templates`,
+`track_mismatch`, `event_type_mismatch`, `items_filtered` — one enum shared
+between `instantiate.py` and `rules.js`) and the API echoes the same
+`reason`. Mismatches offer escape hatches rather than dead ends — adviser+
+can force-pick a template, officer+ can attach a chain to an unrouted
+document, and Settings shows per-chain "covers N papers" counts so dead
+config is visible.
+
+**Revision rounds.** Sent-back papers append a new round of signatory rows —
+never rewrite history. The logbook groups steps by round ("Round 1", "Round
+2 — revision") with an amber "Returned for revision" banner carrying the
+reason between rounds; `sent back`/`superseded` rows get `alert`/`skip`
+chips. Single-round docs render flat (no header noise). "Sign all pending"
+covers the same-day re-sign fast path behind a ConfirmDialog.
 
 **Paper logbook (document detail).** Vertical timeline interleaving:
 signature steps (pending → signed w/ who+when) and custody movements

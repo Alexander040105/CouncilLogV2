@@ -15,16 +15,16 @@
 
 ## Color Tokens
 
-| Token | Hex | Usage |
-|---|---|---|
-| Accent Teal | `#00C2CB` | Primary actions, highlights, links |
-| Accent Magenta | `#FF00FF` | Secondary emphasis, badges, alerts |
-| Accent Yellow | `#FFC700` | Warnings, tertiary highlights, focus rings |
-| Black | `#000000` | Text, borders, strokes |
-| White | `#FFFFFF` | Base background, card fills |
-| Paper Beige | `#F5F5DC` | Page background |
+| Token | Hex | RGB | Usage |
+|---|---|---|---|
+| White | `#FFFFFF` | 255, 255, 255 | Base background, card fills |
+| Navy/Indigo | `#27146E` | 39, 20, 110 | Primary actions, headings, borders/text alternative to black |
+| Amber/Gold | `#F4BE04` | 244, 190, 4 | Primary accent — highlights, CTAs, badges, active states |
+| Black | `#000000` | 0, 0, 0 | Strokes, borders, body text |
 
-Rule: pick ONE accent per surface as the dominant color; use the others sparingly for state (success/warning/error) or hierarchy.
+Rule: Navy is the primary brand/action color (can substitute for black on strokes/headings where more brand presence is wanted). Amber/Gold is the accent used for emphasis, CTAs, active/selected states, and badges. Use sparingly against the white base for maximum contrast and impact. Reserve pure black for default text/border where navy isn't used.
+
+**Semantic colors (outside core palette):** This 3-color palette is brand-only. For system feedback (success/error) that shouldn't be confused with brand actions, use standard semantic colors — e.g. green for success, red for error/destructive — kept visually distinct from Navy and Amber. Warning states can use Amber directly since it already reads as an alert color.
 
 ---
 
@@ -69,7 +69,7 @@ Simple, thick-stroke, geometric line icons (close, check, settings, arrow, user,
 - **Outline (Secondary)**: transparent fill, colored border + text
 - **Text (Tertiary)**: no border/fill, colored text only
 - **Outline (Primary)**: black border, primary accent text
-- **Destructive (Danger)**: magenta/red fill or outline
+- **Destructive (Danger)**: red fill or outline (semantic red, outside core palette — see Semantic Colors note below)
 - **Destructive (Outline/Ghost)**: outline-only danger variant
 - **Disabled**: greyed fill, muted border, no interaction
 - **Icon (Ghost)**: icon-only, subtle/no border until hover
@@ -77,7 +77,7 @@ Simple, thick-stroke, geometric line icons (close, check, settings, arrow, user,
 
 ### Inputs
 - Black border, squared corners, white fill
-- Error state: red/magenta border + inline error message below field
+- Error state: red border (semantic) + inline error message below field
 - Helper text below field in caption style
 - Toggle switches: square-ish pill, black border, accent fill when ON
 
@@ -97,14 +97,14 @@ Simple, thick-stroke, geometric line icons (close, check, settings, arrow, user,
 ## Data Display
 
 ### Card
-- Thick black border, white/beige fill, hard shadow
+- Thick black or navy border, white fill, hard shadow
 - Bold title, body copy, primary button anchored at bottom
 
 ### List Item
 - Bordered row/card with avatar or icon, bold name, description text, optional badge (e.g., "NEW", "ALERT")
 
 ### Badge
-- Small solid-fill pill/rect, bold uppercase label, black border, color = accent per meaning (teal = new, yellow = alert, etc.)
+- Small solid-fill pill/rect, bold uppercase label, black border, color = accent per meaning (amber = new/alert, navy = neutral/info, semantic red/green = error/success)
 
 ### Avatar
 - Square or circle, thick black border, initials or icon, solid background color
@@ -123,7 +123,7 @@ Simple, thick-stroke, geometric line icons (close, check, settings, arrow, user,
 - Stacked bordered blocks, dismiss (×) icon, color-coded left edge or fill by type (info/warning/error)
 
 ### Alert Banner
-- Full-width bordered bar, icon + message, color-coded by severity: green = success, yellow = warning, magenta/red = error
+- Full-width bordered bar, icon + message, color-coded by severity: green = success (semantic), amber = warning (brand accent), red = error (semantic)
 
 ### Modal / Confirm
 - Centered bordered box, hard Shadow-2, bold title, body text, Cancel (outline) + Confirm (filled) button pair
@@ -143,6 +143,6 @@ Simple, thick-stroke, geometric line icons (close, check, settings, arrow, user,
 3. Every interactive element needs a visible black border and a visible focus state.
 4. Only use the defined spacing scale (4/8/12/16/24/48/96) for margin/padding/gap.
 5. Only use the defined type scale (96/64/48/32/18/14) for font sizes.
-6. Pick one dominant accent color per screen/section; use the other two accents only for semantic state or minor emphasis.
+6. Use White as the base background, Navy for primary text/headings/borders and primary actions, and Amber as the standout accent for CTAs, active states, and highlights. Reserve semantic red/green strictly for error/success feedback, separate from Navy/Amber.
 7. Maintain 44x44px minimum touch targets on all tappable elements (critical for mobile app).
 8. Prefer bold/black font weights for headings and buttons; body text can be regular weight.

@@ -1,4 +1,5 @@
 from datetime import date
+from types import SimpleNamespace as NS
 
 from app.services import instantiate
 
@@ -53,3 +54,40 @@ def test_flag_conditions():
     ]
     assert len(instantiate.instantiate_chain(steps, event_type=None, flags={"has_merch": True})) == 2
     assert len(instantiate.instantiate_chain(steps, event_type=None, flags={})) == 1
+
+
+def tpl(track, event_type=None):
+    return NS(track=track, event_type=event_type)
+
+
+def test_diagnose_no_needs():
+    out = instantiate.diagnose_checklist(
+        [tpl("paper")], needs_paper=False, needs_logistics=False, event_type=None)
+    assert out == "no_needs"
+
+
+def test_diagnose_no_templates():
+    out = instantiate.diagnose_checklist(
+        [], needs_paper=True, needs_logistics=False, event_type=None)
+    assert out == "no_templates"
+
+
+def test_diagnose_track_mismatch():
+    out = instantiate.diagnose_checklist(
+        [tpl("paper")], needs_paper=False, needs_logistics=True, event_type=None)
+    assert out == "track_mismatch"
+
+
+def test_diagnose_event_type_mismatch():
+    out = instantiate.diagnose_checklist(
+        [tpl("paper", "seminar")], needs_paper=True, needs_logistics=False,
+        event_type="competition")
+    assert out == "event_type_mismatch"
+
+
+def test_diagnose_matched():
+    # templates matched — zero items downstream means items_filtered
+    out = instantiate.diagnose_checklist(
+        [tpl("paper"), tpl("both", "seminar")], needs_paper=True,
+        needs_logistics=False, event_type="seminar")
+    assert out == "items_filtered"

@@ -2,14 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import {
-  CalendarCheck, FileText, FolderKanban, LogOut, MoreHorizontal,
+  CalendarCheck, FileText, FolderKanban, LogOut, MoreHorizontal, ChevronRight,
   NotebookPen, Settings, Sun, Users,
 } from 'lucide-react';
 import { get } from '../lib/api';
 import { atLeast, currentOrgId, setCurrentOrg } from '../lib/org';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
-import { Avatar, Sheet, ThemeToggle } from './ui';
+import { Avatar, Sheet, ThemePicker } from './ui';
 
 const NAV = [
   { to: '/', label: 'Today', Icon: Sun },
@@ -64,7 +64,7 @@ export function AppShell() {
       </label>
       <select
         id="org-switcher"
-        className="w-full rounded border border-[var(--color-line)] bg-[var(--color-surface-3)] p-2 text-sm"
+        className="w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-3)] p-2 text-sm"
         value={active?.org_id ?? ''}
         onChange={(e) => {
           if (e.target.value === '__new') nav('/onboarding');
@@ -80,41 +80,50 @@ export function AppShell() {
     </div>
   );
 
+  const accountFooter = (
+    <div className="space-y-3 border-t border-[var(--color-line)] pt-3">
+      <Link
+        to="/account"
+        title="Your account"
+        onClick={() => setMoreOpen(false)}
+        className="flex min-w-0 items-center gap-2 rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-2 py-1.5 text-sm text-[var(--color-ink-2)] hover:bg-[var(--color-surface-3)] hover:text-[var(--color-ink)]"
+      >
+        <Avatar name={me.data?.profile?.display_name} url={me.data?.profile?.avatar_url} />
+        <span className="min-w-0 flex-1 truncate">{me.data?.profile?.display_name ?? 'Account'}</span>
+        <ChevronRight size={14} className="shrink-0 text-[var(--color-ink-3)]" aria-hidden />
+      </Link>
+      <div>
+        <span className="label-strong mb-1 block text-[10px] text-[var(--color-ink-3)]">Theme</span>
+        <ThemePicker className="w-full" />
+      </div>
+      <button
+        onClick={signOut}
+        className="label-strong flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] text-sm text-[var(--color-ink-2)] hover:bg-[var(--color-surface-3)]"
+      >
+        <LogOut size={16} aria-hidden /> Sign out
+      </button>
+    </div>
+  );
+
   return (
     <div className="flex min-h-dvh">
       {/* Desktop sidebar */}
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-[var(--color-line)] bg-[var(--color-surface-2)] p-4 md:flex">
-        <div className="mb-4 text-lg font-bold">CounciLog</div>
+      <aside className="hidden w-56 shrink-0 flex-col [border-right:var(--border-box)] bg-[var(--color-surface-2)] p-4 md:flex">
+        <div className="label-strong mb-4 text-lg">CounciLog</div>
         <div className="mb-4">{orgSwitcher}</div>
         <nav className="flex flex-1 flex-col gap-1">
           {visible.map(({ to, label, Icon }) => (
             <NavLink
               key={to} to={to} end={to === '/'}
               className={({ isActive }) =>
-                `flex items-center gap-2 rounded px-3 py-2 text-sm ${isActive ? 'bg-[var(--color-surface-3)] font-semibold' : 'text-[var(--color-ink-2)]'}`}
+                `label-strong flex items-center gap-2 rounded-[var(--radius-input)] px-3 py-2 text-sm ${isActive ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)]' : 'text-[var(--color-ink-2)]'}`}
             >
               <Icon size={20} aria-hidden />{label}
             </NavLink>
           ))}
         </nav>
-        <div className="mt-4 flex items-center justify-between gap-2">
-          <Link
-            to="/account"
-            title="Your account"
-            className="flex min-w-0 items-center gap-2 text-sm text-[var(--color-ink-2)] hover:text-[var(--color-ink)]"
-          >
-            <Avatar name={me.data?.profile?.display_name} url={me.data?.profile?.avatar_url} />
-            <span className="max-w-[5rem] truncate">{me.data?.profile?.display_name ?? 'Account'}</span>
-          </Link>
-          <div className="flex items-center">
-            <button
-              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[var(--radius-input)] text-[var(--color-ink-2)] hover:bg-[var(--color-surface-3)]"
-              onClick={signOut} aria-label="Sign out" title="Sign out"
-            >
-              <LogOut size={18} aria-hidden />
-            </button>
-            <ThemeToggle />
-          </div>
+        <div className="mt-4">
+          {accountFooter}
         </div>
       </aside>
 
@@ -125,19 +134,19 @@ export function AppShell() {
       </main>
 
       {/* Mobile bottom tab bar */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-[var(--color-line)] bg-[var(--color-surface-2)] md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex [border-top:var(--border-box)] bg-[var(--color-surface-2)] md:hidden">
         {tabs.map(({ to, label, Icon }) => (
           <NavLink
             key={to} to={to} end={to === '/'}
             className={({ isActive }) =>
-              `flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[10px] ${isActive ? 'font-semibold text-[var(--color-accent)]' : 'text-[var(--color-ink-3)]'}`}
+              `label-strong flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[10px] ${isActive ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)]' : 'text-[var(--color-ink-3)]'}`}
           >
             <Icon size={22} aria-hidden />{label}
           </NavLink>
         ))}
         <button
           onClick={() => setMoreOpen(true)}
-          className="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[10px] text-[var(--color-ink-3)]"
+          className="label-strong flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[10px] text-[var(--color-ink-3)]"
         >
           <MoreHorizontal size={22} aria-hidden />More
         </button>
@@ -153,31 +162,13 @@ export function AppShell() {
                 key={to} to={to}
                 onClick={() => setMoreOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded px-3 py-3 text-sm ${isActive ? 'bg-[var(--color-surface-3)] font-semibold' : 'text-[var(--color-ink-2)]'}`}
+                  `label-strong flex items-center gap-3 rounded-[var(--radius-input)] px-3 py-3 text-sm ${isActive ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)]' : 'text-[var(--color-ink-2)]'}`}
               >
                 <Icon size={20} aria-hidden />{label}
               </NavLink>
             ))}
           </nav>
-          <div className="flex items-center justify-between border-t border-[var(--color-line)] pt-3">
-            <Link
-              to="/account"
-              onClick={() => setMoreOpen(false)}
-              className="flex min-w-0 items-center gap-2 text-sm text-[var(--color-ink-2)]"
-            >
-              <Avatar name={me.data?.profile?.display_name} url={me.data?.profile?.avatar_url} />
-              <span className="max-w-[8rem] truncate">{me.data?.profile?.display_name ?? 'Account'}</span>
-            </Link>
-            <div className="flex items-center">
-              <button
-                className="flex min-h-[44px] min-w-[44px] items-center justify-center text-[var(--color-ink-2)]"
-                onClick={signOut} aria-label="Sign out" title="Sign out"
-              >
-                <LogOut size={18} aria-hidden />
-              </button>
-              <ThemeToggle />
-            </div>
-          </div>
+          {accountFooter}
         </div>
       </Sheet>
     </div>

@@ -91,12 +91,12 @@ export function PhotoPicker({ photos, onChange, max = 4 }) {
     return (
       <div className="space-y-2">
         {camErr ? (
-          <div className="flex items-center gap-2 rounded-[var(--radius-card)] border border-[var(--color-line)] p-3 text-sm text-[var(--color-ink-2)]">
+          <div className="flex items-center gap-2 rounded-[var(--radius-card)] [border:var(--border-box)] p-3 text-sm text-[var(--color-ink-2)]">
             <CameraOff size={16} className="shrink-0 text-[var(--color-status-alert)]" />
             {camErr}
           </div>
         ) : (
-          <div className="relative overflow-hidden rounded-[var(--radius-card)] bg-[var(--color-surface-3)]">
+          <div className="relative overflow-hidden rounded-[var(--radius-card)] [border:var(--border-box)] bg-[var(--color-surface-3)]">
             {!ready && <Skeleton className="aspect-video w-full" />}
             <video
               ref={videoRef} autoPlay playsInline muted
@@ -141,13 +141,13 @@ export function PhotoPicker({ photos, onChange, max = 4 }) {
       {!full && (
         <div className="grid grid-cols-2 gap-2">
           <button
-            className="flex min-h-[56px] items-center justify-center gap-2 rounded-[var(--radius-card)] border border-dashed border-[var(--color-line)] text-sm text-[var(--color-ink-3)]"
+            className="flex min-h-[56px] items-center justify-center gap-2 rounded-[var(--radius-card)] [border:var(--border-dash)] text-sm text-[var(--color-ink-3)]"
             onClick={() => setCameraOpen(true)}
           >
             <Camera size={18} /> Take photo
           </button>
           <button
-            className="flex min-h-[56px] items-center justify-center gap-2 rounded-[var(--radius-card)] border border-dashed border-[var(--color-line)] text-sm text-[var(--color-ink-3)]"
+            className="flex min-h-[56px] items-center justify-center gap-2 rounded-[var(--radius-card)] [border:var(--border-dash)] text-sm text-[var(--color-ink-3)]"
             onClick={() => fileRef.current?.click()}
           >
             <ImageUp size={18} /> Upload

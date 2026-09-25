@@ -11,7 +11,7 @@ and a member in another.
 |---|---|
 | **owner** | Everything: manage members & roles, mint invites, approve join requests, edit positions/duty/templates/chains/contacts, view audit log, plus everything below. Set at org creation; can't be granted later via the API. |
 | **adviser** | Oversight: read everything, view the audit log, create/edit projects, register documents. Cannot manage members or org structure. |
-| **officer** | Daily work: journal entries + photos, check off checklist items, register documents, log movements, sign/skip signatory steps. |
+| **officer** | Daily work: journal entries + photos, check off checklist items, register documents, log movements, sign/skip/send-back signatory steps, bulk-sign the current round, attach chains to unrouted docs. |
 | **member** | Journal entries and own attendance, read access to shared surfaces. |
 
 Enforcement is server-side: every org-scoped endpoint checks membership

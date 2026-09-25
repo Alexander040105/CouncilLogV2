@@ -56,9 +56,9 @@ export default function Attendance() {
 
       <Card>
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-sm font-medium text-[var(--color-ink-2)]">This week</div>
+          <div className="label-strong text-sm text-[var(--color-ink-2)]">This week</div>
           <select
-            className="rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] p-1.5 text-xs"
+            className="rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] p-1.5 text-xs"
             value={memberId} onChange={(e) => setMemberId(e.target.value)}
           >
             <option value="">All members</option>
@@ -81,7 +81,7 @@ export default function Attendance() {
               </thead>
               <tbody>
                 {memberIds.map((mid) => (
-                  <tr key={mid} className="border-t border-[var(--color-line)]">
+                  <tr key={mid} className="[border-top:var(--border-box)]">
                     <td className="p-1 font-medium">{nameOf(mid)}</td>
                     {days.map((d) => {
                       const r = lookup.get(`${mid}|${d}`);
@@ -106,7 +106,7 @@ export default function Attendance() {
       </Card>
 
       <Card>
-        <div className="mb-2 text-sm font-medium text-[var(--color-ink-2)]">
+        <div className="label-strong mb-2 text-sm text-[var(--color-ink-2)]">
           Assigned-day filing rate {summary.data && `· ${summary.data.school_year}`}
         </div>
         {summary.isLoading && <Skeleton className="h-32" />}
@@ -123,7 +123,7 @@ export default function Attendance() {
             </thead>
             <tbody>
               {summary.data.data.map((s) => (
-                <tr key={s.member_id} className="border-t border-[var(--color-line)]">
+                <tr key={s.member_id} className="[border-top:var(--border-box)]">
                   <td className="p-1 font-medium">{s.display_name ?? s.member_id.slice(0, 8)}</td>
                   <td className="p-1">{s.scheduled_days_elapsed}</td>
                   <td className="p-1">{s.filed}</td>

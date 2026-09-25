@@ -10,7 +10,7 @@ import { useToast } from '../lib/toast';
 import { PhotoPicker } from '../components/PhotoPicker';
 import {
   Avatar, Button, Card, Chip, ConfirmDialog, Empty, Field, Input,
-  PageHeader, Skeleton, ThemeToggle,
+  PageHeader, Skeleton, ThemePicker,
 } from '../components/ui';
 
 // plain-language capability bullets — mirrors ROLES.md; each level stacks
@@ -178,7 +178,7 @@ export default function Account() {
 
       {/* Identity */}
       <Card className="space-y-4">
-        <h2 className="font-semibold">Profile</h2>
+        <h2 className="label-strong">Profile</h2>
         <div className="flex items-center gap-4">
           <Avatar
             name={profile?.display_name ?? email}
@@ -218,7 +218,7 @@ export default function Account() {
 
       {/* Capabilities */}
       <Card className="space-y-3">
-        <h2 className="font-semibold">What you can do</h2>
+        <h2 className="label-strong">What you can do</h2>
         {memberships.length === 0 ? (
           <Empty
             title="No organizations yet"
@@ -226,7 +226,7 @@ export default function Account() {
           />
         ) : (
           memberships.map((m) => (
-            <div key={m.org_id} className="rounded-[var(--radius-card)] border border-[var(--color-line)] p-3">
+            <div key={m.org_id} className="rounded-[var(--radius-card)] [border:var(--border-box)] p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium">{m.org_name}</span>
                 <Chip kind="extra" label={m.role} />
@@ -242,7 +242,7 @@ export default function Account() {
       <div className="grid gap-4 md:grid-cols-2">
         {/* Security */}
         <Card className="space-y-4">
-          <h2 className="font-semibold">Security</h2>
+          <h2 className="label-strong">Security</h2>
           <form onSubmit={changePw} className="space-y-3">
             <Field label="New password" hint="At least 6 characters.">
               <Input type="password" autoComplete="new-password" value={pw.next}
@@ -279,14 +279,14 @@ export default function Account() {
         <div className="space-y-4">
           <Card className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="font-semibold">Appearance</h2>
-              <p className="text-xs text-[var(--color-ink-3)]">Dark is default — your pick sticks to this browser.</p>
+              <h2 className="label-strong">Appearance</h2>
+              <p className="text-xs text-[var(--color-ink-3)]">Neo-brutalist is default — your pick sticks to this browser.</p>
             </div>
-            <ThemeToggle />
+            <ThemePicker />
           </Card>
 
           <Card className="space-y-3 border-[var(--color-status-alert)]/40">
-            <h2 className="font-semibold text-[var(--color-status-alert)]">Danger zone</h2>
+            <h2 className="label-strong text-[var(--color-status-alert)]">Danger zone</h2>
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm text-[var(--color-ink-2)]">Sign out of CounciLog on this device.</p>
               <Button variant="secondary" onClick={signOut}>

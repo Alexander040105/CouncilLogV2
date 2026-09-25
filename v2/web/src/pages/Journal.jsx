@@ -110,7 +110,7 @@ export default function Journal() {
 
       {Object.entries(byDay).map(([day, entries]) => (
         <div key={day} className="space-y-2">
-          <div className="text-sm font-semibold text-[var(--color-ink-2)]">{day}</div>
+          <div className="label-strong text-sm text-[var(--color-ink-2)]">{day}</div>
           {entries.map((e) => (
             <Card key={e.id} className="space-y-2">
               {e.photos.map((p) => <PhotoThumb key={p.id} org={org} photo={p} />)}
@@ -129,7 +129,7 @@ export default function Journal() {
                    placeholder="Delivered concept paper to SD office" />
           </Field>
           <Field label="Project (optional)">
-            <select className="min-h-[44px] w-full rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm"
+            <select className="min-h-[44px] w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 text-sm"
                     value={projectId} onChange={(e) => setProjectId(e.target.value)}>
               <option value="">—</option>
               {projects.data?.data.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
