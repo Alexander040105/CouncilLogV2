@@ -1,0 +1,132 @@
+INFO:     Started server process [19884]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:51738 - "GET /api/v1/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51780 - "GET /api/v1/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:51786 - "POST /api/v1/orgs HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51799 - "GET /api/v1/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51806 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51811 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/invites HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51817 - "POST /api/v1/invites/RuffisMjLfRRq0B5WktRrw/redeem HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51824 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/join-requests HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51829 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/join-requests HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51834 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/join-requests/679d8fb7-5beb-4264-a0ef-0751701fa473/decide HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51841 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/positions HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51848 - "PUT /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/duty-schedule HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51855 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/org-chart HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51860 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/positions HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:51865 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/journal HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51870 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/attendance/no-tasks HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51878 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/attendance HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51885 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/attendance/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51890 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/journal/photos/sign HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51897 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/journal HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51904 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/journal HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51909 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/photos/6f5783e3-69b2-4e6b-8b94-27295eafc3af/url HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51923 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/photos/6f5783e3-69b2-4e6b-8b94-27295eafc3af/url HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51935 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/checklist-templates HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51940 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/projects HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51946 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/projects/01d9a703-57c0-41be-9136-3c59bedf03f1/instantiate HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51954 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/projects/01d9a703-57c0-41be-9136-3c59bedf03f1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51959 - "PATCH /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/checklist-items/44009687-0862-4d5d-9086-9a785f047255 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51964 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/signatory-chains HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51972 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/documents HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51982 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/documents/75d9391d-9869-496d-a884-10fdb877a502 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51990 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/documents/75d9391d-9869-496d-a884-10fdb877a502/movements HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51995 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/documents/75d9391d-9869-496d-a884-10fdb877a502/steps/57de73b8-e9e7-4526-baf2-b7ffb325d07a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52002 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/documents/75d9391d-9869-496d-a884-10fdb877a502 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52006 - "POST /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/contacts HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52011 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/audit HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52023 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/audit HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:52029 - "GET /api/v1/orgs/848c4b4c-8b00-4f63-b160-ba3f83ba16e2/documents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52033 - "POST /api/v1/orgs HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52039 - "GET /api/v1/orgs/2e546d78-f8fb-459b-b8a9-79bcb93fab3c/documents HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52119 - "GET /api/v1/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:52123 - "POST /api/v1/orgs HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52129 - "GET /api/v1/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52135 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52141 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/invites HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52148 - "POST /api/v1/invites/jO29IA0O8ajiswk9jvvmnQ/redeem HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52153 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/join-requests HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52158 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/join-requests HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52162 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/join-requests/9fc59512-b258-40e8-85f1-7397c970b70e/decide HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52171 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/positions HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52179 - "PUT /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/duty-schedule HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52188 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/org-chart HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52193 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/positions HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:52197 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/journal HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52203 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/attendance/no-tasks HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52211 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/attendance HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52217 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/attendance/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52223 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/journal/photos/sign HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52230 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/journal HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52240 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/journal HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52245 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/photos/b7956b16-9d3a-43c7-a271-487e6df84106/url HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52251 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/photos/b7956b16-9d3a-43c7-a271-487e6df84106/url HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52256 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/checklist-templates HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52263 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/projects HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52270 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/projects/ae1c55c8-ffa7-47d3-822d-21e54aea1478/instantiate HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52277 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/projects/ae1c55c8-ffa7-47d3-822d-21e54aea1478 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52282 - "PATCH /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/checklist-items/8f0b012b-d59a-4ea5-ad94-015b91d6886f HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52287 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/signatory-chains HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52292 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/documents HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52299 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/documents/3cca4daf-270d-4ec5-88fe-20b758e06ae8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52307 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/documents/3cca4daf-270d-4ec5-88fe-20b758e06ae8/movements HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52313 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/documents/3cca4daf-270d-4ec5-88fe-20b758e06ae8/steps/82da77b2-251b-4e7b-aee6-c04e5097e61e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52318 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/documents/3cca4daf-270d-4ec5-88fe-20b758e06ae8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52325 - "POST /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/contacts HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52333 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/audit HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52340 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/audit HTTP/1.1" 403 Forbidden
+INFO:     127.0.0.1:52345 - "GET /api/v1/orgs/a9d63347-10f7-41b8-bc4e-852f473816e3/documents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52351 - "POST /api/v1/orgs HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52356 - "GET /api/v1/orgs/6623e2df-c9ad-491a-bb61-09ff64f80674/documents HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56078 - "GET /api/v1/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57428 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57428 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57428 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57428 - "OPTIONS /api/v1/orgs/null/journal?pageSize=50 HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57441 - "OPTIONS /api/v1/orgs/null/projects?pageSize=100 HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57441 - "OPTIONS /api/v1/orgs/null/attendance HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57428 - "OPTIONS /api/v1/orgs/null/attendance/summary HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57448 - "OPTIONS /api/v1/orgs/null/members HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57448 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57448 - "OPTIONS /api/v1/orgs/null/attendance HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57428 - "OPTIONS /api/v1/orgs/null/attendance/summary HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57448 - "OPTIONS /api/v1/orgs/null/members HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57448 - "OPTIONS /api/v1/orgs/null/journal?pageSize=50 HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57428 - "OPTIONS /api/v1/orgs/null/projects?pageSize=100 HTTP/1.1" 400 Bad Request
+Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Users\Pixel-Tone\AppData\Local\Programs\Python\Python313\Lib\asyncio\events.py", line 89, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Pixel-Tone\AppData\Local\Programs\Python\Python313\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+INFO:     127.0.0.1:57428 - "OPTIONS /api/v1/orgs/null/journal?pageSize=50 HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57441 - "OPTIONS /api/v1/orgs/null/projects?pageSize=100 HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57441 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57698 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57700 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57781 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:57781 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:65387 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:65391 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:65529 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49344 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49344 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49754 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49754 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49754 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49754 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49843 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49845 - "OPTIONS /api/v1/me HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:54284 - "OPTIONS /api/v1/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54284 - "GET /api/v1/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54872 - "OPTIONS /api/v1/orgs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54872 - "POST /api/v1/orgs HTTP/1.1" 409 Conflict
+INFO:     127.0.0.1:59566 - "OPTIONS /api/v1/orgs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59566 - "POST /api/v1/orgs HTTP/1.1" 409 Conflict
