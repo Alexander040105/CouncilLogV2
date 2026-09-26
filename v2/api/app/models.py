@@ -81,7 +81,7 @@ class DutySchedule(SQLModel, table=True):
 
 class AttendanceDay(SQLModel, table=True):
     __tablename__ = "attendance_days"
-    __table_args__ = (UniqueConstraint("member_id", "day"),)
+    __table_args__ = (UniqueConstraint("org_id", "member_id", "day"),)
     id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
     org_id: uuid.UUID = Field(foreign_key="organizations.id")
     member_id: uuid.UUID
@@ -285,3 +285,10 @@ class AuditLog(SQLModel, table=True):
     entity_id: uuid.UUID | None = None
     metadata_: dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSONB, server_default=text("'{}'")))
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+
+
+class RateLimit(SQLModel, table=True):
+    __tablename__ = "rate_limits"
+    key: str = Field(primary_key=True)
+    window_start: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+    count: int = 0

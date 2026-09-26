@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { CalendarCheck, Check, Minus } from 'lucide-react';
 import { get } from '../lib/api';
-import { currentOrgId } from '../lib/org';
-import { Card, Chip, Empty, HintBanner, PageHeader, Skeleton } from '../components/ui';
+import { currentOrgId, todayOrg } from '../lib/org';
+import { Card, Chip, Empty, ErrorState, HintBanner, PageHeader, Skeleton } from '../components/ui';
 
 const WD = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -11,13 +11,16 @@ export default function Attendance() {
   const org = currentOrgId();
   const [memberId, setMemberId] = useState('');
 
+  // last 7 days — computed up-front so the query can be bounded to this week
+  const days = [...Array(7)].map((_, i) => todayOrg(i - 6));
+
   const week = useQuery({
-    queryKey: ['attendance-week', org],
-    queryFn: () => get(`/orgs/${org}/attendance`),
+    queryKey: ['attendance', 'week', org, days[0], days[6]],
+    queryFn: () => get(`/orgs/${org}/attendance?from=${days[0]}&to=${days[6]}`),
     enabled: !!org,
   });
   const summary = useQuery({
-    queryKey: ['attendance-summary', org],
+    queryKey: ['attendance', 'summary', org],
     queryFn: () => get(`/orgs/${org}/attendance/summary`),
     enabled: !!org,
   });
@@ -32,12 +35,6 @@ export default function Attendance() {
   const cellKind = (r) =>
     !r ? 'alert' : r.status === 'documented' ? 'done' : 'neutral';
 
-  // last 7 days
-  const days = [...Array(7)].map((_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    return d.toISOString().slice(0, 10);
-  });
   const rows = (week.data?.data ?? []).filter((r) => !memberId || r.member_id === memberId);
   const lookup = new Map(rows.map((r) => [`${r.member_id}|${r.day}`, r]));
   const memberIds = [...new Set(rows.map((r) => r.member_id))];
@@ -66,6 +63,7 @@ export default function Attendance() {
           </select>
         </div>
         {week.isLoading && <Skeleton className="h-40" />}
+        {week.isError && <ErrorState error={week.error} retry={week.refetch} />}
         {week.data && memberIds.length === 0 && (
           <Empty icon={<CalendarCheck size={24} />} title="Nothing filed this week"
                  hint="Once members post journal entries or declare no-tasks, they'll show up here." />
@@ -110,6 +108,7 @@ export default function Attendance() {
           Assigned-day filing rate {summary.data && `· ${summary.data.school_year}`}
         </div>
         {summary.isLoading && <Skeleton className="h-32" />}
+        {summary.isError && <ErrorState error={summary.error} retry={summary.refetch} />}
         {summary.data && summary.data.data.length === 0 && (
           <Empty title="No duty data yet" hint="Assigned days appear once an owner sets the duty schedule in Settings." />
         )}

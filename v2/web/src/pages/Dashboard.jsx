@@ -2,16 +2,16 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useOutletContext } from 'react-router-dom';
 import { Check, CalendarCheck, FileText, FolderKanban, Users } from 'lucide-react';
 import { get } from '../lib/api';
-import { currentOrgId } from '../lib/org';
-import { Button, Card, Chip, Empty, HintBanner, PageHeader, Skeleton } from '../components/ui';
+import { currentOrgId, todayOrg } from '../lib/org';
+import { Button, Card, Chip, Empty, ErrorState, HintBanner, PageHeader, Skeleton } from '../components/ui';
 
 export default function Dashboard() {
   const { me } = useOutletContext();
   const org = currentOrgId();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayOrg();
 
   const att = useQuery({
-    queryKey: ['attendance-day', org, today],
+    queryKey: ['attendance', 'day', org, today],
     queryFn: () => get(`/orgs/${org}/attendance?day=${today}`),
     enabled: !!org,
   });
@@ -75,6 +75,7 @@ export default function Dashboard() {
       <Card>
         <div className="label-strong mb-2 text-sm text-[var(--color-ink-2)]">Duty roster today</div>
         {att.isLoading && <Skeleton className="h-16" />}
+        {att.isError && <ErrorState error={att.error} retry={att.refetch} />}
         {att.data && att.data.data.length === 0 && att.data.unaccounted_member_ids.length === 0 && (
           <Empty icon={<CalendarCheck size={24} />} title="No duty entries yet" hint="Be the first to file today." />
         )}

@@ -20,8 +20,8 @@ export function computeDue(rule, targetDate) {
   if (!rule || !targetDate) return null;
   const n = rule.due_days_before_event ?? rule.due_days_after_event;
   if (n == null) return null;
-  const d = new Date(`${targetDate}T00:00:00`);
-  d.setDate(d.getDate() + (rule.due_days_before_event != null ? -n : n));
+  const d = new Date(`${targetDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + (rule.due_days_before_event != null ? -n : n));
   return d.toISOString().slice(0, 10);
 }
 

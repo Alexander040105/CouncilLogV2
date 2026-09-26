@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlmodel import select
@@ -13,6 +13,7 @@ from ..models import (AttendanceDay, DutySchedule, JournalEntry, JournalPhoto,
 from ..pagination import envelope, org_today, page_params
 from ..services.audit import audit
 from ..services import storage
+from ..services.ratelimit import check_rate_limit
 
 router = APIRouter(tags=["daily"])
 
@@ -34,6 +35,7 @@ async def _duty_type(session, org_id: uuid.UUID, member_id: uuid.UUID, day: date
 
 async def _upsert_attendance(session, org_id: uuid.UUID, member_id: uuid.UUID, day: date, status: str) -> AttendanceDay:
     row = (await session.execute(select(AttendanceDay).where(
+        AttendanceDay.org_id == org_id,
         AttendanceDay.member_id == member_id, AttendanceDay.day == day))).scalars().first()
     if row is None:
         row = AttendanceDay(org_id=org_id, member_id=member_id, day=day,
@@ -54,7 +56,8 @@ class PhotoSign(BaseModel):
 
 
 @router.post("/orgs/{org_id}/journal/photos/sign", status_code=201)
-async def sign_photo(org_id: uuid.UUID, body: PhotoSign, member: Membership = Depends(authorize("member"))):
+async def sign_photo(org_id: uuid.UUID, body: PhotoSign, session: Session, member: Membership = Depends(authorize("member"))):
+    await check_rate_limit(session, f"photosign:{member.user_id}", limit=60, window_seconds=3600)
     storage.validate_upload_declared(body.mime, body.byte_size)
     entry_hint = uuid.uuid4()
     path = f"{org_id}/uploads/{entry_hint}"
@@ -110,6 +113,8 @@ async def feed(org_id: uuid.UUID, session: Session, day: date | None = None, mem
         q = q.where(JournalEntry.member_id == member_id)
     if project_id:
         q = q.where(JournalEntry.project_id == project_id)
+    total = (await session.execute(
+        select(func.count()).select_from(q.subquery()))).scalar_one()
     rows = (await session.execute(
         q.order_by(JournalEntry.entry_date.desc(), JournalEntry.created_at.desc())
          .offset((page - 1) * page_size).limit(page_size))).scalars().all()
@@ -120,7 +125,7 @@ async def feed(org_id: uuid.UUID, session: Session, day: date | None = None, mem
         pmap.setdefault(p.entry_id, []).append(p)
     return envelope(
         [{**e.model_dump(), "photos": [p.model_dump() for p in pmap.get(e.id, [])]} for e in rows],
-        page, page_size, len(rows))
+        page, page_size, total)
 
 
 class EntryPatch(BaseModel):
@@ -174,7 +179,7 @@ async def declare_no_tasks(org_id: uuid.UUID, body: NoTasks, session: Session, m
 
 
 @router.get("/orgs/{org_id}/attendance")
-async def attendance(org_id: uuid.UUID, session: Session, day: date | None = None, from_: date | None = None, to: date | None = None, member_id: uuid.UUID | None = None, member: Membership = Depends(authorize())):
+async def attendance(org_id: uuid.UUID, session: Session, day: date | None = None, from_: date | None = Query(None, alias="from"), to: date | None = None, member_id: uuid.UUID | None = None, member: Membership = Depends(authorize())):
     q = select(AttendanceDay).where(AttendanceDay.org_id == org_id)
     if day:
         q = q.where(AttendanceDay.day == day)

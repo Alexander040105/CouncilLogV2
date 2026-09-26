@@ -6,7 +6,7 @@ import { get, post } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
 import { useToast } from '../lib/toast';
 import { autoMatchedChain, visibleChainSteps } from '../lib/rules';
-import { Button, Card, Chip, Empty, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
+import { Button, Card, Chip, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
 
 /** Live preview of the signatory route a new document will follow. */
 function ChainPreview({ chains, docType, overrideId }) {
@@ -63,6 +63,8 @@ export default function Documents() {
   const org = currentOrgId();
   const qc = useQueryClient();
   const toast = useToast();
+  const { active } = useOutletContext() ?? {};
+  const canWrite = active ? atLeast(active.role, 'officer') : false;
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: '', chain_id: '' });
   const [typeSel, setTypeSel] = useState('');
@@ -103,17 +105,20 @@ export default function Documents() {
       <PageHeader
         title="Papers"
         description="Where physical documents are and who's signing them."
-        action={<Button onClick={() => setOpen(true)}><Plus size={16} />New document</Button>}
+        action={canWrite ? <Button onClick={() => setOpen(true)}><Plus size={16} />New document</Button> : null}
       />
       <HintBanner id="papers">
         This is the digital logbook for physical documents. Register a paper, then record
         every hand-off — the newest entry is where it sits now.
       </HintBanner>
       {docs.isLoading && <Skeleton className="h-48" />}
+      {docs.isError && <ErrorState error={docs.error} retry={docs.refetch} />}
       {docs.data?.data.length === 0 && (
         <Empty icon={<FileText size={24} />} title="No documents tracked"
-               hint="Register a paper to start its custody log."
-               action={<Button onClick={() => setOpen(true)}>New document</Button>} />
+               hint={canWrite
+                 ? 'Register a paper to start its custody log.'
+                 : 'Papers are registered by officers — ask one to log a document.'}
+               action={canWrite ? <Button onClick={() => setOpen(true)}>New document</Button> : null} />
       )}
       <div className="space-y-2">
         {docs.data?.data.map((d) => (

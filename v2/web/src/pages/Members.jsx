@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Network } from 'lucide-react';
 import { get } from '../lib/api';
 import { currentOrgId } from '../lib/org';
-import { Card, Empty, PageHeader, Skeleton } from '../components/ui';
+import { Card, Empty, ErrorState, PageHeader, Skeleton } from '../components/ui';
 import { MemberManager } from '../components/MemberManager';
 
 function Node({ n, nameOf }) {
@@ -64,6 +64,7 @@ export default function Members() {
       {tab === 'chart' && (
         <Card>
           {chart.isLoading && <Skeleton className="h-40" />}
+          {chart.isError && <ErrorState error={chart.error} retry={chart.refetch} />}
           {chart.data && (
             <>
               <div className="mb-2 text-xs text-[var(--color-ink-3)]">{chart.data.school_year}</div>

@@ -6,7 +6,7 @@ import { get, post } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
 import { useToast } from '../lib/toast';
 import { PhotoPicker } from '../components/PhotoPicker';
-import { Button, Card, Chip, ConfirmDialog, Empty, Field, Input, Sheet, Skeleton } from '../components/ui';
+import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, Sheet, Skeleton } from '../components/ui';
 
 export default function DocumentDetail() {
   const { id } = useParams();
@@ -113,6 +113,7 @@ export default function DocumentDetail() {
   });
 
   if (q.isLoading) return <Skeleton className="h-64" />;
+  if (q.isError) return <ErrorState error={q.error} retry={q.refetch} />;
   const d = q.data;
   if (!d) return <Empty title="Document not found" />;
 
@@ -160,7 +161,7 @@ export default function DocumentDetail() {
           <div className="text-xs text-[var(--color-ink-3)]">Current location</div>
           <div className="font-semibold">{d.current_location ?? 'not recorded yet'}</div>
         </div>
-        <Button onClick={() => setMoveOpen(true)}>Move paper</Button>
+        {canWrite && <Button onClick={() => setMoveOpen(true)}>Move paper</Button>}
       </Card>
 
       <Card>
@@ -248,19 +249,21 @@ export default function DocumentDetail() {
                       {s.note && <div className="text-xs text-[var(--color-ink-3)]">note: {s.note}</div>}
                     </div>
                     {s.status === 'pending' ? (
-                      <div className="flex gap-1">
-                        <Button variant="secondary" className="min-h-[36px] px-2 text-xs"
-                                onClick={() => advance.mutate({ stepId: s.id, status: 'signed' })}>Sign</Button>
-                        <Button variant="ghost" className="min-h-[36px] px-2 text-xs"
-                                onClick={() => { setSkipStep(s); setSkipNote(''); }}>Skip</Button>
-                        {canWrite && (
+                      canWrite ? (
+                        <div className="flex gap-1">
+                          <Button variant="secondary" className="min-h-[36px] px-2 text-xs"
+                                  onClick={() => advance.mutate({ stepId: s.id, status: 'signed' })}>Sign</Button>
+                          <Button variant="ghost" className="min-h-[36px] px-2 text-xs"
+                                  onClick={() => { setSkipStep(s); setSkipNote(''); }}>Skip</Button>
                           <Button variant="ghost" className="min-h-[36px] px-2 text-xs"
                                   aria-label={`Send back for revision at ${s.label}`}
                                   onClick={() => openRevision(s)}>
                             <Undo2 size={12} /> Send back
                           </Button>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        <Chip kind="pending" label="awaiting signature" />
+                      )
                     ) : (
                       <Chip kind={stepChip(s).kind} label={stepChip(s).label} />
                     )}

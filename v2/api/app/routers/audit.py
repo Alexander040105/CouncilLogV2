@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import func
 from sqlmodel import select
 
 from ..deps import Membership, Session, authorize
@@ -13,8 +14,10 @@ router = APIRouter(tags=["audit"])
 @router.get("/orgs/{org_id}/audit")
 async def list_audit(org_id: uuid.UUID, session: Session, page: int = 1, pageSize: int = 50, member: Membership = Depends(authorize("adviser"))):
     page, page_size = page_params(page, pageSize)
+    q = select(AuditLog).where(AuditLog.org_id == org_id)
+    total = (await session.execute(
+        select(func.count()).select_from(q.subquery()))).scalar_one()
     rows = (await session.execute(
-        select(AuditLog).where(AuditLog.org_id == org_id)
-        .order_by(AuditLog.created_at.desc())
+        q.order_by(AuditLog.created_at.desc())
         .offset((page - 1) * page_size).limit(page_size))).scalars().all()
-    return envelope(rows, page, page_size, len(rows))
+    return envelope(rows, page, page_size, total)

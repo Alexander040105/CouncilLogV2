@@ -1,17 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { FolderKanban, Plus } from 'lucide-react';
 import { get, post } from '../lib/api';
-import { currentOrgId } from '../lib/org';
+import { atLeast, currentOrgId } from '../lib/org';
 import { useToast } from '../lib/toast';
 import { ChecklistPreview } from '../components/ChecklistPreview';
-import { Button, Card, Chip, Empty, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
+import { Button, Card, Chip, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
 
 const STATUS = ['draft', 'active', 'done', 'archived'];
 
 export default function Projects() {
   const org = currentOrgId();
+  const { active } = useOutletContext() ?? {};
+  const canCreate = active ? atLeast(active.role, 'adviser') : false;
   const qc = useQueryClient();
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -60,17 +62,20 @@ export default function Projects() {
       <PageHeader
         title="Projects"
         description="Events and the paperwork + logistics behind them."
-        action={<Button onClick={() => setOpen(true)}><Plus size={16} />New project</Button>}
+        action={canCreate ? <Button onClick={() => setOpen(true)}><Plus size={16} />New project</Button> : null}
       />
       <HintBanner id="projects">
         A project generates its checklist from templates: check "Needs papers" for
         signatory-routed documents, "Needs logistics" for venue/equipment steps.
       </HintBanner>
       {list.isLoading && <Skeleton className="h-48" />}
+      {list.isError && <ErrorState error={list.error} retry={list.refetch} />}
       {list.data?.data.length === 0 && (
         <Empty icon={<FolderKanban size={24} />} title="No projects"
-               hint="Create one to start tracking papers and logistics."
-               action={<Button onClick={() => setOpen(true)}>New project</Button>} />
+               hint={canCreate
+                 ? 'Create one to start tracking papers and logistics.'
+                 : 'Projects are created by advisers and owners — ask one to set one up.'}
+               action={canCreate ? <Button onClick={() => setOpen(true)}>New project</Button> : null} />
       )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {groups.map(({ s, items }) => (

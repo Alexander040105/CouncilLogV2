@@ -9,7 +9,7 @@ import { get } from '../lib/api';
 import { atLeast, currentOrgId, setCurrentOrg } from '../lib/org';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
-import { Avatar, Sheet, ThemePicker } from './ui';
+import { Avatar, ErrorState, Sheet, ThemePicker } from './ui';
 
 const NAV = [
   { to: '/', label: 'Today', Icon: Sun },
@@ -42,7 +42,9 @@ export function AppShell() {
   const memberships = me.data?.memberships ?? [];
   const orgId = currentOrgId();
   const active = memberships.find((m) => m.org_id === orgId) ?? memberships[0];
-  if (active && active.org_id !== orgId) setCurrentOrg(active.org_id);
+  useEffect(() => {
+    if (active && active.org_id !== currentOrgId()) setCurrentOrg(active.org_id);
+  }, [active]);
   const isAdmin = active ? atLeast(active.role, 'adviser') : false;
   const visible = NAV.filter((n) => !n.admin || isAdmin);
   const tabs = visible.slice(0, TAB_COUNT);
@@ -129,7 +131,9 @@ export function AppShell() {
 
       <main className="min-w-0 flex-1 pb-20 md:pb-0">
         <div className="mx-auto max-w-5xl p-4">
-          <Outlet context={{ me: me.data, active }} />
+          {me.isError
+            ? <ErrorState error={me.error} retry={me.refetch} />
+            : <Outlet context={{ me: me.data, active }} />}
         </div>
       </main>
 

@@ -7,8 +7,12 @@ import { ThemeProvider } from './lib/theme';
 import { ToastProvider } from './lib/toast';
 import { ErrorBoundary } from './components/ui';
 import { AppShell } from './components/AppShell';
+import { setAuthFailureHandler } from './lib/api';
+import { supabase } from './lib/supabase';
+import { setCurrentOrg } from './lib/org';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
+import ResetPassword from './pages/ResetPassword';
 import Onboarding from './pages/Onboarding';
 import Dashboard from './pages/Dashboard';
 import Journal from './pages/Journal';
@@ -20,7 +24,15 @@ import DocumentDetail from './pages/DocumentDetail';
 import Members from './pages/Members';
 import Settings from './pages/Settings';
 import Account from './pages/Account';
+import NotFound from './pages/NotFound';
 import './index.css';
+
+// API 401s → kill the session and bounce to /login (registered once).
+setAuthFailureHandler(() => {
+  supabase.auth.signOut();
+  setCurrentOrg(null);
+  location.assign('/login');
+});
 
 const qc = new QueryClient();
 
@@ -35,6 +47,7 @@ createRoot(document.getElementById('root')).render(
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route element={<AppShell />}>
               <Route index element={<Dashboard />} />
@@ -47,6 +60,7 @@ createRoot(document.getElementById('root')).render(
               <Route path="members" element={<Members />} />
               <Route path="settings/*" element={<Settings />} />
               <Route path="account" element={<Account />} />
+              <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>
           </ErrorBoundary>

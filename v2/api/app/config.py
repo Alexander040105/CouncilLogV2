@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///:memory:"
 
     web_origin: str = "http://localhost:5173"
+    # comma-separated extra allowed origins — e.g. Vercel preview domains
+    web_origin_extra: str = ""
     storage_bucket: str = "journal"
     avatars_bucket: str = "avatars"  # public bucket — avatars render as plain <img src>
     signed_url_ttl_seconds: int = 900

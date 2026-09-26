@@ -6,7 +6,7 @@ import { get, patch, post } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
-import { Button, Card, Chip, Empty, Skeleton } from '../components/ui';
+import { Button, Card, Chip, Empty, ErrorState, Skeleton } from '../components/ui';
 import { ChecklistPreview } from '../components/ChecklistPreview';
 import { diagnoseChecklist } from '../lib/rules';
 
@@ -18,6 +18,7 @@ export default function ProjectDetail() {
   const { session } = useAuth();
   const { active } = useOutletContext() ?? {};
   const canAssign = active ? atLeast(active.role, 'adviser') : false;
+  const canCheck = active ? atLeast(active.role, 'officer') : false;
 
   const q = useQuery({
     queryKey: ['project', org, id],
@@ -69,6 +70,7 @@ export default function ProjectDetail() {
   });
 
   if (q.isLoading) return <Skeleton className="h-64" />;
+  if (q.isError) return <ErrorState error={q.error} retry={q.refetch} />;
   const p = q.data?.data;
   if (!p) return <Empty title="Project not found" />;
   const items = q.data?.checklist ?? [];
@@ -138,6 +140,11 @@ export default function ProjectDetail() {
             )}
           </div>
         )}
+        {!canCheck && items.length > 0 && (
+          <p className="mb-2 text-xs text-[var(--color-ink-3)]">
+            View only — officers tick checklist items off.
+          </p>
+        )}
         <div className="space-y-1">
           {items.map((it) => {
             const assignee = nameOf(it.assignee_id);
@@ -146,8 +153,9 @@ export default function ProjectDetail() {
               <div key={it.id} className="flex items-start gap-3 rounded-[var(--radius-input)] p-2 hover:bg-[var(--color-surface-3)]">
                 <input
                   type="checkbox" checked={it.done} aria-label={`mark ${it.label} done`}
+                  disabled={!canCheck || check.isPending}
                   onChange={(e) => check.mutate({ itemId: it.id, done: e.target.checked })}
-                  className="mt-1 h-4 w-4"
+                  className="mt-1 h-4 w-4 disabled:opacity-50"
                 />
                 <span className="flex-1">
                   <span className={`text-sm ${it.done ? 'line-through text-[var(--color-ink-3)]' : ''}`}>{it.label}</span>
@@ -166,7 +174,7 @@ export default function ProjectDetail() {
                   </select>
                 ) : assignee ? (
                   <Chip kind="neutral" label={mine ? 'you' : assignee} />
-                ) : !it.done ? (
+                ) : !it.done && canCheck ? (
                   <button
                     className="min-h-[36px] rounded-[var(--radius-input)] px-2 text-xs text-[var(--color-accent)]"
                     onClick={() => assign.mutate({ itemId: it.id, assignee_id: session?.user?.id })}

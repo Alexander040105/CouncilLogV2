@@ -10,16 +10,20 @@ from .routers import audit, core, daily, documents, org_structure, orgs, project
 
 settings = get_settings()
 
+_docs_enabled = settings.env != "prod"
 app = FastAPI(
     title="CounciLog API",
     version="0.1.0",
-    docs_url="/api/v1/docs",
-    openapi_url="/api/v1/openapi.json",
+    docs_url="/api/v1/docs" if _docs_enabled else None,
+    openapi_url="/api/v1/openapi.json" if _docs_enabled else None,
 )
+
+_origins = [settings.web_origin] + [
+    o.strip() for o in settings.web_origin_extra.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.web_origin],
+    allow_origins=_origins,
     # Dev previews/proxies land on arbitrary 127.0.0.1 ports; safe because
     # auth is Bearer headers, not cookies, and credentials are off anyway.
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?" if settings.env == "dev" else None,

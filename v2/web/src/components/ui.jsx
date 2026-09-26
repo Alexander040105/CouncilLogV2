@@ -101,6 +101,18 @@ export function Empty({ icon, title, hint, action }) {
   );
 }
 
+/** Error state for failed queries: names the cause + offers a retry. */
+export function ErrorState({ error, retry }) {
+  return (
+    <Empty
+      icon={<AlertTriangle size={24} />}
+      title="Couldn't load this"
+      hint={error?.message ?? 'Something went wrong — check your connection.'}
+      action={retry ? <Button variant="secondary" onClick={retry}>Try again</Button> : undefined}
+    />
+  );
+}
+
 /** First-visit explainer. Dismissal persists in localStorage by `id`. */
 export function HintBanner({ id, children }) {
   const KEY = `councilog.hint.${id}`;

@@ -5,7 +5,7 @@ import { Check, Copy } from 'lucide-react';
 import { get, post, put } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
 import { useToast } from '../lib/toast';
-import { Button, Card, ConfirmDialog, Empty, Field, HintBanner, Input, PageHeader, Skeleton, ThemePicker } from '../components/ui';
+import { Button, Card, ConfirmDialog, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Skeleton, ThemePicker } from '../components/ui';
 import { MemberManager } from '../components/MemberManager';
 
 const TABS = ['members', 'positions', 'duty', 'templates', 'chains', 'contacts', 'invites', 'audit'];
@@ -63,7 +63,7 @@ export default function Settings() {
       </Card>
 
       <div className="flex flex-wrap gap-1 rounded-[var(--radius-input)] [border:var(--border-box)] p-0.5 text-sm">
-        {TABS.map((t) => (
+        {TABS.filter((t) => t !== 'invites' || canWrite).map((t) => (
           <button key={t} onClick={() => setTab(t)}
                   className={`label-strong min-h-[36px] rounded-[var(--radius-input)] px-3 py-1 capitalize ${tab === t ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)]' : 'text-[var(--color-ink-3)]'}`}>
             {t}
@@ -79,11 +79,11 @@ export default function Settings() {
           <MemberManager />
         </Card>
       )}
-      {tab === 'positions' && <Positions />}
-      {tab === 'duty' && <Duty />}
-      {tab === 'templates' && <Templates />}
-      {tab === 'chains' && <Chains />}
-      {tab === 'contacts' && <Contacts />}
+      {tab === 'positions' && <Positions canWrite={canWrite} />}
+      {tab === 'duty' && <Duty canWrite={canWrite} />}
+      {tab === 'templates' && <Templates canWrite={canWrite} />}
+      {tab === 'chains' && <Chains canWrite={canWrite} />}
+      {tab === 'contacts' && <Contacts canWrite={canWrite} />}
       {tab === 'invites' && <Invites />}
       {tab === 'audit' && <Audit />}
     </div>
@@ -91,7 +91,7 @@ export default function Settings() {
 }
 
 // ── Positions ───────────────────────────────────────────────────────────
-function Positions() {
+function Positions({ canWrite }) {
   const org = currentOrgId();
   const qc = useQueryClient();
   const toast = useToast();
@@ -124,6 +124,7 @@ function Positions() {
       <div className="text-sm font-medium">Positions (current school year)</div>
       <div className="text-xs text-[var(--color-ink-3)]">The org chart — who holds which office this year.</div>
       {pos.isLoading && <Skeleton className="h-24" />}
+      {pos.isError && <ErrorState error={pos.error} retry={pos.refetch} />}
       {pos.data && pos.data.data.length === 0 && (
         <Empty title="No positions yet" hint="Add your first office — e.g. President, Secretary." />
       )}
@@ -134,14 +135,14 @@ function Positions() {
           </div>
         ))}
       </div>
-      <div className="flex gap-2">
-        <Input placeholder="Position title" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <select className="rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-2 text-sm"
+      <div className="flex flex-wrap gap-2">
+        <Input className="min-w-0 flex-1" placeholder="Position title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <select className="min-w-0 flex-1 rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-2 text-sm"
                 value={holder} onChange={(e) => setHolder(e.target.value)}>
           <option value="">holder…</option>
           {members.data?.data.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
         </select>
-        <Button onClick={() => add.mutate()} disabled={!title || add.isPending}>Add</Button>
+        <Button onClick={() => add.mutate()} disabled={!canWrite || !title || add.isPending}>Add</Button>
       </div>
     </Card>
   );
@@ -149,7 +150,7 @@ function Positions() {
 
 // ── Duty schedule ────────────────────────────────────────────────────────
 const WD = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-function Duty() {
+function Duty({ canWrite }) {
   const org = currentOrgId();
   const qc = useQueryClient();
   const toast = useToast();
@@ -170,6 +171,7 @@ function Duty() {
   });
 
   if (duty.isLoading || members.isLoading) return <Skeleton className="h-48" />;
+  if (duty.isError) return <ErrorState error={duty.error} retry={duty.refetch} />;
   const schedule = duty.data?.data ?? {};
   const active = members.data?.data.filter((m) => m.status === 'active') ?? [];
 
@@ -204,7 +206,8 @@ function Duty() {
                   const on = (schedule[String(d)] ?? schedule[d] ?? []).includes(m.user_id);
                   return (
                     <td key={d} className="p-1">
-                      <input type="checkbox" checked={on} onChange={() => toggle(d, m.user_id)} className="h-4 w-4" />
+                      <input type="checkbox" checked={on} disabled={!canWrite || save.isPending}
+                             onChange={() => toggle(d, m.user_id)} className="h-4 w-4 disabled:opacity-50" />
                     </td>
                   );
                 })}
@@ -219,7 +222,7 @@ function Duty() {
 }
 
 // ── Checklist templates ─────────────────────────────────────────────────
-function Templates() {
+function Templates({ canWrite }) {
   const org = currentOrgId();
   const qc = useQueryClient();
   const toast = useToast();
@@ -261,6 +264,7 @@ function Templates() {
         match — or the template has no event type.
       </div>
       {t.isLoading && <Skeleton className="h-24" />}
+      {t.isError && <ErrorState error={t.error} retry={t.refetch} />}
       {t.data && t.data.data.length === 0 && (
         <Empty title="No templates" hint="e.g. a paper-processing checklist for events. Projects will show 'no templates exist' until you add one." />
       )}
@@ -293,7 +297,7 @@ function Templates() {
         <textarea className="min-h-24 w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] p-2 text-sm"
                   value={items} onChange={(e) => setItems(e.target.value)} />
       </Field>
-      <Button onClick={() => add.mutate()} disabled={!name || !items || add.isPending}>Create template</Button>
+      <Button onClick={() => add.mutate()} disabled={!canWrite || !name || !items || add.isPending}>Create template</Button>
     </Card>
   );
 }
@@ -301,7 +305,7 @@ function Templates() {
 // ── Signatory chains ─────────────────────────────────────────────────────
 const STANDARD_DOC_TYPES = ['concept_paper', 'board_resolution', 'financial_report',
                             'activity_report', 'ces_concept_paper', 'letter'];
-function Chains() {
+function Chains({ canWrite }) {
   const org = currentOrgId();
   const qc = useQueryClient();
   const toast = useToast();
@@ -343,6 +347,7 @@ function Chains() {
         automatically. The doc type must match <span className="font-medium">exactly</span>.
       </div>
       {c.isLoading && <Skeleton className="h-24" />}
+      {c.isError && <ErrorState error={c.error} retry={c.refetch} />}
       {c.data && c.data.data.length === 0 && (
         <Empty title="No chains" hint="e.g. Concept paper → Adviser → SAS → School Director. Documents will register unrouted until you add chains." />
       )}
@@ -376,13 +381,13 @@ function Chains() {
                   value={steps} onChange={(e) => setSteps(e.target.value)}
                   placeholder={'SSC President\nSAS routing\nSchool Director'} />
       </Field>
-      <Button onClick={() => add.mutate()} disabled={!name || !docType || !steps || add.isPending}>Create chain</Button>
+      <Button onClick={() => add.mutate()} disabled={!canWrite || !name || !docType || !steps || add.isPending}>Create chain</Button>
     </Card>
   );
 }
 
 // ── Contacts ─────────────────────────────────────────────────────────────
-function Contacts() {
+function Contacts({ canWrite }) {
   const org = currentOrgId();
   const qc = useQueryClient();
   const toast = useToast();
@@ -406,6 +411,7 @@ function Contacts() {
     <Card className="space-y-3">
       <div className="text-sm font-medium">Quick reference — who to ask</div>
       {c.isLoading && <Skeleton className="h-16" />}
+      {c.isError && <ErrorState error={c.error} retry={c.refetch} />}
       {c.data && c.data.data.length === 0 && (
         <Empty title="No contacts" hint="e.g. Concept papers → SAS office, 2nd floor." />
       )}
@@ -414,10 +420,10 @@ function Contacts() {
           <span>{x.label}</span><span className="text-[var(--color-ink-3)]">{x.value}</span>
         </div>
       ))}
-      <div className="flex gap-2">
-        <Input placeholder="Need" value={label} onChange={(e) => setLabel(e.target.value)} />
-        <Input placeholder="Who / where" value={value} onChange={(e) => setValue(e.target.value)} />
-        <Button onClick={() => add.mutate()} disabled={!label || !value || add.isPending}>Add</Button>
+      <div className="flex flex-wrap gap-2">
+        <Input className="min-w-0 flex-1" placeholder="Need" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <Input className="min-w-0 flex-1" placeholder="Who / where" value={value} onChange={(e) => setValue(e.target.value)} />
+        <Button onClick={() => add.mutate()} disabled={!canWrite || !label || !value || add.isPending}>Add</Button>
       </div>
     </Card>
   );
@@ -466,6 +472,7 @@ function Invites() {
       <div className="space-y-2">
         <div className="text-sm font-medium">Pending join requests</div>
         {reqs.isLoading && <Skeleton className="h-12" />}
+        {reqs.isError && <ErrorState error={reqs.error} retry={reqs.refetch} />}
         {reqs.data?.data.length === 0 && <div className="text-xs text-[var(--color-ink-3)]">none</div>}
         {reqs.data?.data.map((r) => (
           <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -494,6 +501,7 @@ function Invites() {
           Anyone with a code joins instantly at the role you pick — share carefully.
         </div>
         {inv.isLoading && <Skeleton className="h-12" />}
+        {inv.isError && <ErrorState error={inv.error} retry={inv.refetch} />}
         {inv.data && inv.data.data.length === 0 && (
           <div className="text-xs text-[var(--color-ink-3)]">no active invites</div>
         )}

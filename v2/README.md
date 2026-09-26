@@ -1,7 +1,7 @@
 # CounciLog v2
 
 Multi-tenant ops platform for student organizations.
-Spec: [`spec.md`](./spec.md) · Product: [`PRODUCT.md`](./PRODUCT.md) · Design: [`DESIGN.md`](./DESIGN.md) · Roles & membership: [`ROLES.md`](./ROLES.md) · User guide: [`USER_GUIDE.md`](./USER_GUIDE.md)
+Spec: [`spec.md`](./spec.md) · Product: [`PRODUCT.md`](./PRODUCT.md) · Design: [`DESIGN.md`](./DESIGN.md) · Roles & membership: [`ROLES.md`](./ROLES.md) · User guide: [`USER_GUIDE.md`](./USER_GUIDE.md) · Deploy: [`DEPLOY.md`](./DEPLOY.md)
 
 ```
 v2/
@@ -61,12 +61,14 @@ cd web && npm install && npm run dev               # http://localhost:5173
 ## Verify
 
 ```bash
-cd api && .venv/Scripts/python -m pytest tests -q   # unit logic (no DB needed)
-cd web && npm run build                             # vite build
+cd api && .venv/Scripts/python -m pytest -q          # unit logic (no DB needed)
+cd api && .venv/Scripts/python tests/smoke_e2e.py    # 73 live checks vs real Supabase (API on :8000)
+cd web && npm run build                              # vite build
+cd web && npx playwright test                        # browser suite (API :8000 + vite dev :5173)
 ```
 
-## Deploy (later phase)
+## Deploy
 
-Two Vercel projects per spec §3: `web/` as static build, `api/` as a Python
-serverless deployment. Set the same env vars per project and point
-`VITE_API_URL` / `WEB_ORIGIN` at each other.
+Two free-tier Vercel projects: `web/` (static Vite build) and `api/`
+(Python serverless — `app.main:app` auto-detected). Full runbook, env
+matrix, Supabase checklist, and rollback notes: [`DEPLOY.md`](./DEPLOY.md).

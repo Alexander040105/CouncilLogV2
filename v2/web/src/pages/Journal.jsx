@@ -6,7 +6,7 @@ import { get, post } from '../lib/api';
 import { currentOrgId } from '../lib/org';
 import { useToast } from '../lib/toast';
 import { PhotoPicker } from '../components/PhotoPicker';
-import { Button, Card, Chip, Empty, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
+import { Button, Card, Chip, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
 
 function PhotoThumb({ org, photo }) {
   const q = useQuery({
@@ -102,6 +102,7 @@ export default function Journal() {
       </HintBanner>
 
       {feed.isLoading && <Skeleton className="h-48" />}
+      {feed.isError && <ErrorState error={feed.error} retry={feed.refetch} />}
       {feed.data?.data.length === 0 && (
         <Empty icon={<NotebookPen size={24} />} title="No journal entries yet"
                hint="Photo + a line about what you did — that's the day's record."

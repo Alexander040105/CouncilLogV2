@@ -11,6 +11,7 @@ from ..errors import APIError, not_found
 from ..models import Invite, JoinRequest, OrgMember, Organization, Profile, SchoolYear
 from ..pagination import envelope, page_params
 from ..services.audit import audit
+from ..services.ratelimit import check_rate_limit
 
 router = APIRouter(tags=["orgs"])
 
@@ -28,6 +29,7 @@ class OrgPatch(BaseModel):
 
 @router.post("/orgs", status_code=201)
 async def create_org(body: OrgCreate, user: CurrentUser, session: Session):
+    await check_rate_limit(session, f"orgcreate:{user.id}", limit=10, window_seconds=86400)
     exists = (await session.execute(select(Organization).where(Organization.slug == body.slug))).first()
     if exists:
         raise APIError(409, "SLUG_TAKEN", "That org slug is taken")
@@ -121,6 +123,7 @@ class InviteCreate(BaseModel):
 
 @router.post("/orgs/{org_id}/invites", status_code=201)
 async def mint_invite(org_id: uuid.UUID, body: InviteCreate, session: Session, member: Membership = Depends(authorize("owner"))):
+    await check_rate_limit(session, f"invite:{member.user_id}", limit=20, window_seconds=3600)
     inv = Invite(
         org_id=org_id,
         code=secrets.token_urlsafe(16),
@@ -145,6 +148,7 @@ async def list_invites(org_id: uuid.UUID, session: Session, member: Membership =
 
 @router.post("/invites/{code}/redeem", status_code=201)
 async def redeem_invite(code: str, user: CurrentUser, session: Session):
+    await check_rate_limit(session, f"redeem:{user.id}", limit=20, window_seconds=3600)
     inv = (await session.execute(select(Invite).where(Invite.code == code))).scalars().first()
     if inv is None:
         raise not_found("invite")
@@ -179,6 +183,7 @@ class JoinReqCreate(BaseModel):
 async def request_join(org_id: uuid.UUID, body: JoinReqCreate, user: CurrentUser, session: Session):
     if await session.get(Organization, org_id) is None:
         raise not_found("organization")
+    await check_rate_limit(session, f"joinreq:{user.id}", limit=10, window_seconds=900)
     uid = uuid.UUID(user.id)
     m = await session.get(OrgMember, (org_id, uid))
     if m and m.status == "active":

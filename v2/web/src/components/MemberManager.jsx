@@ -6,7 +6,7 @@ import { get, patch } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
-import { Avatar, ConfirmDialog, Empty, Select, Skeleton } from './ui';
+import { Avatar, ConfirmDialog, Empty, ErrorState, Select, Skeleton } from './ui';
 
 const ROLES = ['adviser', 'officer', 'member'];
 const ROLE_HINTS = {
@@ -43,6 +43,7 @@ export function MemberManager() {
   });
 
   if (members.isLoading) return <Skeleton className="h-40" />;
+  if (members.isError) return <ErrorState error={members.error} retry={members.refetch} />;
   const rows = members.data?.data.filter((m) => m.status === 'active') ?? [];
 
   if (rows.length === 0) {

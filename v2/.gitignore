@@ -9,6 +9,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# runtime artifacts — never commit logs
+*.log
+
 # node
 node_modules/
 dist/

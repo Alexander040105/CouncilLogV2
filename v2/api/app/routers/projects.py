@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlmodel import select
 
 from ..deps import Membership, Session, authorize, require_user_in_org
@@ -45,10 +46,12 @@ async def list_projects(org_id: uuid.UUID, session: Session, status: str | None 
     q = select(Project).where(Project.org_id == org_id)
     if status:
         q = q.where(Project.status == status)
+    total = (await session.execute(
+        select(func.count()).select_from(q.subquery()))).scalar_one()
     rows = (await session.execute(
         q.order_by(Project.target_date.asc().nulls_last(), Project.created_at.desc())
          .offset((page - 1) * page_size).limit(page_size))).scalars().all()
-    return envelope(rows, page, page_size, len(rows))
+    return envelope(rows, page, page_size, total)
 
 
 @router.post("/orgs/{org_id}/projects", status_code=201)
