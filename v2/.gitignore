@@ -1,0 +1,17 @@
+# secrets — never commit
+.env
+.env.local
+.env.*.local
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# runtime artifacts — never commit logs
+*.log
+
+# node
+node_modules/
+dist/

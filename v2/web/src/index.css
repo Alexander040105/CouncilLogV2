@@ -1,0 +1,229 @@
+@import "tailwindcss";
+
+/* DESIGN.md §1 — token ramps. Default = neo-brutalist light (see
+   neo-brutalist-style-guide.md). Classic dark/light kept as opt-in
+   variants; all divergence resolves through these CSS vars — components
+   never branch on theme. */
+
+@theme {
+  /* ── brutalist-light (DEFAULT) ─────────────────────────────────── */
+  --color-surface: #ffffff;
+  --color-surface-2: #ffffff;
+  --color-surface-3: #f2f0ea;
+  --hover-fill: #e6e1d4;
+  --color-ink: #000000;
+  --color-ink-2: #27146e;
+  --color-ink-3: #565656;
+  --color-line: #000000;
+  --color-accent: #f4be04;
+  --color-accent-fg: #000000;
+  --color-brand: #27146e;
+  --color-brand-fg: #ffffff;
+  /* semantic (text-readable on white ≥4.5:1; chip fills override below) */
+  --color-status-pending: #8f6400;
+  --color-status-done: #15803d;
+  --color-status-skip: #6b7280;
+  --color-status-alert: #b91c1c;
+  --color-duty-extra: #27146e;
+
+  /* structure */
+  --radius-input: 0;
+  --radius-card: 0;
+  --radius-sheet: 0;
+  --avatar-radius: 2px;
+  --border-el: 2px solid #000000;
+  --border-box: 2px solid #000000;
+  --border-dash: 2px dashed #000000;
+  --shadow-1: 4px 4px 0 0 #000000;
+  --shadow-2: 12px 12px 0 0 #000000;
+  --press-transform: translate(2px, 2px);
+  --nav-active-bg: var(--color-accent);
+  --nav-active-fg: var(--color-accent-fg);
+  --focus-color: #27146e;
+  --focus-width: 3px;
+  --label-transform: uppercase;
+  --label-tracking: 0.05em;
+  --label-weight: 700;
+  --heading-weight: 800;
+
+  /* chip = solid-fill badge (fill + fg per kind; bd = full border shorthand) */
+  --chip-pending-bg: #f4be04;  --chip-pending-bd: 2px solid #000;  --chip-pending-fg: #000000;
+  --chip-done-bg: #16a34a;     --chip-done-bd: 2px solid #000;     --chip-done-fg: #ffffff;
+  --chip-skip-bg: #6b7280;     --chip-skip-bd: 2px solid #000;     --chip-skip-fg: #ffffff;
+  --chip-alert-bg: #dc2626;    --chip-alert-bd: 2px solid #000;    --chip-alert-fg: #ffffff;
+  --chip-extra-bg: #27146e;    --chip-extra-bd: 2px solid #000;    --chip-extra-fg: #ffffff;
+  --chip-neutral-bg: #ffffff;  --chip-neutral-bd: 2px solid #000;  --chip-neutral-fg: #565656;
+  --chip-radius: 2px;
+  --border-empty: 2px dashed var(--color-line);
+
+  --spacing: 0.25rem;
+}
+
+html[data-theme="brutalist-dark"] {
+  --color-surface: #121212;
+  --color-surface-2: #1a1a1a;
+  --color-surface-3: #242424;
+  --hover-fill: #303030;
+  --color-ink: #f5f3ee;
+  --color-ink-2: #d9d2c2;
+  --color-ink-3: #a89f8f;
+  --color-line: #f2f0ea;
+  --color-accent: #f4be04;
+  --color-accent-fg: #000000;
+  --color-brand: #27146e;   /* fill-only in dark — never a stroke */
+  --color-brand-fg: #ffffff;
+  --color-status-pending: #f4be04;
+  --color-status-done: #4ade80;
+  --color-status-skip: #9aa3b2;
+  --color-status-alert: #f87171;
+  --color-duty-extra: #b7abf5;
+
+  --radius-input: 0;
+  --radius-card: 0;
+  --radius-sheet: 0;
+  --avatar-radius: 2px;
+  --border-el: 2px solid #f2f0ea;
+  --border-box: 2px solid #f2f0ea;
+  --border-dash: 2px dashed #f2f0ea;
+  --shadow-1: 4px 4px 0 0 #f2f0ea;
+  --shadow-2: 12px 12px 0 0 #f2f0ea;
+  --press-transform: translate(2px, 2px);
+  --nav-active-bg: var(--color-accent);
+  --nav-active-fg: var(--color-accent-fg);
+  --focus-color: #f4be04;
+  --focus-width: 3px;
+  --label-transform: uppercase;
+  --label-tracking: 0.05em;
+  --label-weight: 700;
+  --heading-weight: 800;
+
+  --chip-pending-bg: #f4be04;  --chip-pending-bd: 2px solid #f2f0ea;  --chip-pending-fg: #000000;
+  --chip-done-bg: #4ade80;     --chip-done-bd: 2px solid #f2f0ea;     --chip-done-fg: #000000;
+  --chip-skip-bg: #9aa3b2;     --chip-skip-bd: 2px solid #f2f0ea;     --chip-skip-fg: #000000;
+  --chip-alert-bg: #f87171;    --chip-alert-bd: 2px solid #f2f0ea;    --chip-alert-fg: #000000;
+  --chip-extra-bg: #b7abf5;    --chip-extra-bd: 2px solid #f2f0ea;    --chip-extra-fg: #000000;
+  --chip-neutral-bg: #1a1a1a;  --chip-neutral-bd: 2px solid #f2f0ea;  --chip-neutral-fg: #a89f8f;
+  --chip-radius: 2px;
+  --border-empty: 2px dashed var(--color-line);
+}
+
+/* ── classic dark (legacy shipped default) ─────────────────────────── */
+html[data-theme="dark"] {
+  --color-accent: #6b76ff;
+  --color-accent-fg: #ffffff;
+  --color-brand: #6b76ff;
+  --color-brand-fg: #ffffff;
+  --color-surface: #0f1115;
+  --color-surface-2: #161a22;
+  --color-surface-3: #1f2430;
+  --hover-fill: var(--color-line);
+  --color-ink: #f2f4f8;
+  --color-ink-2: #c3cad6;
+  --color-ink-3: #8b93a5;
+  --color-line: #272d3a;
+  --color-status-pending: #f5a524;
+  --color-status-done: #4ade80;
+  --color-status-skip: #9aa3b2;
+  --color-status-alert: #f87171;
+  --color-duty-extra: #a78bfa;
+
+  --radius-input: 0.375rem;
+  --radius-card: 0.625rem;
+  --radius-sheet: 1rem;
+  --avatar-radius: 9999px;
+  --border-el: 0;
+  --border-box: 1px solid var(--color-line);
+  --shadow-1: none;
+  --shadow-2: none;
+  --press-transform: none;
+  --nav-active-bg: var(--color-surface-3);
+  --nav-active-fg: var(--color-ink);
+  --focus-color: var(--color-accent);
+  --focus-width: 2px;
+  --label-transform: none;
+  --label-tracking: normal;
+  --label-weight: 600;
+  --heading-weight: 700;
+}
+
+/* classic shared: chips are outline-style (transparent fill, colored
+   border+text); Empty has no frame; avatars/dashes stay soft */
+html[data-theme="dark"], html[data-theme="light"] {
+  --chip-pending-bg: transparent; --chip-pending-bd: 1px solid var(--color-status-pending); --chip-pending-fg: var(--color-status-pending);
+  --chip-done-bg: transparent;    --chip-done-bd: 1px solid var(--color-status-done);    --chip-done-fg: var(--color-status-done);
+  --chip-skip-bg: transparent;    --chip-skip-bd: 1px solid var(--color-status-skip);    --chip-skip-fg: var(--color-status-skip);
+  --chip-alert-bg: transparent;   --chip-alert-bd: 1px solid var(--color-status-alert);  --chip-alert-fg: var(--color-status-alert);
+  --chip-extra-bg: transparent;   --chip-extra-bd: 1px solid var(--color-duty-extra);    --chip-extra-fg: var(--color-duty-extra);
+  --chip-neutral-bg: transparent; --chip-neutral-bd: 1px solid var(--color-line);        --chip-neutral-fg: var(--color-ink-3);
+  --chip-radius: 9999px;
+  --border-empty: none;
+  --border-dash: 1px dashed var(--color-line);
+}
+/* ── classic light ─────────────────────────────────────────────────── */
+html[data-theme="light"] {
+  --color-accent: #3f4dd1;
+  --color-accent-fg: #ffffff;
+  --color-brand: #3f4dd1;
+  --color-brand-fg: #ffffff;
+  --color-surface: #f7f8fa;
+  --color-surface-2: #ffffff;
+  --color-surface-3: #f0f2f6;
+  --hover-fill: var(--color-line);
+  --color-ink: #14171f;
+  --color-ink-2: #3d4454;
+  --color-ink-3: #6b7280;
+  --color-line: #e3e6ec;
+  --color-status-pending: #b45309;
+  --color-status-done: #15803d;
+  --color-status-skip: #6b7280;
+  --color-status-alert: #b91c1c;
+  --color-duty-extra: #6d28d9;
+
+  --radius-input: 0.375rem;
+  --radius-card: 0.625rem;
+  --radius-sheet: 1rem;
+  --avatar-radius: 9999px;
+  --border-el: 0;
+  --border-box: 1px solid var(--color-line);
+  --shadow-1: none;
+  --shadow-2: none;
+  --press-transform: none;
+  --nav-active-bg: var(--color-surface-3);
+  --nav-active-fg: var(--color-ink);
+  --focus-color: var(--color-accent);
+  --focus-width: 2px;
+  --label-transform: none;
+  --label-tracking: normal;
+  --label-weight: 600;
+  --heading-weight: 700;
+}
+
+html { color-scheme: light; }
+html[data-theme="dark"],
+html[data-theme="brutalist-dark"] { color-scheme: dark; }
+
+body {
+  @apply bg-[var(--color-surface)] text-[var(--color-ink)] antialiased;
+}
+
+/* labels/eyebrows/section titles — uppercase + bold in brutalist variants */
+.label-strong {
+  text-transform: var(--label-transform);
+  letter-spacing: var(--label-tracking);
+  font-weight: var(--label-weight, 700);
+}
+.heading-strong { font-weight: var(--heading-weight); }
+
+/* browser surfaces themed from the palette */
+::selection {
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+input, textarea, select { caret-color: var(--color-brand); }
+:focus-visible {
+  outline: var(--focus-width, 2px) solid var(--focus-color);
+  outline-offset: 2px;
+}
+html {
+  scrollbar-color: var(--color-surface-3) transparent;
+}

@@ -1,0 +1,18 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:5173",
+      "localStorage": [
+        {
+          "name": "sb-ijcjzllfusxpfqqonuyk-auth-token",
+          "value": "{\"access_token\":\"eyJhbGciOiJFUzI1NiIsImtpZCI6IjE4YjBkZWM1LWFmOTUtNDU2Yy1iY2U5LTA1YTlhNWQwNzFlYSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lqY2p6bGxmdXN4cGZxcW9udXlrLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI5MTY1YzRkNy02MGYyLTQyMTYtOWVjNC1mNGE1Mzk0MTM3ODQiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzkwNDIzMjEyLCJpYXQiOjE3OTA0MTk2MTIsImVtYWlsIjoiZGV2LW93bmVyQGNvdW5jaWxvZy50ZXN0IiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJlbWFpbF92ZXJpZmllZCI6dHJ1ZX0sInJvbGUiOiJhdXRoZW50aWNhdGVkIiwiYWFsIjoiYWFsMSIsImFtciI6W3sibWV0aG9kIjoicGFzc3dvcmQiLCJ0aW1lc3RhbXAiOjE3OTA0MTk2MTJ9XSwic2Vzc2lvbl9pZCI6IjhiYzRhYWIxLTI5NzQtNDQwYi1hNjAyLWMyNTFkNmU3MDI0MyIsImlzX2Fub255bW91cyI6ZmFsc2V9.-U-KX2GtLXhLw8larXyZyNeky9a5DxvAAuKU2IJa5ttofoAM93Htq0brDLSawN9hmR0SBJcACqF4opF7TaDhYQ\",\"token_type\":\"bearer\",\"expires_in\":3600,\"expires_at\":1790423212,\"refresh_token\":\"maasr7qkpooy\",\"user\":{\"id\":\"9165c4d7-60f2-4216-9ec4-f4a539413784\",\"aud\":\"authenticated\",\"role\":\"authenticated\",\"email\":\"dev-owner@councilog.test\",\"email_confirmed_at\":\"2026-09-25T17:57:35.939484Z\",\"phone\":\"\",\"confirmed_at\":\"2026-09-25T17:57:35.939484Z\",\"last_sign_in_at\":\"2026-09-26T10:46:52.775991221Z\",\"app_metadata\":{\"provider\":\"email\",\"providers\":[\"email\"]},\"user_metadata\":{\"email_verified\":true},\"identities\":[{\"identity_id\":\"19f22991-85b2-404d-a7c9-b3a2b1896709\",\"id\":\"9165c4d7-60f2-4216-9ec4-f4a539413784\",\"user_id\":\"9165c4d7-60f2-4216-9ec4-f4a539413784\",\"identity_data\":{\"email\":\"dev-owner@councilog.test\",\"email_verified\":false,\"phone_verified\":false,\"sub\":\"9165c4d7-60f2-4216-9ec4-f4a539413784\"},\"provider\":\"email\",\"last_sign_in_at\":\"2026-09-25T17:57:35.925982Z\",\"created_at\":\"2026-09-25T17:57:35.92605Z\",\"updated_at\":\"2026-09-25T17:57:35.92605Z\",\"email\":\"dev-owner@councilog.test\"}],\"created_at\":\"2026-09-25T17:57:35.904561Z\",\"updated_at\":\"2026-09-26T10:46:52.825754Z\",\"is_anonymous\":false},\"weak_password\":null}"
+        },
+        {
+          "name": "councilog.orgId",
+          "value": "e6c10033-dacc-429a-b1eb-fc658258eedd"
+        }
+      ]
+    }
+  ]
+}
