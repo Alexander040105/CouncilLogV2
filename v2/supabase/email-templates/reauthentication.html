@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your verification code — CounciLog</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f2f0ea;">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Your CounciLog verification code is inside.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f2f0ea;">
+<tr><td align="center" style="padding:32px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;">
+
+  <tr><td style="padding:0 0 16px;">
+    <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+      <td width="16" height="16" style="background-color:#f4be04;border:2px solid #000000;font-size:0;line-height:0;">&nbsp;</td>
+      <td style="padding-left:8px;font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:800;letter-spacing:2px;color:#27146e;">COUNCILOG</td>
+    </tr></table>
+  </td></tr>
+
+  <tr><td style="background-color:#ffffff;border:3px solid #000000;box-shadow:8px 8px 0 #000000;padding:32px 24px;">
+
+    <h1 style="margin:0 0 12px;font-family:'Arial Black',Arial,Helvetica,sans-serif;font-size:28px;line-height:1.2;font-weight:800;color:#27146e;">Prove it's you</h1>
+    <p style="margin:0 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#000000;">You're doing something sensitive in CounciLog, so we need to check it's really you. Enter this code on the screen that asked for it — it expires shortly.</p>
+
+    <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+      <td style="background-color:#ffffff;border:3px solid #000000;box-shadow:4px 4px 0 #000000;padding:12px 24px;font-family:Arial,Helvetica,sans-serif;font-size:32px;font-weight:800;letter-spacing:8px;color:#000000;">{{ .Token }}</td>
+    </tr></table>
+
+    <p style="margin:24px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#000000;">Never share this code with anyone — not even someone claiming to be from CounciLog. We will never ask for it.</p>
+
+  </td></tr>
+
+  <tr><td style="padding:24px 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:#565656;">
+    Sent by <a href="{{ .SiteURL }}" style="color:#27146e;font-weight:bold;">CounciLog</a> to {{ .Email }} because a verification code was requested.<br>
+    Didn't ask for this? Someone may have your password — sign in and change it now.
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
