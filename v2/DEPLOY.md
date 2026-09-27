@@ -43,10 +43,11 @@ git push
 2. In **Configure Project**:
    - **Root Directory**: `v2/api` (click *Edit* next to Root Directory).
    - **Framework Preset**: leave as **Other** — Vercel auto-detects the
-     FastAPI app (`app = FastAPI()` in `app/main.py`; it's also pinned in
-     `api/pyproject.toml`).
+     FastAPI app (`app = FastAPI()` in `app/main.py`).
    - Leave build/install commands **empty/default** — there is no build step;
-     Vercel installs `requirements.txt` itself.
+     Vercel installs `requirements.txt` itself. (Do NOT add a
+     `pyproject.toml` to `v2/api` — its presence makes Vercel switch to a
+     `uv lock` build that requires a `[project]` table, and the deploy fails.)
 3. **Environment Variables** — add each row below (mark them for
    *Production* and *Preview*). Copy values from your `.env` where present,
    otherwise grab them from Supabase (paths given):
