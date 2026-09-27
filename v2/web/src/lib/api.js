@@ -1,6 +1,11 @@
 import { accessToken } from './supabase';
 import { currentOrgId } from './org';
 
+if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
+  // Vite bakes env vars at build time — a missing VITE_API_URL silently
+  // produces a bundle that calls localhost. Fail loudly instead.
+  throw new Error('VITE_API_URL is not set. Add it to the host\'s env vars and redeploy.');
+}
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1';
 const DEFAULT_TIMEOUT_MS = 15000;
 
