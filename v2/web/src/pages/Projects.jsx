@@ -4,8 +4,10 @@ import { Link, useOutletContext } from 'react-router-dom';
 import { FolderKanban, Plus } from 'lucide-react';
 import { get, post } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
+import { collectFlagNames } from '../lib/rules';
 import { useToast } from '../lib/toast';
 import { ChecklistPreview } from '../components/ChecklistPreview';
+import { FlagCheckboxes } from '../components/RuleFields';
 import { Button, Card, Chip, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
 
 const STATUS = ['draft', 'active', 'done', 'archived'];
@@ -17,7 +19,7 @@ export default function Projects() {
   const qc = useQueryClient();
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false, assignee: '' });
+  const [form, setForm] = useState({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false, assignee: '', flags: {} });
   const [err, setErr] = useState(null);
 
   const list = useQuery({
@@ -35,6 +37,12 @@ export default function Projects() {
     queryFn: () => get(`/orgs/${org}/checklist-templates`),
     enabled: !!org,
   });
+  const chains = useQuery({
+    queryKey: ['chains', org],
+    queryFn: () => get(`/orgs/${org}/signatory-chains`),
+    enabled: !!org,
+  });
+  const flagNames = collectFlagNames({ chains: chains.data?.data, templates: templates.data?.data });
   const knownEventTypes = [...new Set(
     (templates.data?.data ?? []).map((t) => t.event_type).filter(Boolean))].sort();
   const nameOf = (id) =>
@@ -45,11 +53,12 @@ export default function Projects() {
       event_type: form.event_type || null, target_date: form.target_date || null,
       owner_id: form.assignee || null,
       needs_paper_processing: form.paper, needs_logistics: form.logistics,
+      flags: form.flags,
     }),
     onSuccess: () => {
       toast.success(form.assignee ? 'Project created — assignee will be emailed.' : 'Project created.');
       setOpen(false);
-      setForm({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false, assignee: '' });
+      setForm({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false, assignee: '', flags: {} });
       qc.invalidateQueries({ queryKey: ['projects', org] });
     },
     onError: (e) => { setErr(e.message); toast.error(e.message); },
@@ -122,10 +131,13 @@ export default function Projects() {
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.paper} onChange={(e) => setForm({ ...form, paper: e.target.checked })} /> Needs papers</label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.logistics} onChange={(e) => setForm({ ...form, logistics: e.target.checked })} /> Needs logistics</label>
           </div>
+          <FlagCheckboxes flagNames={flagNames} value={form.flags}
+                          onChange={(flags) => setForm({ ...form, flags })} />
           <ChecklistPreview
             templates={templates.data?.data}
             paper={form.paper} logistics={form.logistics}
-            eventType={form.event_type || null} targetDate={form.target_date || null} />
+            eventType={form.event_type || null} flags={form.flags}
+            targetDate={form.target_date || null} />
           {err && <p className="text-sm text-[var(--color-status-alert)]">{err}</p>}
           <Button className="w-full" onClick={() => create.mutate()} disabled={!form.title || create.isPending}>Create</Button>
         </div>

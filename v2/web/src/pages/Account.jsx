@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { BadgeCheck, CircleAlert, LogOut, Trash2 } from 'lucide-react';
+import { BadgeCheck, CircleAlert, LogOut, ShieldCheck, Trash2 } from 'lucide-react';
 import { del, patch, post } from '../lib/api';
 import { setCurrentOrg } from '../lib/org';
 import { supabase } from '../lib/supabase';
@@ -193,6 +193,12 @@ export default function Account() {
                 ? <><BadgeCheck size={13} aria-hidden className="text-[var(--color-status-done)]" /> Email verified</>
                 : <><CircleAlert size={13} aria-hidden className="text-[var(--color-status-pending)]" /> Email not verified</>}
             </div>
+            {me?.is_admin && (
+              <div className="mt-1 flex items-center gap-1 text-xs text-[var(--color-ink-3)]">
+                <ShieldCheck size={13} aria-hidden className="text-[var(--color-status-done)]" />
+                CounciLog admin — you can see and manage every org
+              </div>
+            )}
           </div>
         </div>
         <div className={uploading ? 'pointer-events-none opacity-50' : ''}>

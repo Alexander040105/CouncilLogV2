@@ -22,8 +22,10 @@ import ProjectDetail from './pages/ProjectDetail';
 import Documents from './pages/Documents';
 import DocumentDetail from './pages/DocumentDetail';
 import Members from './pages/Members';
+import Guide from './pages/Guide';
 import Settings from './pages/Settings';
 import Account from './pages/Account';
+import Admin from './pages/Admin';
 import NotFound from './pages/NotFound';
 import './index.css';
 
@@ -58,8 +60,10 @@ createRoot(document.getElementById('root')).render(
               <Route path="documents" element={<Documents />} />
               <Route path="documents/:id" element={<DocumentDetail />} />
               <Route path="members" element={<Members />} />
+              <Route path="guide" element={<Guide />} />
               <Route path="settings/*" element={<Settings />} />
               <Route path="account" element={<Account />} />
+              <Route path="admin" element={<Admin />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

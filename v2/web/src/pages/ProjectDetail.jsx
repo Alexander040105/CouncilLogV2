@@ -6,9 +6,9 @@ import { get, patch, post } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
-import { Button, Card, Chip, Empty, ErrorState, Skeleton } from '../components/ui';
+import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Skeleton } from '../components/ui';
 import { ChecklistPreview } from '../components/ChecklistPreview';
-import { diagnoseChecklist } from '../lib/rules';
+import { diagnoseChecklist, humanizeFlag } from '../lib/rules';
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -36,14 +36,16 @@ export default function ProjectDetail() {
     enabled: !!org,
   });
   const [pickTemplate, setPickTemplate] = useState('');
+  const [confirmPick, setConfirmPick] = useState(false);
   const activeMembers = members.data?.data.filter((m) => m.status === 'active') ?? [];
   const nameOf = (id) =>
     activeMembers.find((m) => m.user_id === id)?.display_name ?? null;
   const instantiate = useMutation({
-    mutationFn: (templateIds) =>
+    mutationFn: ({ templateIds, append } = {}) =>
       post(`/orgs/${org}/projects/${id}/instantiate`,
-        templateIds?.length ? { template_ids: templateIds } : {}),
+        templateIds?.length ? { template_ids: templateIds, append } : {}),
     onSuccess: (r) => {
+      setConfirmPick(false); setPickTemplate('');
       if (r.instantiated_items > 0) {
         toast.success(`Checklist generated — ${r.instantiated_items} item(s).`);
       } else {
@@ -51,7 +53,11 @@ export default function ProjectDetail() {
       }
       qc.invalidateQueries({ queryKey: ['project', org, id] });
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => {
+      toast.error(e.message);
+      // ALREADY_INSTANTIATED → refetch so the existing checklist shows
+      qc.invalidateQueries({ queryKey: ['project', org, id] });
+    },
   });
   const check = useMutation({
     mutationFn: ({ itemId, done }) =>
@@ -76,8 +82,9 @@ export default function ProjectDetail() {
   const items = q.data?.checklist ?? [];
   const diag = diagnoseChecklist(templates.data?.data, {
     paper: p.needs_paper_processing, logistics: p.needs_logistics,
-    eventType: p.event_type, targetDate: p.target_date,
+    eventType: p.event_type, flags: p.flags ?? {}, targetDate: p.target_date,
   });
+  const flagNames = Object.entries(p.flags ?? {}).filter(([, v]) => v).map(([k]) => k);
 
   return (
     <div className="space-y-4">
@@ -90,6 +97,7 @@ export default function ProjectDetail() {
           <Chip kind="neutral" label={p.status} />
           {p.event_type && <Chip kind="extra" label={p.event_type} />}
           {p.target_date && <Chip kind="pending" label={`target ${p.target_date}`} />}
+          {flagNames.map((f) => <Chip key={f} kind="neutral" label={humanizeFlag(f)} />)}
         </div>
         {p.details && <p className="mt-2 text-sm text-[var(--color-ink-2)]">{p.details}</p>}
         {nameOf(p.owner_id) && (
@@ -103,7 +111,7 @@ export default function ProjectDetail() {
         <div className="mb-3 flex items-center justify-between">
           <div className="label-strong text-sm text-[var(--color-ink-2)]">Checklist</div>
           {items.length === 0 && diag.reason === 'ok' && (
-            <Button variant="secondary" onClick={() => instantiate.mutate(null)} disabled={instantiate.isPending}>
+            <Button variant="secondary" onClick={() => instantiate.mutate()} disabled={instantiate.isPending}>
               {instantiate.isPending ? 'Generating…' : `Generate checklist — ${diag.items.length} items`}
             </Button>
           )}
@@ -113,7 +121,8 @@ export default function ProjectDetail() {
             <ChecklistPreview
               templates={templates.data?.data}
               paper={p.needs_paper_processing} logistics={p.needs_logistics}
-              eventType={p.event_type} targetDate={p.target_date} />
+              eventType={p.event_type} flags={p.flags ?? {}}
+              targetDate={p.target_date} />
             {diag.reason !== 'ok' && diag.reason !== 'no_needs'
               && (templates.data?.data.length ?? 0) > 0 && canAssign && (
               <div className="space-y-1.5">
@@ -132,7 +141,7 @@ export default function ProjectDetail() {
                     ))}
                   </select>
                   <Button variant="secondary" disabled={!pickTemplate || instantiate.isPending}
-                          onClick={() => instantiate.mutate([pickTemplate])}>
+                          onClick={() => setConfirmPick(true)}>
                     Generate
                   </Button>
                 </div>
@@ -187,6 +196,14 @@ export default function ProjectDetail() {
           })}
         </div>
       </Card>
+      <ConfirmDialog
+        open={confirmPick} onClose={() => setConfirmPick(false)}
+        onConfirm={() => instantiate.mutate({ templateIds: [pickTemplate], append: true })}
+        busy={instantiate.isPending}
+        title="Force-generate from this template?"
+        body="This template doesn't auto-match the project — its items will be added on top of anything already generated."
+        confirmLabel="Generate anyway"
+      />
     </div>
   );
 }

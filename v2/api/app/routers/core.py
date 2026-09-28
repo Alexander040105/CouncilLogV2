@@ -52,13 +52,15 @@ async def me(user: CurrentUser, session: Session) -> dict:
         await session.execute(
             select(OrgMember, Organization)
             .join(Organization, Organization.id == OrgMember.org_id)
-            .where(OrgMember.user_id == uuid.UUID(user.id), OrgMember.status == "active")
+            .where(OrgMember.user_id == uuid.UUID(user.id), OrgMember.status == "active",
+                   Organization.archived_at.is_(None))  # archived orgs vanish for members
         )
     ).all()
     return {
         "id": user.id,
         "email": user.email,
         "profile": profile,
+        "is_admin": bool(profile and profile.is_admin),
         "memberships": [
             {"org_id": str(o.id), "org_name": o.name, "slug": o.slug, "role": m.role}
             for m, o in rows
@@ -153,10 +155,11 @@ async def delete_me(user: CurrentUser, session: Session) -> dict:
         )
     ).all()
 
-    # an org can't be left ownerless — refuse until they delete it or hand off
+    # an org can't be left ownerless — refuse until they archive it or hand off
+    # (archived orgs don't count — they're already gone from the user's view)
     blocked = []
     for m, o in rows:
-        if m.role != "owner" or m.status != "active":
+        if m.role != "owner" or m.status != "active" or o.archived_at is not None:
             continue
         other_owners = (await session.execute(
             select(func.count()).select_from(OrgMember).where(

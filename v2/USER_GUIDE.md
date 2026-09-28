@@ -52,93 +52,26 @@ Do these in order — later steps need the earlier ones populated.
    | Fri | Bella, Marvin, Daphne, Raph, Lindsay |
 
    Filing on an off-day counts as **extra duty** — you don't need to schedule it.
-5. **Checklist templates.** Settings → templates → create each of these (items
-   go in the "one per line" box). These come straight from the handbook:
-
-   **"Concept Paper Pack"** — track `paper` (handbook §3 sign-off checklist):
-   ```
-   Summary letter
-   Board resolution
-   Concept paper (new format — template on the Drive)
-   Speaker's CV
-   Speaker's certificates
-   Justification letter for outside supplier (when buying outside the canteen)
-   ```
-
-   **"Event Logistics"** — track `logistics` (handbook §10):
-   ```
-   Assign event-day committees (Registration & Evaluation, Documentation, Technical, Emcees, Logistics)
-   Tarpaulin — especially for onsite seminars/events
-   Food for committees, faculty, and speaker (seminars)
-   Food for participants too (competitions / outside events)
-   Venue — GSD in person, Zoom link via ITS, or IoT Lab via Engineering Dept
-   Sound system + microphone from CCS Office (if venue is a computer lab)
-   Transport — van request via GSD; bus via AR Travel for educ tours
-   Registration forms accomplished (competitions)
-   Certificates — participants, and the guest speaker (seminars)
-   Pubmats — poster for Facebook + invitation for the faculty
-   ```
-
-   **"Outside Event Pack"** — track `logistics` (handbook §12):
-   ```
-   CHED letter (CMO 63 s. 2017 format) — submit ≥15 days before, target 1 month; hard copy + email BOTH
-   Participant list + parents' consent for each
-   Curriculum forms — one per course (IT and CS), relevant subjects highlighted
-   Medical checkup letter — Ma'am Vincoy signs; schedule the clinic checkup
-   Van/bus request — form from the GSD
-   ```
-
-   **"Financial Report"** — track `paper` (handbook §7):
-   ```
-   Prepare the financial report (sample forms on the Drive)
-   Submit to CHECK within 1 week after the event
-   Confirm whether CHECK is also a signatory on this report
-   ```
-
-6. **Signatory chains.** Settings → chains → create one chain per document
-   type. When a paper is registered, the chain matching its `doc_type` is
-   attached automatically. Steps go one per line, in signing order:
-
-   **"Standard Concept Paper"** — doc type `concept_paper` (handbook §4):
-   ```
-   SSC President — 2nd floor hallway, office on the left
-   SAS — Ma'am Ana, 2nd floor hallway end (routes to Ma'am Vincoy)
-   School Director — 2nd floor corner office
-   ```
-
-   **"Board Resolution"** — doc type `board_resolution` (handbook §5 — same
-   signatories minus the SSC President):
-   ```
-   SAS — Ma'am Ana, 2nd floor hallway end
-   School Director — 2nd floor corner office
-   ```
-
-   **"CES Concept Paper"** — doc type `ces_concept_paper` (handbook §13):
-   ```
-   SSC President — 2nd floor hallway, office on the left
-   SAS — Ma'am Ana, 2nd floor hallway end
-   Sir Bennyl — 2nd floor right side, across kids' library (bring previous CES activity reports)
-   School Director — 2nd floor corner office
-   ```
-
-7. **Contacts.** Settings → contacts → add the who-to-ask directory (handbook
-   §15). Label = the need, value = who/where. Suggested set:
-   `Templates & forms → Council Google Drive`,
-   `Concept paper / activity report questions → Ate Daphne`,
-   `Financial report questions → Ate Bella, Jade, or Christel`,
-   `SAS routing → Ma'am Ana`,
-   `SD signature → SD office, 2nd floor corner`,
-   `SSC President → SSC office, 2nd floor left`,
-   `Venue / van requests → GSD, in person`,
-   `Gym pencil booking → Coach, varsity room`,
-   `CES signatory → Sir Bennyl`,
-   `CHED questions → Ma'am Ana (SAS) or SSC President Cez`,
-   `CHED office email → Ma'am Lily, Registrar`,
-   `Medical letter → Ma'am Vincoy`,
-   `RFP / Zoom links → Ma'am Feb`,
-   `Sound system & mic → CCS Office`,
-   `Bus rental → AR Travel`.
-8. **Done.** Officers can now work — see playbooks below. Settings → audit is
+5. **Load the starter library.** Open **Guide → Starter library** (or hit the
+   "New here?" card on the Settings templates/chains tabs). Every handbook
+   workflow is there as a worked example — the four signatory chains (concept
+   paper, board resolution, CES, financial report), five checklist templates
+   (Concept Paper Pack, Event Logistics, Outside Event Pack, Financial Report,
+   CES Activity), and the §15 who-to-ask contacts. Expand an entry to read what
+   it contains and *why it's built that way*, then **Add to my org** — or "Add
+   everything" to take the whole set.
+   - Adding creates completely ordinary rows — edit or delete them in
+     Settings → templates / chains / contacts like anything hand-typed.
+   - Already-loaded entries say "already in your org" — you can't duplicate
+     them; delete your copy and the Add button comes back.
+   - The library teaches: the conditional RFP step, the `has_merch` and
+     `off_campus` flags, and the CHED 15-day / CHECK 7-day due rules are all
+     visible in the examples — read them before writing your own.
+6. **Adapt to taste.** Settings → templates / chains → Edit any loaded entry:
+   rename it, reorder rows, add your own items/steps, adjust offices and
+   conditions. See "How matching works" below before inventing new event types
+   or flags — matching is literal strings.
+7. **Done.** Officers can now work — see playbooks below. Settings → audit is
    your read-only record of who did what.
 
 ### A2. Joining the council (everyone)
@@ -177,9 +110,13 @@ There is no clock-in — **a filed day is attendance**.
      week — you have ~2-week windows.
    - **Assign a lead** with "Assign to" — defaults to you. The assignee gets an
      email (when email is configured).
+   - **Tick any flags that apply** ("This is…" checkboxes — e.g. `off_campus`,
+     `has_merch`). The checkboxes only appear when a template item or chain
+     step is gated on that flag; ticking one is what makes those gated items
+     appear on the checklist.
    - The sheet **previews the checklist** that will generate from your
-     papers/logistics + event type choices — matching templates and their
-     items, with due dates when a target date is set.
+     papers/logistics + event type + flag choices — matching templates and
+     their items, with due dates when a target date is set.
 2. **Generate the checklist.** Open the project → the checklist card shows what
    will generate before you click — matching templates, their items, and due
    dates — and the button says how many items it will create. If nothing can
@@ -237,22 +174,67 @@ where the paper physically sits.
 
 ### A6. Handbook edge cases
 
-- **International webinars (RFP):** the rules engine supports conditional
-  signatory steps (e.g., an RFP step that only appears for `webinar_intl`) —
-  but the Settings UI doesn't expose conditions yet, only plain step lists.
-  *Workaround:* include the RFP step in the chain and **Skip** it with reason
-  "not an international webinar" when it doesn't apply. Same trick for the
-  Marketing/Bookstore step on merch activities.
-- **Outside events:** instantiate the Outside Event Pack — but the letter
-  still goes to CHED **two channels** (hard copy to the City Hall Compound +
-  email via Ma'am Lily at the Registrar). CES activities are the only
-  exemption (§12).
+- **International webinars (RFP):** the loaded chain already carries a
+  conditional RFP step — it only attaches when the paper's linked project is
+  `webinar_intl`. That's why the register sheet asks for a project: no linked
+  project, no event-type conditions can fire. If the paper truly is for an
+  international webinar and the RFP step is missing, link the project on the
+  paper or attach the chain again.
+- **Merch activities:** the Marketing/Bookstore step is gated on the
+  `has_merch` flag — tick it on the document (or project) when the activity
+  sells/produces merch and the step appears on the route.
+- **Outside events:** tick the `off_campus` flag on the project and the
+  Outside Event Pack items land on the checklist — including the CHED letter
+  due 15 days before target date. The letter still goes to CHED **two
+  channels** (hard copy to the City Hall Compound + email via Ma'am Lily at
+  the Registrar). CES activities are the only exemption (§12).
 - **Venue pencil bookings** lapse after 3 days without a finished concept
   paper — keep "finish papers first" ordering from §9.
 - **Owner transfer** can't be done in the UI — ownership is set at org
-  creation; it's a deliberate operation, ask a dev if needed.
+  creation; it's a deliberate operation, ask a dev if needed. For the same
+  reason, the **only owner can't be removed or demoted** — the app refuses
+  (`SOLE_OWNER`) so an org never ends up ownerless. If the council is done
+  and everyone should leave, **archive the org** instead (Settings → danger
+  zone) — it disappears for all members and a CounciLog admin can restore
+  it if anyone asks.
 
-### A7. When in doubt
+### A7. How matching works — the non-obvious rules
+
+The **Guide** page (`/guide`, in the nav) covers this in-app; here's the same
+list for the repo:
+
+- A paper routes by its **document type** matching a chain's doc type
+  *exactly* — `Concept Paper` ≠ `concept_paper`. Two chains on the same type:
+  the alphabetically-first name wins; the register sheet's override picker
+  exists for that reason.
+- A template lands on a project when the **track** matches its needs
+  (papers / logistics / both) AND the event types match — or the template has
+  no event type, which means "every event".
+- A project with a blank event type only picks up untyped templates.
+- `include_if_flag` items/steps ("only when flag…") need the matching checkbox
+  ticked on the project or document — and the checkbox only exists because
+  some template or chain uses that flag name. Flags currently established by
+  the starter library: `has_merch`, `off_campus`.
+- "Only for event type" steps need the document **linked to a project** with
+  that event type — that's why the register sheet asks for a project.
+- "Due N days before/after the event" only computes when the project has a
+  target date.
+- Conditions are read **once, at creation**. Editing a template later never
+  rewrites a live checklist or a routed paper — that's the snapshot
+  guarantee. To fix a live checklist, edit its items directly; to add more
+  from a template, the force-pick path asks to confirm because it appends.
+- Generating a checklist twice is blocked — `409 ALREADY_INSTANTIATED` — so
+  re-running can never duplicate rows silently.
+- Steps aren't a gate — any officer can mark any pending step; it's a custody
+  record. Skipping needs a reason. Sent-back papers open a new round; nothing
+  is ever erased.
+- A paper registered with no matching chain still gets its custody log —
+  attach a chain later from its detail page.
+- Standardize `doc_type`/`event_type`/flag spellings early — matching is
+  literal strings (`webinar_intl`, not `intl-webinar`). The editors suggest
+  existing values via dropdowns; new ones are free text — agree on them.
+
+### A8. When in doubt
 
 Settings → contacts mirrors the handbook's who-to-ask table. For anything the
 app doesn't cover, the handbook is the source of truth:
@@ -267,14 +249,16 @@ app doesn't cover, the handbook is the source of truth:
 | **Today** (`/`) | Your duty status, today's roster, unaccounted-member count, quick links | everyone | "Nothing filed yet" until you log work or declare no-tasks |
 | **Journal** | Photo + one-line work entries, grouped by day; optional project link | member+ | Photo optional; entries prove the duty day; own-day edits only (owner can edit any) |
 | **Attendance** | Weekly filing grid + per-officer filing rate for the school year | everyone (read) | A "filed" chip needs a journal entry; ∅ = declared no tasks; extra = off-day filing |
-| **Projects** | Board by status (`draft/active/done/archived`); events + their paperwork | read: member+ · create/edit: adviser+ | `event_type` + needs-papers/logistics flags decide which templates instantiate |
+| **Projects** | Board by status (`draft/active/done/archived`); events + their paperwork | read: member+ · create/edit: adviser+ | `event_type` + needs-papers/logistics + flags decide which templates instantiate |
 | **Project detail** | The live checklist generated from templates | check-off: officer+ | Checklist is a snapshot — later template edits don't apply |
 | **Papers** | Registry of physical documents being routed for signature | read: member+ · register: officer+ | `doc_type` auto-picks the signatory chain |
 | **Paper detail** | Signatory steps + append-only custody timeline | sign/skip & move: officer+ | Skip needs a reason; movements can't be edited or deleted |
-| **Members** | Roster (roles, remove) + org chart | read: member+ · manage: owner | Can't change your own role; owner isn't reassignable here |
-| **Settings** | members, positions, duty, templates, chains, contacts, invites, audit | view: adviser+ · write: owner | Everything autosaves on edit; audit tab is read-only |
+| **Members** | Roster (roles, remove) + org chart | read: member+ · manage: owner | Can't change your own role; owner isn't reassignable here; the only owner can't be removed — archive the org instead |
+| **Guide** (`/guide`) | How chains/templates/flags work + the starter library | everyone (read) · install: owner | Library entries install as ordinary rows — nothing is locked |
+| **Settings** | members, positions, duty, templates, chains, contacts, invites, audit + danger zone | view: adviser+ · write: owner | Templates/chains have full editors (hints, offices, conditions, due rules, reorder, delete); audit tab is read-only; owners can archive the org (hidden for everyone, admin-restorable) |
 | **Onboarding** | Create org / redeem invite / join request | any signed-in user | Org ID lives at the top of Settings — share it for join requests |
-| **Account** (`/account`) | Your name, photo, per-org powers, password/email, theme, sign out, delete account | everyone | Reach it via your avatar in the sidebar/More sheet; deletion blocks if you're a sole owner — delete the org or hand it off first |
+| **Account** (`/account`) | Your name, photo, per-org powers, password/email, theme, sign out, delete account | everyone | Reach it via your avatar in the sidebar/More sheet; deletion blocks only while you're the sole owner of an *active* org — archive it in Settings first |
+| **Admin** (`/admin`) | Every org incl. archived — view rosters, remove members, archive/restore orgs | CounciLog admins | Platform flag (`is_admin`) granted by the platform team, not assignable in-app; your actions show up in each org's audit log under your name |
 
 ## Appendix — handbook ↔ app mapping
 
@@ -295,14 +279,13 @@ app doesn't cover, the handbook is the source of truth:
 
 ## Known gaps (today)
 
-- **Rules engine is API-only.** Conditional items (`include_if_event_type`,
-  `include_if_flag` for merch, `due_days_before/after_event`) and chain
-  conditions exist in the API but the Settings forms only take plain labels —
-  use the Skip-with-reason workaround from A6.
-- **No seed data.** Spec §9's CCS seed script doesn't exist yet — everything in
-  A1 is manual entry (that's why the copy-paste blocks are there).
-- **Template snapshots.** Regenerating a checklist after editing a template
-  isn't offered in the UI; create the checklist once you're sure.
+- **Template snapshots.** Checklists are frozen at generation — editing a
+  template later never rewrites a live project's items. To change a live
+  checklist, edit its items directly (or force-pick a template, which
+  appends — it asks to confirm first).
+- **No sequential enforcement.** Signatory steps record who signed, in listed
+  order, but any officer can mark any pending step — it's a custody record,
+  not a gate.
 
 ## See also
 

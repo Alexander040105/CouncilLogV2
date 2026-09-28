@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlmodel import select
 
 from ..deps import CurrentUser, Membership, Session, authorize
@@ -72,6 +73,22 @@ async def patch_org(org_id: uuid.UUID, body: OrgPatch, session: Session, member:
     return {"data": org}
 
 
+@router.post("/orgs/{org_id}/archive")
+async def archive_org(org_id: uuid.UUID, session: Session, member: Membership = Depends(authorize("owner"))):
+    """Soft delete — the org disappears for every member (authorize() → 404)
+    but all data survives. Only a platform admin can restore it."""
+    org = await session.get(Organization, org_id)
+    if org is None:
+        raise not_found("organization")
+    if org.archived_at is not None:
+        raise APIError(409, "ALREADY_ARCHIVED", "This org is already archived")
+    org.archived_at = datetime.now(timezone.utc)
+    await audit(session, org_id=org_id, actor_id=member.user_id, action="org.archived",
+                entity_type="organization", entity_id=org_id)
+    await session.commit()
+    return {"data": {"id": str(org.id), "archived_at": org.archived_at}}
+
+
 # ── Members ─────────────────────────────────────────────────────────────
 @router.get("/orgs/{org_id}/members")
 async def list_members(org_id: uuid.UUID, session: Session, page: int = 1, pageSize: int = 50, member: Membership = Depends(authorize())):
@@ -103,6 +120,19 @@ async def patch_member(org_id: uuid.UUID, user_id: uuid.UUID, body: MemberPatch,
         raise not_found("member")
     if str(user_id) == member.user_id and body.role is not None:
         raise APIError(422, "SELF_ROLE", "You cannot change your own role")
+    if target.role == "owner" and (body.role is not None or body.status == "removed"):
+        # an org can't be left ownerless — same invariant as DELETE /me
+        other_owners = (await session.execute(
+            select(func.count()).select_from(OrgMember).where(
+                OrgMember.org_id == org_id,
+                OrgMember.role == "owner",
+                OrgMember.status == "active",
+                OrgMember.user_id != user_id,
+            )
+        )).scalar_one()
+        if other_owners == 0:
+            raise APIError(409, "SOLE_OWNER",
+                           "That's the only owner — hand off ownership or archive the org first")
     if body.role:
         target.role = body.role
     if body.status:
@@ -152,6 +182,9 @@ async def redeem_invite(code: str, user: CurrentUser, session: Session):
     inv = (await session.execute(select(Invite).where(Invite.code == code))).scalars().first()
     if inv is None:
         raise not_found("invite")
+    invite_org = await session.get(Organization, inv.org_id)
+    if invite_org is None or invite_org.archived_at is not None:
+        raise not_found("organization")  # archived orgs take no new members
     now = datetime.now(timezone.utc)
     if inv.expires_at < now or inv.uses >= inv.max_uses:
         raise APIError(410, "INVITE_EXPIRED", "Invite is expired or exhausted")
@@ -181,8 +214,9 @@ class JoinReqCreate(BaseModel):
 
 @router.post("/orgs/{org_id}/join-requests", status_code=201)
 async def request_join(org_id: uuid.UUID, body: JoinReqCreate, user: CurrentUser, session: Session):
-    if await session.get(Organization, org_id) is None:
-        raise not_found("organization")
+    join_org = await session.get(Organization, org_id)
+    if join_org is None or join_org.archived_at is not None:
+        raise not_found("organization")  # archived orgs take no new members
     await check_rate_limit(session, f"joinreq:{user.id}", limit=10, window_seconds=900)
     uid = uuid.UUID(user.id)
     m = await session.get(OrgMember, (org_id, uid))

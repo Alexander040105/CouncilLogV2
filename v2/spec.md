@@ -64,7 +64,7 @@ Roles are **per-org** (stored on `org_members`, not on the user). One human
 | Officer | `officer` | Duty member; files daily entries/journal, works checklists, moves documents |
 | Member | `member` | General member; read-mostly, can file journal entries |
 | Pending / invitee | `pending` (status) | Has account, requested join or holds invite; sees nothing until approved |
-| Platform operator | — | CounciLog maintainer; operates via Supabase dashboard / service key, NOT an in-app super-admin for MVP |
+| Platform operator | `profiles.is_admin` | CounciLog maintainer; an in-app platform admin — `authorize()` grants them owner powers in every org (incl. archived ones), plus org-less `/admin/*` routes. Seeded via SQL, not assignable in-app |
 
 ### Permission matrix (per org)
 
@@ -81,6 +81,11 @@ Roles are **per-org** (stored on `org_members`, not on the user). One human
 | Edit/annotate others' journal entries after day closes | ✓ | | | |
 | View audit log | ✓ | ✓ | | |
 | Export org data | ✓ | | | |
+| Archive the org / remove its last owner | ✓¹ | | | |
+
+¹ Only if another active owner remains for member removal (`409 SOLE_OWNER`);
+org archive is soft-delete — invisible to members, restorable by a platform
+admin only. Platform admins hold owner-equivalent powers in **every** org.
 
 ---
 
@@ -227,6 +232,7 @@ create table organizations (
   slug        citext not null unique,
   logo_url    text,
   created_by  uuid not null references auth.users(id),
+  archived_at timestamptz,  -- soft delete: invisible to members, admin-restorable
   created_at  timestamptz not null default now()
 );
 
@@ -234,6 +240,7 @@ create table profiles (
   id           uuid primary key references auth.users(id) on delete cascade,
   display_name text not null,
   avatar_url   text,
+  is_admin     boolean not null default false,  -- platform admin (all-orgs owner)
   created_at   timestamptz not null default now()
 );
 
@@ -327,6 +334,7 @@ create table projects (
                           check (status in ('draft','active','done','archived')),
   needs_paper_processing  boolean not null default false,
   needs_logistics         boolean not null default false,
+  flags                   jsonb not null default '{}'::jsonb,  -- {'off_campus':true} → include_if_flag rules
   created_at              timestamptz not null default now()
 );
 alter table journal_entries
@@ -357,7 +365,7 @@ create table project_checklist_items (
   id              uuid primary key default gen_random_uuid(),
   org_id          uuid not null references organizations(id) on delete cascade,
   project_id      uuid not null references projects(id) on delete cascade,
-  template_id     uuid references checklist_templates(id),  -- provenance
+  template_id     uuid references checklist_templates(id) on delete set null,  -- provenance; delete keeps the snapshot
   ord             int not null,
   label           text not null,              -- snapshot copy
   hint            text,
@@ -378,6 +386,7 @@ create table documents (
   doc_type   text not null,                   -- 'concept_paper','board_resolution','financial_report',…
   status     text not null default 'drafting'
              check (status in ('drafting','routing','signed','filed')),
+  flags      jsonb not null default '{}'::jsonb,  -- {'has_merch':true} → include_if_flag conditions
   created_by uuid not null,
   created_at timestamptz not null default now()
 );
@@ -560,7 +569,8 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 9 | `POST /orgs/{org}/join-requests` | any auth | request to join |
 | 10 | `GET /orgs/{org}/join-requests` | owner | pending queue |
 | 11 | `POST /orgs/{org}/join-requests/{id}/decide` | owner | approve/reject |
-| 12 | `PATCH /orgs/{org}/members/{user}` | owner | change role / remove |
+| 12 | `PATCH /orgs/{org}/members/{user}` | owner | change role / remove; `409 SOLE_OWNER` on the last owner |
+| 12a | `POST /orgs/{org}/archive` | owner | soft-delete org → hidden from all members |
 | 13 | `GET/PUT /orgs/{org}/school-years` | member / owner | list / create & set current |
 | 14 | `GET/POST /orgs/{org}/positions` | member / owner | org chart CRUD (per SY) |
 | 15 | `PATCH /orgs/{org}/positions/{id}` | owner | assign holder, rank, reports_to |
@@ -576,10 +586,11 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 25 | `GET /orgs/{org}/photos/{id}/url` | member | mint signed download URL |
 | 26 | `GET/POST /orgs/{org}/projects` | member / owner+adviser | list / create |
 | 27 | `GET/PATCH /orgs/{org}/projects/{id}` | member / owner+adviser | detail / update |
-| 28 | `POST /orgs/{org}/projects/{id}/instantiate` | owner, adviser | build checklists from templates |
+| 28 | `POST /orgs/{org}/projects/{id}/instantiate` | owner, adviser | build checklists from templates; `append:true` bypasses the populated guard, else `409 ALREADY_INSTANTIATED` |
 | 29 | `GET /orgs/{org}/projects/{id}/checklist` | member | items w/ done state |
 | 30 | `PATCH /orgs/{org}/checklist-items/{id}` | officer+ | check/uncheck item |
-| 31 | `GET/POST /orgs/{org}/checklist-templates` | member / owner | template CRUD (+items) |
+| 31 | `GET/POST /orgs/{org}/checklist-templates` | member / owner | template list/create (+items) |
+| 31a | `PATCH/DELETE /orgs/{org}/checklist-templates/{id}` | owner | template update (items wholesale-replace) / delete (instances keep snapshot via SET NULL) |
 | 32 | `GET/POST /orgs/{org}/documents` | member / officer+ | list / create document |
 | 33 | `GET /orgs/{org}/documents/{id}` | member | detail = timeline |
 | 34 | `POST /orgs/{org}/documents/{id}/movements` | officer+ | append movement (where/who/photo) |
@@ -587,7 +598,8 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 35a | `POST /orgs/{org}/documents/{id}/attach-chain` | officer+ | route an unrouted doc to a chosen chain |
 | 35b | `POST /orgs/{org}/documents/{id}/revisions` | officer+ | send back for revision → new round of re-sign steps |
 | 35c | `POST /orgs/{org}/documents/{id}/steps/sign-all` | officer+ | bulk-sign current-round pending steps |
-| 36 | `GET/POST /orgs/{org}/signatory-chains` | member / owner | chain templates + steps |
+| 36 | `GET/POST /orgs/{org}/signatory-chains` | member / owner | chain list/create (+steps) |
+| 36a | `PATCH/DELETE /orgs/{org}/signatory-chains/{id}` | owner | chain update (steps wholesale-replace) / delete (routed docs keep snapshots) |
 | 37 | `GET/POST /orgs/{org}/contacts` | member / owner | quick-ref directory |
 | 38 | `GET /orgs/{org}/audit` | owner, adviser | audit log paged |
 | 39 | `GET /orgs/{org}/export` | owner | org data export (JSON/zip) — P5 |
@@ -595,6 +607,8 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 41 | `PATCH /me` | self | update own `display_name`/`avatar_url` only — allowlist, no role/org writes |
 | 42 | `POST /me/avatar/sign` | self | mint signed upload URL to public `avatars` bucket |
 | 43 | `DELETE /me` | self | anonymize + remove memberships + ban auth user (409 if sole owner) |
+| 44 | `GET /admin/orgs` | platform admin | every org incl. archived + member counts |
+| 45 | `POST /admin/orgs/{org}/restore` | platform admin | un-archive an org |
 
 **Auth plumbing:** `GET /me` returns `memberships[]`; the client sends
 `X-Org-Id` per call or uses `/orgs/{org}/…` paths. OAuth: Supabase Google
@@ -617,8 +631,10 @@ search + sidebar Home/Projects/Members/Calendar/Files + Dailies).
 | `/projects`, `/projects/{id}` | Projects | board by status; detail = dual checklists + docs + linked journals |
 | `/documents`, `/documents/{id}` | Files | logbook list; detail = movement+signature timeline, "move paper" action w/ camera |
 | `/members` | Members | roster; `/members/chart` = org chart per SY |
-| `/settings` (owner/adviser) | — | positions, duty schedule, checklist templates, signatory chains, contacts, invites, audit |
+| `/guide` | — | Read-mode page: how matching works + starter library (browsable by all, owner installs entries) |
+| `/settings` (owner/adviser) | — | positions, duty schedule, checklist templates, signatory chains, contacts, invites, audit; owners get a danger-zone "Archive org" |
 | `/account` | — | own profile (name/avatar), per-org capability summary, password/email change, theme, sign-out, delete account — reached via the shell avatar, not the nav |
+| `/admin` (platform admin) | — | every org incl. archived; expand → roster w/ member removal; archive/restore |
 | global navbar | search | org switcher, notifications slot (P5), profile/logout |
 
 Every screen spec includes loading / empty / error / 403 states.
@@ -633,8 +649,10 @@ Every screen spec includes loading / empty / error / 403 states.
 - **Conditional rules** live in `rule_json` / `condition_json`, evaluated at
   instantiation server-side, e.g.:
   `{"include_if_event_type": "webinar_intl"}` → RFP step only for
-  international webinars; `{"due_days_before_event": 15}` → computed
-  `due_date` from `project.target_date`.
+  international webinars; `{"include_if_flag": "has_merch"}` → step/item only
+  when that flag is ticked on the project/document (`flags` jsonb column);
+  `{"due_days_before_event": 15}` → computed `due_date` from
+  `project.target_date`.
 - **Duty schedule** per `school_year`: `weekday → member_ids`; drives
   `duty_type` and compliance denominators.
 - **Doc-type → chain binding:** `documents.doc_type` + `project.event_type`
@@ -669,7 +687,14 @@ Every screen spec includes loading / empty / error / 403 states.
 Matrix in §2 enforced by `authorize(org_id, min_role)` FastAPI dependency;
 membership + role + `status='active'` resolved per request (no client claims
 trusted). Owner-only mutations: member roles, positions, duty schedule,
-templates, invites, org settings.
+templates, invites, org settings, org archive.
+
+**Platform admins** (`profiles.is_admin`) bypass `authorize()` entirely: they
+resolve as `owner` in every org — including archived ones — and the
+`X-Org-Id` mismatch check doesn't apply (their work is cross-org by nature).
+Admin actions still write normal org-scoped audit rows under the admin's own
+user id. Archived orgs are invisible to non-admins: `authorize()` returns the
+same 404 as a non-member, invites/join-requests 404, and `/me` omits them.
 
 ### 8.2 Tenant isolation
 

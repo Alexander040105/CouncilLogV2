@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import {
-  CalendarCheck, FileText, FolderKanban, LogOut, MoreHorizontal, ChevronRight,
-  NotebookPen, Settings, Sun, Users,
+  BookOpen, CalendarCheck, FileText, FolderKanban, LogOut, MoreHorizontal, ChevronRight,
+  NotebookPen, Settings, ShieldCheck, Sun, Users,
 } from 'lucide-react';
 import { get } from '../lib/api';
 import { atLeast, currentOrgId, setCurrentOrg } from '../lib/org';
@@ -18,7 +18,9 @@ const NAV = [
   { to: '/projects', label: 'Projects', Icon: FolderKanban },
   { to: '/documents', label: 'Papers', Icon: FileText },
   { to: '/members', label: 'Members', Icon: Users },
+  { to: '/guide', label: 'Guide', Icon: BookOpen },
   { to: '/settings', label: 'Settings', Icon: Settings, admin: true },
+  { to: '/admin', label: 'Admin', Icon: ShieldCheck, platform: true },
 ];
 
 // bottom tab bar shows the first four; the rest live in the More sheet
@@ -46,13 +48,15 @@ export function AppShell() {
     if (active && active.org_id !== currentOrgId()) setCurrentOrg(active.org_id);
   }, [active]);
   const isAdmin = active ? atLeast(active.role, 'adviser') : false;
-  const visible = NAV.filter((n) => !n.admin || isAdmin);
+  const visible = NAV.filter((n) => (!n.admin || isAdmin) && (!n.platform || me.data?.is_admin));
   const tabs = visible.slice(0, TAB_COUNT);
   const overflow = visible.slice(TAB_COUNT);
 
   useEffect(() => {
-    // /account must stay reachable for org-less users (delete, password, etc.)
-    if (me.isSuccess && memberships.length === 0 && pathname !== '/account') nav('/onboarding');
+    // /account must stay reachable for org-less users (delete, password, etc.);
+    // /admin likewise — a platform admin may have no memberships at all
+    const orglessOk = pathname === '/account' || pathname.startsWith('/admin');
+    if (me.isSuccess && memberships.length === 0 && !orglessOk) nav('/onboarding');
   }, [me.isSuccess, memberships.length, pathname, nav]);
 
   if (loading || !session) return null;

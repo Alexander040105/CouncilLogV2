@@ -25,6 +25,8 @@ class Organization(SQLModel, table=True):
     slug: str = Field(unique=True, index=True)
     logo_url: str | None = None
     created_by: uuid.UUID
+    # soft delete: set = invisible/inaccessible to members, restorable by admins
+    archived_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
 
@@ -33,6 +35,8 @@ class Profile(SQLModel, table=True):
     id: uuid.UUID = Field(primary_key=True)
     display_name: str
     avatar_url: str | None = None
+    # platform-wide: admins act as owner in every org (deps.authorize() bypass)
+    is_admin: bool = False
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
 
@@ -104,6 +108,10 @@ class Project(SQLModel, table=True):
     status: str = "draft"
     needs_paper_processing: bool = False
     needs_logistics: bool = False
+    flags: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    )
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
 
@@ -177,6 +185,10 @@ class Document(SQLModel, table=True):
     title: str
     doc_type: str
     status: str = "drafting"
+    flags: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    )
     created_by: uuid.UUID
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
