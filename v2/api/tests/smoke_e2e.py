@@ -114,6 +114,7 @@ s, r = api("POST", f"/orgs/{org_a}/journal", tok_b,
            {"description": "Drafted concept paper for web dev seminar"}, org=org_a)
 check("member posts journal entry", s == 201, f"{s} {str(r)[:150]}")
 check("-> attendance auto-documented", r.get("attendance", {}).get("status") == "documented")
+jid = r["data"]["id"] if s == 201 else None
 
 s, r = api("POST", f"/orgs/{org_a}/attendance/no-tasks", tok_a, {}, org=org_a)
 check("owner declares no-tasks", s == 201 and r["data"]["status"] == "declared_no_tasks", f"{s}")
@@ -147,6 +148,30 @@ if s == 201:
             check("download URL minted post-authz", s3 == 200 and "token" in u.get("url", ""), f"{s3}")
             s4, _ = api("GET", f"/orgs/{org_a}/photos/{pid}/url", tok_d, org=org_a)
             check("outsider cannot mint photo URL", s4 in (403, 404), f"{s4}")
+
+# ── 5b. Journal/attendance corrections ──────────────────────────────────
+s, r = api("PATCH", f"/orgs/{org_a}/journal/{jid}", tok_b,
+           {"description": "Drafted concept paper for web dev seminar (fixed)"}, org=org_a)
+check("author edits own same-day entry", s == 200 and r["data"]["description"].endswith("(fixed)"), f"{s}")
+s, r = api("PATCH", f"/orgs/{org_a}/journal/{jid}", tok_d,
+           {"description": "intruder"}, org=org_a)
+check("outsider cannot edit entry", s in (403, 404), f"{s}")
+
+# attendance retract: documented day must 409, declared_no_tasks retracts clean
+s, rows = api("GET", f"/orgs/{org_a}/attendance", tok_a, org=org_a)
+b_row = next((x for x in rows["data"] if x.get("status") == "documented"), None)
+if b_row:
+    s, r = api("DELETE", f"/orgs/{org_a}/attendance/{b_row['day']}?member_id={b_row['member_id']}", tok_a, org=org_a)
+    check("retracting a documented day 409s", s == 409, f"{s}")
+a_row = next((x for x in rows["data"] if x.get("status") == "declared_no_tasks"), None)
+if a_row:
+    s, r = api("DELETE", f"/orgs/{org_a}/attendance/{a_row['day']}?member_id={a_row['member_id']}", tok_a, org=org_a)
+    check("declared_no_tasks retracts", s == 200 and r["data"]["deleted"], f"{s}")
+
+s, r = api("DELETE", f"/orgs/{org_a}/journal/{jid}", tok_b, org=org_a)
+check("author deletes own same-day entry", s == 200 and r["data"]["deleted"], f"{s}")
+s, feed = api("GET", f"/orgs/{org_a}/journal", tok_a, org=org_a)
+check("deleted entry absent from feed", all(x["id"] != jid for x in feed["data"]), f"{s}")
 
 # ── 6. Projects + checklists ────────────────────────────────────────────
 s, tpl = api("POST", f"/orgs/{org_a}/checklist-templates", tok_a,
@@ -249,14 +274,29 @@ check("officer registers document", s == 201, f"{s}")
 did = doc["data"]["id"] if s == 201 else None
 s, d = api("GET", f"/orgs/{org_a}/documents/{did}", tok_b, org=org_a)
 check("chain auto-instantiated", s == 200 and len(d.get("signatory_steps", [])) == 2, f"{s} steps={len(d.get('signatory_steps',[]))}")
-s, r = api("POST", f"/orgs/{org_a}/documents/{did}/movements", tok_a,
+s, mv1 = api("POST", f"/orgs/{org_a}/documents/{did}/movements", tok_a,
            {"location_text": "SD office inbox tray"}, org=org_a)
 check("movement logged (append-only)", s == 201, f"{s}")
+mv1_id = mv1["data"]["id"] if s == 201 else None
 step = d["signatory_steps"][0]
 s, r = api("POST", f"/orgs/{org_a}/documents/{did}/steps/{step['id']}", tok_b, {"status": "signed"}, org=org_a)
 check("signatory step signed", s == 200, f"{s}")
 s, d = api("GET", f"/orgs/{org_a}/documents/{did}", tok_a, org=org_a)
 check("current_location = SD office", d.get("current_location") == "SD office inbox tray")
+
+# movement corrections: patch + delete restores previous location
+s, r = api("PATCH", f"/orgs/{org_a}/documents/{did}/movements/{mv1_id}", tok_a,
+           {"location_text": "SD office — corrected"}, org=org_a)
+check("mover edits own movement", s == 200 and r["data"]["location_text"].endswith("corrected"), f"{s}")
+s, mv2 = api("POST", f"/orgs/{org_a}/documents/{did}/movements", tok_a,
+             {"location_text": "Registrar"}, org=org_a)
+check("second movement logged", s == 201, f"{s}")
+mv2_id = mv2["data"]["id"] if s == 201 else None
+s, r = api("DELETE", f"/orgs/{org_a}/documents/{did}/movements/{mv2_id}", tok_a, org=org_a)
+check("newest movement deleted", s == 200 and r["data"]["deleted"], f"{s}")
+s, d = api("GET", f"/orgs/{org_a}/documents/{did}", tok_a, org=org_a)
+check("location falls back to previous movement",
+      d.get("current_location") == "SD office — corrected", f"got {d.get('current_location')!r}")
 
 # ── 7b. Revision rounds ─────────────────────────────────────────────────
 s, ch2 = api("POST", f"/orgs/{org_a}/signatory-chains", tok_a,

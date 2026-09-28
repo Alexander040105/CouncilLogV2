@@ -240,3 +240,35 @@ cd api && .venv/Scripts/python tests/smoke_e2e.py
 cd web && npm run build
 cd web && npx playwright test
 ```
+
+---
+
+## The whole ecosystem — five pieces
+
+```
+landing/  → any static host          public hero — picks web vs app
+web/      → Vercel static site       browser client
+mobile/   → Expo / EAS               iOS + Android client
+api/      → Vercel Python functions  shared backend (Bearer JWT + x-org-id)
+Supabase  → auth, database, storage  shared data plane
+```
+
+One backend serves every client. Native apps aren't bound by CORS; they
+authenticate with the same Supabase Bearer JWT and `x-org-id` header the web
+app uses — nothing in `api/` changes for mobile.
+
+### Mobile
+
+- `mobile/README.md` is the runbook: Expo Go QR, LAN API (`--host 0.0.0.0`),
+  `EXPO_PUBLIC_API_URL`, and the Google-OAuth caveat (dev builds with the
+  `councilog://` scheme are reliable; Expo Go needs an `exp://**` entry in
+  Supabase → Authentication → URL Configuration → Redirect URLs).
+- Store builds go through EAS (`eas build`); the `councilog` scheme is in
+  `mobile/app.json`.
+
+### Landing page
+
+`landing/` is framework-free static HTML — deploy to any static host (the
+same Vercel project as `web/` works, or GitHub Pages/Netlify). Wire the CTA
+buttons in `landing/links.js` — empty values render "coming soon" chips
+instead of dead links.

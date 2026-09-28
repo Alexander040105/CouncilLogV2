@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -11,7 +11,7 @@ from ..errors import APIError, not_found
 from ..models import (Document, DocumentMovement, DocumentRevision,
                       DocumentSignatoryStep, Project, SignatoryChain,
                       SignatoryStep)
-from ..pagination import envelope, page_params
+from ..pagination import envelope, org_today, page_params
 from ..services import instantiate, storage
 from ..services.audit import audit
 
@@ -239,6 +239,73 @@ async def add_movement(org_id: uuid.UUID, doc_id: uuid.UUID, body: MovementIn, s
                 metadata={"location": body.location_text})
     await session.commit()
     return {"data": mv}
+
+
+class MovementPatch(BaseModel):
+    location_text: str | None = Field(default=None, min_length=1, max_length=300)
+    note: str | None = None
+
+
+def _movement_org_day(mv: DocumentMovement) -> date:
+    """The movement's day in org time — created_at is UTC, 'same day' is Manila."""
+    from zoneinfo import ZoneInfo
+    from ..config import get_settings
+    ts = mv.created_at
+    if ts.tzinfo is None:                       # sqlite tests store naive — treat as UTC
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(ZoneInfo(get_settings().org_timezone)).date()
+
+
+def _movement_editable(mv: DocumentMovement, member: Membership) -> bool:
+    """Mover on their own same-day entry, or an owner anytime."""
+    return (str(mv.moved_by) == member.user_id
+            and _movement_org_day(mv) == org_today()) or member.role == "owner"
+
+
+async def _get_movement(org_id: uuid.UUID, doc_id: uuid.UUID, movement_id: uuid.UUID, session) -> DocumentMovement:
+    mv = await session.get(DocumentMovement, movement_id)
+    if mv is None or mv.org_id != org_id or mv.document_id != doc_id:
+        raise not_found("movement")
+    return mv
+
+
+@router.patch("/orgs/{org_id}/documents/{doc_id}/movements/{movement_id}")
+async def patch_movement(org_id: uuid.UUID, doc_id: uuid.UUID, movement_id: uuid.UUID,
+                         body: MovementPatch, session: Session,
+                         member: Membership = Depends(authorize("officer"))):
+    mv = await _get_movement(org_id, doc_id, movement_id, session)
+    if not _movement_editable(mv, member):
+        raise APIError(403, "FORBIDDEN", "Only the mover same-day, or an owner, can edit a movement")
+    if body.location_text is not None:
+        mv.location_text = body.location_text
+    # note is tri-state: absent → leave, null → clear, string → set
+    if "note" in body.model_fields_set:
+        mv.note = body.note
+    if not (str(mv.moved_by) == member.user_id and _movement_org_day(mv) == org_today()):
+        await audit(session, org_id=org_id, actor_id=member.user_id, action="document.movement_edited",
+                    entity_type="document", entity_id=doc_id, metadata={"movement_id": str(movement_id)})
+    await session.commit()
+    return {"data": mv}
+
+
+@router.delete("/orgs/{org_id}/documents/{doc_id}/movements/{movement_id}")
+async def delete_movement(org_id: uuid.UUID, doc_id: uuid.UUID, movement_id: uuid.UUID,
+                          session: Session, member: Membership = Depends(authorize("officer"))):
+    mv = await _get_movement(org_id, doc_id, movement_id, session)
+    if not _movement_editable(mv, member):
+        raise APIError(403, "FORBIDDEN", "Only the mover same-day, or an owner, can delete a movement")
+    photo = mv.photo_path
+    await session.delete(mv)
+    await audit(session, org_id=org_id, actor_id=member.user_id, action="document.movement_deleted",
+                entity_type="document", entity_id=doc_id,
+                metadata={"movement_id": str(movement_id), "location": mv.location_text})
+    await session.commit()
+    if photo:
+        try:
+            await storage.delete_object(photo)
+        except Exception:
+            pass
+    return {"data": {"deleted": True, "id": str(movement_id)}}
 
 
 class SignAllIn(BaseModel):
