@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "CounciLog",
+    "slug": "councilog",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.councilog.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#27146e",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.councilog.app",
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-web-browser",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 192,
+          "resizeMode": "contain",
+          "backgroundColor": "#27146e"
+        }
+      ]
+    ],
+    "scheme": "councilog",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "bfa0d506-b6ab-480b-99a2-822cd0e57afc"
+      }
+    },
+    "owner": "jonnnie",
+    "updates": {
+      "url": "https://u.expo.dev/bfa0d506-b6ab-480b-99a2-822cd0e57afc"
+    }
+  }
+}

@@ -4,14 +4,14 @@
 
 ## Platform
 
-web
+adaptive
 
 ## Stack
 
-React + TypeScript + Vite (thin client) · FastAPI (all business logic) ·
-Supabase Postgres + Auth + Storage · two Vercel deployments (web, api) ·
-React Native/Expo mobile app as a later phase on the same API contract.
-User-chosen, not delegated.
+React + Vite (web, thin client) · Expo SDK 57 + React Native (mobile, thin
+client) · FastAPI (all business logic) · Supabase Postgres + Auth + Storage ·
+static landing page (`landing/`) · two Vercel deployments (web, api) + EAS
+for mobile builds.
 
 ## Users
 

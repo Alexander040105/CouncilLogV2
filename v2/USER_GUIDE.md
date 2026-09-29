@@ -7,6 +7,11 @@ officers at the playbook they need.
 - **Part A — playbooks:** do things the way the council actually works
 - **Part B — feature reference:** what every page does and who can use it
 
+> **Phone or browser?** Everything below applies to both — the mobile app
+> (Expo) and the web app share the same account and org. In the app, Papers,
+> Members, Guide, and Settings live under the **More** tab; Account and
+> Admin too. See `mobile/README.md` for running it.
+
 ---
 
 ## Part A — Playbooks
@@ -96,6 +101,14 @@ There is no clock-in — **a filed day is attendance**.
   filing-rate table per officer — this is your compliance record.
 - Link entries to a **Project** when the work belongs to one (e.g., "delivered
   concept paper to SD office" → the event's project).
+- **Made a mistake?** Entries have **Edit** and **Delete** buttons. You can fix
+  your own entry the same day; an owner can fix or remove anyone's anytime
+  (owner corrections are recorded in the audit log). Photos can't be swapped
+  on an existing entry — delete it and file again. Deleting the day's *last*
+  entry un-marks the day (it shows as unaccounted until you re-file or
+  declare no tasks). Declared "no tasks" by accident? Tap the **none** chip
+  on today's grid to retract it — the same own-day/owner rule applies, and a
+  *filed* day can't be retracted (delete the entry instead).
 
 ### A4. Running an event end-to-end
 
@@ -149,7 +162,11 @@ where the paper physically sits.
    `ces_concept_paper`, `letter`.
 2. **Every hand-off = "Move paper"**: where it is now (e.g. "SD office",
    "with Ma'am Ana"), an optional note, and an optional photo of the
-   paper/location. Movements are append-only — the log never lies.
+   paper/location. Movements are correctable but never silent — whoever moved
+   it can fix or remove their record the same day, and owners can correct
+   any (all logged in the audit trail). Deleting the newest movement reverts
+   "current location" to the previous record; deleting a middle one only
+   edits the timeline.
 3. **Advance the chain** (officer+): mark each step **Sign** when done, or
    **Skip** with a required reason (recorded for the next signer — e.g. "office
    closed this week").
@@ -247,12 +264,12 @@ app doesn't cover, the handbook is the source of truth:
 | Page | What it's for | Who can use it | Gotchas |
 |---|---|---|---|
 | **Today** (`/`) | Your duty status, today's roster, unaccounted-member count, quick links | everyone | "Nothing filed yet" until you log work or declare no-tasks |
-| **Journal** | Photo + one-line work entries, grouped by day; optional project link | member+ | Photo optional; entries prove the duty day; own-day edits only (owner can edit any) |
-| **Attendance** | Weekly filing grid + per-officer filing rate for the school year | everyone (read) | A "filed" chip needs a journal entry; ∅ = declared no tasks; extra = off-day filing |
+| **Journal** | Photo + one-line work entries, grouped by day; optional project link | member+ | Photo optional; entries prove the duty day; edit/delete own-day (owner: any); deleting the day's last entry un-marks it |
+| **Attendance** | Weekly filing grid + per-officer filing rate for the school year | everyone (read) | A "filed" chip needs a journal entry; ∅ = declared no tasks (tap to retract, own-day/owner); extra = off-day filing |
 | **Projects** | Board by status (`draft/active/done/archived`); events + their paperwork | read: member+ · create/edit: adviser+ | `event_type` + needs-papers/logistics + flags decide which templates instantiate |
 | **Project detail** | The live checklist generated from templates | check-off: officer+ | Checklist is a snapshot — later template edits don't apply |
 | **Papers** | Registry of physical documents being routed for signature | read: member+ · register: officer+ | `doc_type` auto-picks the signatory chain |
-| **Paper detail** | Signatory steps + append-only custody timeline | sign/skip & move: officer+ | Skip needs a reason; movements can't be edited or deleted |
+| **Paper detail** | Signatory steps + custody timeline | sign/skip & move: officer+ | Skip needs a reason; movements correctable by mover same-day or owner (audited) |
 | **Members** | Roster (roles, remove) + org chart | read: member+ · manage: owner | Can't change your own role; owner isn't reassignable here; the only owner can't be removed — archive the org instead |
 | **Guide** (`/guide`) | How chains/templates/flags work + the starter library | everyone (read) · install: owner | Library entries install as ordinary rows — nothing is locked |
 | **Settings** | members, positions, duty, templates, chains, contacts, invites, audit + danger zone | view: adviser+ · write: owner | Templates/chains have full editors (hints, offices, conditions, due rules, reorder, delete); audit tab is read-only; owners can archive the org (hidden for everyone, admin-restorable) |

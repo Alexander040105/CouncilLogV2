@@ -1,0 +1,38 @@
+{
+  "cli": {
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "withoutCredentials": true
+      },
+      "channel": "development"
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ijcjzllfusxpfqqonuyk.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlqY2p6bGxmdXN4cGZxcW9udXlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzMzE4MzIsImV4cCI6MjEwNTkwNzgzMn0.yMxzMr8IMgJh9dU2fmSRUEKt9dxltqzKTAAFE7BB3GI",
+        "EXPO_PUBLIC_API_URL": "https://council-log-v2-backend.vercel.app/api/v1",
+        "EXPO_PUBLIC_WEB_URL": "https://council-log-v2.vercel.app"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ijcjzllfusxpfqqonuyk.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlqY2p6bGxmdXN4cGZxcW9udXlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzMzE4MzIsImV4cCI6MjEwNTkwNzgzMn0.yMxzMr8IMgJh9dU2fmSRUEKt9dxltqzKTAAFE7BB3GI",
+        "EXPO_PUBLIC_API_URL": "https://council-log-v2-backend.vercel.app/api/v1",
+        "EXPO_PUBLIC_WEB_URL": "https://council-log-v2.vercel.app"
+      }
+    }
+  }
+}

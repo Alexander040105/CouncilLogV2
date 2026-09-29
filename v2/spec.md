@@ -133,10 +133,17 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
   org heatmap optional.
 - **Timezone:** "day" boundaries use `Asia/Manila` — stored as `date`,
   interpreted in org timezone.
-- **Edge cases:** entry filed at 23:59 counts for that Manila date; deleting
-  a journal entry does NOT retroactively mark the day unaccounted if
-  `declared_no_tasks` was also filed; editing entries same-day is free,
-  post-day edits are owner-only and audited.
+- **Edge cases:** entry filed at 23:59 counts for that Manila date; editing
+  entries same-day is free, post-day edits are owner-only and audited.
+- **Corrections:** an author may edit or delete their own same-day entry;
+  owners may correct any entry (post-day deletes/edits land in the audit
+  log). Deleting the day's **last** journal entry removes the day's
+  attendance row — the day becomes unaccounted again and any earlier
+  no-tasks declaration for it is consumed (the member re-declares if still
+  true). Deleting one of several same-day entries keeps `documented`.
+- A `declared_no_tasks` row can be retracted (own same-day, or owner for
+  any member) so the day returns to unaccounted; `documented` days can't
+  be retracted — delete the journal entry instead (`409 DOCUMENTED_DAY`).
 
 ### 3.3 Daily Journal
 
@@ -178,10 +185,14 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
 - `documents` — title, `doc_type` (concept_paper, board_resolution,
   financial_report, activity_report, letter…), `status`
   (`drafting|routing|revision|signed|filed`), optional `project_id`.
-- `document_movements` — **append-only** logbook: each row = one custody
-  record (`location_text` free-form e.g. "SD office", `note`, optional
-  `photo_path`, `moved_by`, `created_at`). Never UPDATEd/DELETEd — DB-level
-  revoke + audit trigger.
+- `document_movements` — custody logbook: each row = one record
+  (`location_text` free-form e.g. "SD office", `note`, optional
+  `photo_path`, `moved_by`, `created_at`). Append-first by design, but
+  correctable: the mover may edit/delete their own same-day record and
+  owners may correct any (audit-logged; photos immutable — re-record to
+  swap). Deleting the newest row reverts `current_location` to the
+  previous movement. Client-side access stays select-only via RLS — the
+  0001 revoke was relaxed for the API role in `0009`.
 - `document_signatory_steps` — instantiated snapshot of a `signatory_chain`;
   each step `pending|signed|skipped|revision_requested|superseded`, advanced
   by officers via API (records `signed_at`, `noted_by`). `round_no` groups
@@ -391,7 +402,7 @@ create table documents (
   created_at timestamptz not null default now()
 );
 
-create table document_movements (             -- APPEND-ONLY
+create table document_movements (             -- append-first; correctable via API (mover same-day / owner)
   id            uuid primary key default gen_random_uuid(),
   org_id        uuid not null references organizations(id) on delete cascade,
   document_id   uuid not null references documents(id) on delete cascade,
@@ -402,7 +413,8 @@ create table document_movements (             -- APPEND-ONLY
   created_at    timestamptz not null default now()
 );
 create index movements_by_doc on document_movements (document_id, created_at);
-revoke update, delete on document_movements from public;
+-- 0001 revoked update/delete from public (spec'd append-only); 0009 re-arms
+-- the grants for the API role now that corrections are a product feature.
 
 create table signatory_chains (               -- templates
   id         uuid primary key default gen_random_uuid(),
@@ -581,7 +593,9 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 20 | `POST /orgs/{org}/attendance/no-tasks` | self | declare "no tasks today" |
 | 21 | `GET /orgs/{org}/journal` | member | feed `?day=`/`?member=`/`?project=` |
 | 22 | `POST /orgs/{org}/journal` | member+ | create entry (photo paths) |
-| 23 | `PATCH /orgs/{org}/journal/{id}` | self-day / owner | edit entry |
+| 23 | `PATCH /orgs/{org}/journal/{id}` | self-day / owner | edit entry (`project_id` tri-state: absent=keep, null=clear) |
+| 23a | `DELETE /orgs/{org}/journal/{id}` | self-day / owner | delete entry + photos; last-entry delete un-documents the day |
+| 23b | `DELETE /orgs/{org}/attendance/{day}` | self-day / owner | retract `declared_no_tasks` (`?member_id=` for owner); `409` on `documented` |
 | 24 | `POST /orgs/{org}/journal/photos/sign` | member+ | mint signed upload URL |
 | 25 | `GET /orgs/{org}/photos/{id}/url` | member | mint signed download URL |
 | 26 | `GET/POST /orgs/{org}/projects` | member / owner+adviser | list / create |
@@ -594,6 +608,7 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 32 | `GET/POST /orgs/{org}/documents` | member / officer+ | list / create document |
 | 33 | `GET /orgs/{org}/documents/{id}` | member | detail = timeline |
 | 34 | `POST /orgs/{org}/documents/{id}/movements` | officer+ | append movement (where/who/photo) |
+| 34a | `PATCH/DELETE /orgs/{org}/documents/{id}/movements/{mid}` | mover same-day / owner | correct/remove a custody record (delete of newest falls back to previous location) |
 | 35 | `POST /orgs/{org}/documents/{id}/steps/{sid}` | officer+ | mark step signed/skipped |
 | 35a | `POST /orgs/{org}/documents/{id}/attach-chain` | officer+ | route an unrouted doc to a chosen chain |
 | 35b | `POST /orgs/{org}/documents/{id}/revisions` | officer+ | send back for revision → new round of re-sign steps |
@@ -638,6 +653,18 @@ search + sidebar Home/Projects/Members/Calendar/Files + Dailies).
 | global navbar | search | org switcher, notifications slot (P5), profile/logout |
 
 Every screen spec includes loading / empty / error / 403 states.
+
+### Native clients (mobile/)
+
+`mobile/` (Expo SDK 57, expo-router, plain JSX) ports the same surface to
+iOS/Android via Expo Go or dev builds: 5 tabs (Today, Journal, Attendance,
+Projects, More) with Papers/Members/Guide/Settings pushed from More, plus
+`/account` + `/admin` outside the tabs. Same API contract — Bearer JWT +
+`x-org-id`; `src/lib/rules.js` + `starterPack.js` are verbatim copies of
+`web/src/lib/` so previews and the starter library behave identically.
+Auth: email/password (full parity) + Google via `AuthSession` (`councilog://`
+scheme on dev builds; `exp://**` redirect needed for Expo Go, best-effort).
+Password-reset emails still land on the web app. See `mobile/README.md`.
 
 ---
 
@@ -734,8 +761,9 @@ supabase-js; refresh handled by the SDK).
 ### 8.5 Audit trail
 
 Append-only `audit_log` (revoked update/delete) written by the service layer
-on: document movements, signature-step changes, member approve/remove/role
-changes, position/duty/template edits, post-day journal/attendance edits,
+on: document movements (incl. corrections and deletes), signature-step
+changes, member approve/remove/role changes, position/duty/template edits,
+post-day journal/attendance edits, journal deletes, attendance retractions,
 invite mints/redeems, join decisions, exports.
 
 ### 8.6 Upload safety
@@ -857,7 +885,9 @@ schema, code, or shared defaults.
   project; due_date computed from `due_days_before_event`.
 - **Logbook:** movement appended → timeline shows latest location; chain
   instantiated → steps pending → advance → signed w/ actor+time; skipped step
-  requires note; UPDATE/DELETE on movements fails at DB level.
+  requires note; mover edits/deletes own same-day record; owner corrects
+  any; deleting the newest movement reverts location to the previous row;
+  non-mover non-owner corrections are 403.
 - **Workflows:** `event_type=webinar_intl` doc gets RFP step; `ces` doc gets
   Bennyl step; standard doc gets neither.
 - **Configurability:** owner creates custom position/template/chain/duty via

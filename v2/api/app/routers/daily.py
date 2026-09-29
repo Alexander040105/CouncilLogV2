@@ -130,6 +130,13 @@ async def feed(org_id: uuid.UUID, session: Session, day: date | None = None, mem
 
 class EntryPatch(BaseModel):
     description: str | None = Field(default=None, min_length=1, max_length=4000)
+    project_id: uuid.UUID | None = None
+
+
+def _editable(entry: JournalEntry, member: Membership) -> bool:
+    """Author on their own same-day entry, or an owner anytime."""
+    return (str(entry.member_id) == member.user_id and entry.entry_date == org_today()) \
+        or member.role == "owner"
 
 
 @router.patch("/orgs/{org_id}/journal/{entry_id}")
@@ -139,16 +146,60 @@ async def patch_entry(org_id: uuid.UUID, entry_id: uuid.UUID, body: EntryPatch, 
         raise not_found("entry")
     is_own = str(e.member_id) == member.user_id
     same_day = e.entry_date == org_today()
-    if not (is_own and same_day) and member.role != "owner":
+    if not _editable(e, member):
         raise APIError(403, "FORBIDDEN", "Only the author same-day, or an owner, can edit entries")
     if body.description is not None:
         e.description = body.description
+    # project_id is tri-state: absent → leave, null → clear, uuid → set+validate
+    if "project_id" in body.model_fields_set:
+        if body.project_id is None:
+            e.project_id = None
+        else:
+            proj = await session.get(Project, body.project_id)
+            if proj is None or proj.org_id != org_id:
+                raise not_found("project")
+            e.project_id = body.project_id
     e.updated_at = datetime.now(timezone.utc)
     if not (is_own and same_day):
         await audit(session, org_id=org_id, actor_id=member.user_id, action="journal.edited_post_day",
                     entity_type="journal_entry", entity_id=e.id)
     await session.commit()
     return {"data": e}
+
+
+@router.delete("/orgs/{org_id}/journal/{entry_id}")
+async def delete_entry(org_id: uuid.UUID, entry_id: uuid.UUID, session: Session, member: Membership = Depends(authorize())):
+    e = await session.get(JournalEntry, entry_id)
+    if e is None or e.org_id != org_id:
+        raise not_found("entry")
+    if not _editable(e, member):
+        raise APIError(403, "FORBIDDEN", "Only the author same-day, or an owner, can delete entries")
+    photos = (await session.execute(
+        select(JournalPhoto).where(JournalPhoto.entry_id == e.id))).scalars().all()
+    for p in photos:
+        await session.delete(p)
+    await session.delete(e)
+    # recompute attendance — deleting the day's last entry un-documents it
+    remaining = (await session.execute(select(JournalEntry).where(
+        JournalEntry.org_id == org_id, JournalEntry.member_id == e.member_id,
+        JournalEntry.entry_date == e.entry_date))).scalars().all()
+    if not remaining:
+        att = (await session.execute(select(AttendanceDay).where(
+            AttendanceDay.org_id == org_id, AttendanceDay.member_id == e.member_id,
+            AttendanceDay.day == e.entry_date))).scalars().first()
+        if att is not None and att.status == "documented":
+            await session.delete(att)
+    await audit(session, org_id=org_id, actor_id=member.user_id, action="journal.deleted",
+                entity_type="journal_entry", entity_id=entry_id,
+                metadata={"day": str(e.entry_date), "photos": len(photos)})
+    await session.commit()
+    # storage cleanup is best-effort — a stuck object never blocks the delete
+    for p in photos:
+        try:
+            await storage.delete_object(p.storage_path)
+        except Exception:
+            pass
+    return {"data": {"deleted": True, "id": str(entry_id)}}
 
 
 @router.get("/orgs/{org_id}/photos/{photo_id}/url")
@@ -176,6 +227,33 @@ async def declare_no_tasks(org_id: uuid.UUID, body: NoTasks, session: Session, m
                 entity_type="attendance_day", entity_id=att.id, metadata={"day": str(day)})
     await session.commit()
     return {"data": att}
+
+
+@router.delete("/orgs/{org_id}/attendance/{day}")
+async def retract_no_tasks(org_id: uuid.UUID, day: date, session: Session,
+                           member_id: uuid.UUID | None = None,
+                           member: Membership = Depends(authorize())):
+    """Retract a declared_no_tasks row — own row same-day, or owner for any
+    member via ?member_id=. Documented days must delete the journal entry
+    instead (that's where the proof lives)."""
+    target = member_id or uuid.UUID(member.user_id)
+    is_own = str(target) == member.user_id
+    if not (is_own and day == org_today()) and member.role != "owner":
+        raise APIError(403, "FORBIDDEN", "Only your own same-day declaration, or an owner, can be retracted")
+    att = (await session.execute(select(AttendanceDay).where(
+        AttendanceDay.org_id == org_id, AttendanceDay.member_id == target,
+        AttendanceDay.day == day))).scalars().first()
+    if att is None:
+        raise not_found("attendance day")
+    if att.status != "declared_no_tasks":
+        raise APIError(409, "DOCUMENTED_DAY",
+                       "That day is documented — delete the journal entry instead")
+    await session.delete(att)
+    await audit(session, org_id=org_id, actor_id=member.user_id, action="attendance.retracted",
+                entity_type="attendance_day", entity_id=att.id,
+                metadata={"day": str(day), "member_id": str(target)})
+    await session.commit()
+    return {"data": {"deleted": True}}
 
 
 @router.get("/orgs/{org_id}/attendance")

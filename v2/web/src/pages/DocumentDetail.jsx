@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Camera, PenLine, Undo2 } from 'lucide-react';
-import { get, post } from '../lib/api';
-import { atLeast, currentOrgId } from '../lib/org';
+import { AlertTriangle, ArrowLeft, Camera, PenLine, Pencil, Trash2, Undo2 } from 'lucide-react';
+import { del, get, patch, post } from '../lib/api';
+import { atLeast, currentOrgId, todayOrg } from '../lib/org';
+import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import { PhotoPicker } from '../components/PhotoPicker';
 import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, Sheet, Skeleton } from '../components/ui';
@@ -25,9 +26,15 @@ export default function DocumentDetail() {
   const [revNote, setRevNote] = useState('');
   const [resend, setResend] = useState(new Set());
   const [signAllOpen, setSignAllOpen] = useState(false);
+  const [editMv, setEditMv] = useState(null);   // movement being edited
+  const [delMv, setDelMv] = useState(null);     // movement pending delete confirm
   const { active } = useOutletContext() ?? {};
+  const { session } = useAuth();
   const canWrite = active ? atLeast(active.role, 'officer') : false;
   const isOwner = active ? atLeast(active.role, 'owner') : false;
+  const orgDay = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date(iso));
+  const canModifyMv = (m) =>
+    canWrite && ((m.moved_by === session?.user?.id && orgDay(m.created_at) === todayOrg()) || isOwner);
 
   const q = useQuery({
     queryKey: ['document', org, id],
@@ -101,6 +108,27 @@ export default function DocumentDetail() {
     onError: (e) => { setErr(e.message); toast.error(e.message); },
   });
 
+  const editMovement = useMutation({
+    mutationFn: () => patch(`/orgs/${org}/documents/${id}/movements/${editMv.id}`, {
+      location_text: location, note: note || null }),
+    onSuccess: () => {
+      toast.success('Movement updated.');
+      setEditMv(null); setLocation(''); setNote('');
+      qc.invalidateQueries({ queryKey: ['document', org, id] });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteMovement = useMutation({
+    mutationFn: (m) => del(`/orgs/${org}/documents/${id}/movements/${m.id}`),
+    onSuccess: () => {
+      toast.success('Movement deleted.');
+      setDelMv(null);
+      qc.invalidateQueries({ queryKey: ['document', org, id] });
+    },
+    onError: (e) => { setDelMv(null); toast.error(e.message); },
+  });
+
   const advance = useMutation({
     mutationFn: ({ stepId, status, note }) =>
       post(`/orgs/${org}/documents/${id}/steps/${stepId}`, { status, note }),
@@ -161,7 +189,7 @@ export default function DocumentDetail() {
           <div className="text-xs text-[var(--color-ink-3)]">Current location</div>
           <div className="font-semibold">{d.current_location ?? 'not recorded yet'}</div>
         </div>
-        {canWrite && <Button onClick={() => setMoveOpen(true)}>Move paper</Button>}
+        {canWrite && <Button onClick={() => { setLocation(''); setNote(''); setPhotos([]); setMoveOpen(true); }}>Move paper</Button>}
       </Card>
 
       <Card>
@@ -279,13 +307,31 @@ export default function DocumentDetail() {
         <div className="label-strong mb-3 text-sm text-[var(--color-ink-2)]">Custody timeline</div>
         {d.movements.length === 0 && <Empty title="No movements yet" hint="Record where the paper is." />}
         <div className="space-y-3">
-          {[...d.movements].reverse().map((m) => (
+          {[...d.movements].reverse().map((m, i) => (
             <div key={m.id} className="border-l-2 border-[var(--color-line)] pl-3">
-              <div className="text-sm font-medium">{m.location_text}</div>
-              {m.note && <div className="text-xs text-[var(--color-ink-2)]">{m.note}</div>}
-              <div className="flex items-center gap-1 text-xs text-[var(--color-ink-3)]">
-                {new Date(m.created_at).toLocaleString()}
-                {m.photo_path && <Camera size={12} aria-label="has photo" />}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{m.location_text}</div>
+                  {m.note && <div className="text-xs text-[var(--color-ink-2)]">{m.note}</div>}
+                  <div className="flex items-center gap-1 text-xs text-[var(--color-ink-3)]">
+                    {new Date(m.created_at).toLocaleString()}
+                    {m.photo_path && <Camera size={12} aria-label="has photo" />}
+                  </div>
+                </div>
+                {canModifyMv(m) && (
+                  <span className="flex shrink-0 gap-1">
+                    <Button variant="ghost" className="min-h-[32px] px-2 text-xs"
+                            aria-label="Edit movement"
+                            onClick={() => { setEditMv(m); setLocation(m.location_text); setNote(m.note ?? ''); }}>
+                      <Pencil size={13} /> Edit
+                    </Button>
+                    <Button variant="ghost" className="min-h-[32px] px-2 text-xs text-[var(--color-status-alert)]"
+                            aria-label="Delete movement"
+                            onClick={() => setDelMv({ ...m, isNewest: i === 0, isOnly: d.movements.length === 1 })}>
+                      <Trash2 size={13} /> Delete
+                    </Button>
+                  </span>
+                )}
               </div>
             </div>
           ))}
@@ -365,6 +411,33 @@ export default function DocumentDetail() {
           </Button>
         </div>
       </Sheet>
+
+      <Sheet open={!!editMv} onClose={() => setEditMv(null)} title="Edit movement">
+        <div className="space-y-3">
+          <Field label="Where is it now?"><Input value={location} onChange={(e) => setLocation(e.target.value)} /></Field>
+          <Field label="Note (optional)"><Input value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+          <p className="text-xs text-[var(--color-ink-3)]">
+            Photos can't be changed on a movement — delete and re-record to swap a photo.
+          </p>
+          <Button className="w-full" onClick={() => editMovement.mutate()}
+                  disabled={!location || editMovement.isPending}>
+            {editMovement.isPending ? 'Saving…' : 'Save changes'}
+          </Button>
+        </div>
+      </Sheet>
+
+      <ConfirmDialog
+        open={!!delMv} onClose={() => setDelMv(null)} danger
+        title="Delete this movement?"
+        body={delMv?.isNewest
+          ? (delMv.isOnly
+              ? "This was the only recorded location — the paper's current location becomes unknown."
+              : "This was the newest record — the paper's current location becomes the previous movement.")
+          : 'This removes the record from the custody timeline. The current location is unchanged.'}
+        confirmLabel="Delete movement"
+        busy={deleteMovement.isPending}
+        onConfirm={() => deleteMovement.mutate(delMv)}
+      />
 
       <ConfirmDialog
         open={signAllOpen} onClose={() => setSignAllOpen(false)} danger={false}

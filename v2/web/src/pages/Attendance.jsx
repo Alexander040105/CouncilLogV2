@@ -1,15 +1,23 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { CalendarCheck, Check, Minus } from 'lucide-react';
-import { get } from '../lib/api';
+import { del, get } from '../lib/api';
 import { currentOrgId, todayOrg } from '../lib/org';
-import { Card, Chip, Empty, ErrorState, HintBanner, PageHeader, Skeleton } from '../components/ui';
+import { useAuth } from '../lib/auth';
+import { useToast } from '../lib/toast';
+import { Card, Chip, ConfirmDialog, Empty, ErrorState, HintBanner, PageHeader, Skeleton } from '../components/ui';
 
 const WD = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export default function Attendance() {
   const org = currentOrgId();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { session } = useAuth();
+  const { active } = useOutletContext() ?? {};
   const [memberId, setMemberId] = useState('');
+  const [retracting, setRetracting] = useState(null); // attendance row pending confirm
 
   // last 7 days — computed up-front so the query can be bounded to this week
   const days = [...Array(7)].map((_, i) => todayOrg(i - 6));
@@ -30,8 +38,21 @@ export default function Attendance() {
     enabled: !!org,
   });
 
+  const retract = useMutation({
+    mutationFn: (r) => del(`/orgs/${org}/attendance/${r.day}?member_id=${r.member_id}`),
+    onSuccess: () => {
+      toast.success('Declaration retracted.');
+      setRetracting(null);
+      qc.invalidateQueries({ queryKey: ['attendance'] });
+    },
+    onError: (e) => { setRetracting(null); toast.error(e.message); },
+  });
+
   const nameOf = (id) =>
     members.data?.data.find((m) => m.user_id === id)?.display_name ?? id.slice(0, 8);
+  const canRetract = (r) =>
+    r.status === 'declared_no_tasks' &&
+    ((r.member_id === session?.user?.id && r.day === todayOrg()) || active?.role === 'owner');
   const cellKind = (r) =>
     !r ? 'alert' : r.status === 'documented' ? 'done' : 'neutral';
 
@@ -86,11 +107,26 @@ export default function Attendance() {
                       return (
                         <td key={d} className="p-1">
                           {r ? (
-                            <Chip
-                              kind={r.duty_type === 'extra' ? 'extra' : cellKind(r)}
-                              icon={r.status === 'documented' ? <Check size={12} /> : <Minus size={12} />}
-                              label={r.status === 'documented' ? 'filed' : 'none'}
-                            />
+                            canRetract(r) ? (
+                              <button
+                                aria-label={`Retract no-tasks declaration for ${nameOf(mid)} on ${d}`}
+                                title="Retract this declaration"
+                                className="rounded underline decoration-dotted underline-offset-2 hover:bg-[var(--color-surface-3)]"
+                                onClick={() => setRetracting(r)}
+                              >
+                                <Chip
+                                  kind={r.duty_type === 'extra' ? 'extra' : cellKind(r)}
+                                  icon={<Minus size={12} />}
+                                  label="none"
+                                />
+                              </button>
+                            ) : (
+                              <Chip
+                                kind={r.duty_type === 'extra' ? 'extra' : cellKind(r)}
+                                icon={r.status === 'documented' ? <Check size={12} /> : <Minus size={12} />}
+                                label={r.status === 'documented' ? 'filed' : 'none'}
+                              />
+                            )
                           ) : <span className="text-[var(--color-ink-3)]">·</span>}
                         </td>
                       );
@@ -136,6 +172,16 @@ export default function Attendance() {
           </table>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={!!retracting}
+        onClose={() => setRetracting(null)}
+        onConfirm={() => retract.mutate(retracting)}
+        busy={retract.isPending}
+        title={`Retract the no-tasks declaration for ${retracting?.day}?`}
+        body={`${retracting ? nameOf(retracting.member_id) : ''}'s day becomes unaccounted again — they can re-declare or file a journal entry.`}
+        confirmLabel="Retract"
+      />
     </div>
   );
 }
