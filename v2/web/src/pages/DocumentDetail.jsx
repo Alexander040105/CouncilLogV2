@@ -7,6 +7,7 @@ import { atLeast, currentOrgId, todayOrg } from '../lib/org';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import { PhotoPicker } from '../components/PhotoPicker';
+import { ChainFlow } from '../components/ChainFlow';
 import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, Sheet, Skeleton } from '../components/ui';
 
 export default function DocumentDetail() {
@@ -26,6 +27,7 @@ export default function DocumentDetail() {
   const [revNote, setRevNote] = useState('');
   const [resend, setResend] = useState(new Set());
   const [signAllOpen, setSignAllOpen] = useState(false);
+  const [moveStep, setMoveStep] = useState(''); // step_id the new movement pins to
   const [editMv, setEditMv] = useState(null);   // movement being edited
   const [delMv, setDelMv] = useState(null);     // movement pending delete confirm
   const { active } = useOutletContext() ?? {};
@@ -98,7 +100,10 @@ export default function DocumentDetail() {
         if (!put.ok) throw new Error('Photo upload failed');
         photo_path = sign.path;
       }
-      return post(`/orgs/${org}/documents/${id}/movements`, { location_text: location, note: note || null, photo_path });
+      return post(`/orgs/${org}/documents/${id}/movements`, {
+        location_text: location, note: note || null, photo_path,
+        step_id: moveStep || null,
+      });
     },
     onSuccess: () => {
       toast.success('Movement logged.');
@@ -147,8 +152,6 @@ export default function DocumentDetail() {
 
   const steps = d.signatory_steps;
   const RESOLVED = new Set(['signed', 'skipped', 'revision_requested']);
-  const rounds = [...new Set(steps.map((s) => s.round_no))].sort((a, b) => a - b);
-  const multiRound = rounds.length > 1;
   const pendingNow = steps.filter((s) => s.status === 'pending' && s.round_no === d.current_round);
   const resolvedSteps = steps.filter((s) => RESOLVED.has(s.status));
 
@@ -158,11 +161,11 @@ export default function DocumentDetail() {
     setResend(new Set(resolvedSteps.map((s) => s.id)));
   };
 
-  const stepChip = (s) =>
-    s.status === 'revision_requested' ? { kind: 'alert', label: 'sent back' }
-    : s.status === 'superseded' ? { kind: 'skip', label: 'superseded' }
-    : s.status === 'signed' ? { kind: 'done', label: 'signed' }
-    : { kind: 'skip', label: 'skipped' };
+  const openMove = () => {
+    setLocation(''); setNote(''); setPhotos([]);
+    setMoveStep(pendingNow[0]?.id ?? '');   // default: pin to the current desk
+    setMoveOpen(true);
+  };
 
   return (
     <div className="space-y-4">
@@ -189,7 +192,7 @@ export default function DocumentDetail() {
           <div className="text-xs text-[var(--color-ink-3)]">Current location</div>
           <div className="font-semibold">{d.current_location ?? 'not recorded yet'}</div>
         </div>
-        {canWrite && <Button onClick={() => { setLocation(''); setNote(''); setPhotos([]); setMoveOpen(true); }}>Move paper</Button>}
+        {canWrite && <Button onClick={openMove}>Move paper</Button>}
       </Card>
 
       <Card>
@@ -244,63 +247,17 @@ export default function DocumentDetail() {
             )}
           </div>
         )}
-        <div className="space-y-3">
-          {rounds.map((rn) => {
-            const rSteps = steps.filter((s) => s.round_no === rn);
-            const rev = (d.revisions ?? []).find((r) => r.round_no === rn);
-            return (
-              <div key={rn} className="space-y-2">
-                {rn > 1 && rev && (
-                  <div className="flex items-start gap-2 rounded-[var(--radius-card)] border border-[var(--color-status-alert)] p-2.5 text-xs text-[var(--color-ink-2)]">
-                    <Undo2 size={14} className="mt-0.5 shrink-0 text-[var(--color-status-alert)]" />
-                    <span>
-                      <span className="font-medium">Returned for revision</span> — {rev.note}
-                      <span className="text-[var(--color-ink-3)]">
-                        {nameOf(rev.created_by) ? ` · ${nameOf(rev.created_by)}` : ''}
-                        {' · '}{new Date(rev.created_at).toLocaleString()}
-                      </span>
-                    </span>
-                  </div>
-                )}
-                {multiRound && (
-                  <div className="label-strong text-xs text-[var(--color-ink-3)]">
-                    Round {rn}{rn > 1 ? ' — revision' : ''}
-                  </div>
-                )}
-                {rSteps.map((s) => (
-                  <div key={s.id} className="flex items-center justify-between gap-2">
-                    <div>
-                      <div className={`text-sm ${s.status !== 'pending' ? 'line-through text-[var(--color-ink-3)]' : ''}`}>
-                        {s.ord}. {s.label}
-                      </div>
-                      {s.office && <div className="text-xs text-[var(--color-ink-3)]">{s.office}</div>}
-                      {s.note && <div className="text-xs text-[var(--color-ink-3)]">note: {s.note}</div>}
-                    </div>
-                    {s.status === 'pending' ? (
-                      canWrite ? (
-                        <div className="flex gap-1">
-                          <Button variant="secondary" className="min-h-[36px] px-2 text-xs"
-                                  onClick={() => advance.mutate({ stepId: s.id, status: 'signed' })}>Sign</Button>
-                          <Button variant="ghost" className="min-h-[36px] px-2 text-xs"
-                                  onClick={() => { setSkipStep(s); setSkipNote(''); }}>Skip</Button>
-                          <Button variant="ghost" className="min-h-[36px] px-2 text-xs"
-                                  aria-label={`Send back for revision at ${s.label}`}
-                                  onClick={() => openRevision(s)}>
-                            <Undo2 size={12} /> Send back
-                          </Button>
-                        </div>
-                      ) : (
-                        <Chip kind="pending" label="awaiting signature" />
-                      )
-                    ) : (
-                      <Chip kind={stepChip(s).kind} label={stepChip(s).label} />
-                    )}
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-        </div>
+        <ChainFlow
+          steps={steps}
+          revisions={d.revisions}
+          movements={d.movements}
+          currentRound={d.current_round}
+          nameOf={nameOf}
+          canWrite={canWrite}
+          onSign={(s) => advance.mutate({ stepId: s.id, status: 'signed' })}
+          onSkip={(s) => { setSkipStep(s); setSkipNote(''); }}
+          onSendBack={(s) => openRevision(s)}
+        />
       </Card>
 
       <Card>
@@ -342,6 +299,20 @@ export default function DocumentDetail() {
         <div className="space-y-3">
           <Field label="Where is it now?"><Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="SD office" /></Field>
           <Field label="Note (optional)"><Input value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+          {pendingNow.length > 0 && (
+            <Field label="Which step is this for?"
+                   hint="Pins this movement (and its photo) onto that step's card.">
+              <select
+                className="min-h-[44px] w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 text-sm"
+                value={moveStep} onChange={(e) => setMoveStep(e.target.value)}
+              >
+                {pendingNow.map((s) => (
+                  <option key={s.id} value={s.id}>{s.ord}. {s.label}</option>
+                ))}
+                <option value="">no specific step</option>
+              </select>
+            </Field>
+          )}
           <div className="text-xs text-[var(--color-ink-3)]">Photo of the paper/location (optional)</div>
           <PhotoPicker photos={photos} onChange={setPhotos} max={1} />
           {err && <p className="text-sm text-[var(--color-status-alert)]">{err}</p>}
