@@ -1,6 +1,6 @@
 /** More tab — the overflow menu from web's AppShell Sheet: remaining nav +
  *  org switcher + account link + theme picker + sign out. */
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { BookOpen, ChevronRight, FileText, LogOut, Settings, ShieldCheck, Users } from 'lucide-react-native';
@@ -8,7 +8,7 @@ import { supabase } from '../../src/lib/supabase';
 import { atLeast, setCurrentOrg } from '../../src/lib/org';
 import { useMe, useActiveMembership } from '../../src/lib/me';
 import { useTheme } from '../../src/lib/theme';
-import { Avatar, Card, Screen, Select, ThemePicker } from '../../src/components/ui';
+import { Avatar, Card, ErrorState, Screen, Select, ThemePicker } from '../../src/components/ui';
 
 const ROWS = [
   { path: '/documents', label: 'Papers', Icon: FileText },
@@ -38,6 +38,10 @@ export default function More() {
   return (
     <Screen>
       <Text style={{ fontSize: 28, fontWeight: t.headingWeight, color: t.ink }}>More</Text>
+
+      {me.isError ? (
+        <Card><ErrorState error={me.error} retry={me.refetch} /></Card>
+      ) : null}
 
       <Card style={{ gap: 10 }}>
         <Text style={{ fontSize: 12, fontWeight: '600', color: t.ink3 }}>Organization</Text>

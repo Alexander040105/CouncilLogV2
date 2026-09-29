@@ -70,7 +70,7 @@ export default function Members() {
       {tab === 'roster' ? (
         <Card style={{ gap: 8 }}>
           <Text style={{ fontSize: 12, color: t.ink3 }}>
-            Owners can change roles or remove members here — changes apply on the member's next action.
+            Owners can change roles or remove members here — changes apply on the member’s next action.
           </Text>
           <MemberManager />
         </Card>

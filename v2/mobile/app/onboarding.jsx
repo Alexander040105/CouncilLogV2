@@ -5,7 +5,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react-native';
-import { get, post, patch } from '../src/lib/api';
+import { post, patch } from '../src/lib/api';
 import { currentOrgId, setCurrentOrg } from '../src/lib/org';
 import { supabase } from '../src/lib/supabase';
 import { useAuth } from '../src/lib/auth';

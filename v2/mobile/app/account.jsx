@@ -14,7 +14,7 @@ import { useTheme } from '../src/lib/theme';
 import { useMe } from '../src/lib/me';
 import { PhotoPicker, putToSignedUrl } from '../src/components/PhotoPicker';
 import {
-  Avatar, Button, Card, Chip, ConfirmDialog, Empty, Field, Input,
+  Avatar, Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input,
   PageHeader, Screen, Skeleton, ThemePicker,
 } from '../src/components/ui';
 
@@ -162,7 +162,7 @@ export default function Account() {
     onError: (e) => { setDelOpen(false); toast.error(e.message); },
   });
 
-  if (me === undefined) {
+  if (meQ.isLoading) {
     return (
       <Screen>
         <PageHeader title="Account" description="Your name, photo, security, and what you can do." />
@@ -173,6 +173,14 @@ export default function Account() {
             <Skeleton style={{ height: 44, width: '100%' }} />
           </Card>
         ))}
+      </Screen>
+    );
+  }
+  if (meQ.isError) {
+    return (
+      <Screen>
+        <PageHeader title="Account" description="Your name, photo, security, and what you can do." />
+        <ErrorState error={meQ.error} retry={meQ.refetch} />
       </Screen>
     );
   }
@@ -302,7 +310,7 @@ export default function Account() {
         <View style={{ borderTopWidth: 1, borderTopColor: t.line }} />
         <View style={{ gap: 10 }}>
           <Text style={{ fontSize: 14, color: t.ink2 }}>
-            Delete your account. Your name becomes "Former member" and org
+            Delete your account. Your name becomes “Former member” and org
             history stays, but you lose all access.
           </Text>
           <Button variant="danger" onPress={() => setDelOpen(true)}>

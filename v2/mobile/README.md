@@ -57,6 +57,44 @@ but reliability depends on where the app runs:
 Either way, Google's OAuth consent screen needs the Supabase callback URL
 listed as authorized — same setup as the web app.
 
+## Ship it to real users (EAS Build)
+
+Expo Go can't serve real users — it needs your laptop running Metro. To give
+the council an installable app:
+
+1. **One-time setup** — free Expo account:
+
+   ```bash
+   npm i -g eas-cli        # or: npx eas-cli@latest <command>
+   eas login
+   eas init                # links the project, writes extra.eas.projectId into app.json
+   eas update:configure    # adds updates.url + runtimeVersion (OTA JS fixes)
+   ```
+
+2. **Build the Android APK** (internal distribution — a link anyone can install):
+
+   ```bash
+   eas build -p android --profile preview
+   ```
+
+   The `preview` profile in `eas.json` already bakes the production Supabase +
+   API + web URLs — no local `.env` needed on the build server. When it
+   finishes, EAS gives you an install page + direct APK link.
+
+3. **Wire the landing page** — paste that link into `v2/landing/links.js` as
+   `androidUrl`. iPhone members get the "Add to Home Screen" instructions on
+   the landing page instead (native iOS requires Apple's $99/yr developer
+   program — there is no free APK equivalent on iOS).
+
+4. **Fixing bugs later** — JS-only fixes ship over-the-air:
+
+   ```bash
+   eas update --channel preview --message "what changed"
+   ```
+
+   Native changes (new native deps, app.json plugin changes) need a fresh
+   `eas build` and members reinstall the new APK.
+
 ## Other known limitations
 
 - **Password reset** sends an email whose link targets the web app — the user
@@ -83,4 +121,7 @@ payload shapes without updating web and mobile together.
 npx expo start                    # dev server + QR
 npx expo export --platform android  # bundle sanity check (catches syntax errors)
 npx expo install <pkg>            # ALWAYS — picks the SDK-57-compatible version
+npx expo lint                     # eslint (eslint-config-expo)
+npx expo-doctor                   # dependency/config health check
+node scripts/gen-icons.js         # regenerate the icon set (brand document mark)
 ```

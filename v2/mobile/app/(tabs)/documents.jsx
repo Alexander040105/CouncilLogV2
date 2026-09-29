@@ -36,7 +36,7 @@ function ChainPreview({ chains, docType, overrideId, eventType = null, flags = {
         <AlertTriangle size={16} color={t.alert} style={{ marginTop: 2 }} />
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 13, color: t.ink2 }}>
-            No signatory chain matches {docType} — this paper won't be routed for signatures.{' '}
+            No signatory chain matches {docType} — this paper won’t be routed for signatures.{' '}
             {isOwner ? 'Add a chain in Settings.' : 'Ask an owner to add one in Settings.'}
           </Text>
           <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
@@ -68,7 +68,7 @@ function ChainPreview({ chains, docType, overrideId, eventType = null, flags = {
       </View>
       {steps.length === 0 ? (
         <Text style={{ fontSize: 12, color: t.ink3 }}>
-          This chain has no steps that apply — the document won't route anywhere.
+          This chain has no steps that apply — the document won’t route anywhere.
         </Text>
       ) : (
         <View style={{ marginLeft: 12, gap: 2 }}>

@@ -10,7 +10,7 @@ import { useToast } from '../src/lib/toast';
 import { useTheme } from '../src/lib/theme';
 import { useMe } from '../src/lib/me';
 import {
-  Avatar, Button, Card, Chip, ConfirmDialog, Empty, ErrorState, PageHeader, Screen, Skeleton,
+  Avatar, Card, Chip, ConfirmDialog, Empty, ErrorState, PageHeader, Screen, Skeleton,
 } from '../src/components/ui';
 
 export default function Admin() {

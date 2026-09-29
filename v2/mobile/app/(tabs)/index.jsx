@@ -43,11 +43,11 @@ export default function Dashboard() {
     <Screen refresh={async () => { await Promise.all([att.refetch(), positions.refetch(), me.refetch()]); }}>
       <PageHeader
         title="Today"
-        description="Your duty day at a glance: file once, you're accounted."
+        description="Your duty day at a glance: file once, you’re accounted."
       />
 
       <HintBanner id="dashboard">
-        File a journal entry on your assigned day — or tap "No tasks today". That's all it
+        File a journal entry on your assigned day — or tap “No tasks today”. That’s all it
         takes to be counted present. Papers and projects live in their own tabs.
       </HintBanner>
 
@@ -76,11 +76,11 @@ export default function Dashboard() {
       {isFresh ? (
         <Card style={{ gap: 6 }}>
           <Text style={{ fontSize: 13, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink2 }}>New here? How CounciLog works</Text>
-          <Text style={{ fontSize: 14, color: t.ink2 }}>• File a journal entry each duty day — that's your attendance.</Text>
+          <Text style={{ fontSize: 14, color: t.ink2 }}>• File a journal entry each duty day — that’s your attendance.</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
             <Text style={{ fontSize: 14, color: t.ink2 }}>• </Text>
             {navLink('/documents', 'Papers')}
-            <Text style={{ fontSize: 14, color: t.ink2 }}> tracks where physical documents are and who's signing them.</Text>
+            <Text style={{ fontSize: 14, color: t.ink2 }}> tracks where physical documents are and who’s signing them.</Text>
           </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
             <Text style={{ fontSize: 14, color: t.ink2 }}>• </Text>
@@ -107,7 +107,7 @@ export default function Dashboard() {
             <Text style={{ fontSize: 14, color: t.ink }}>{att.data.data.length} entries filed today</Text>
             {att.data.unaccounted_member_ids.length > 0 ? (
               <Text style={{ fontSize: 14, color: t.alert }}>
-                {att.data.unaccounted_member_ids.length} scheduled member(s) haven't filed yet
+                {att.data.unaccounted_member_ids.length} scheduled member(s) haven’t filed yet
               </Text>
             ) : null}
           </View>

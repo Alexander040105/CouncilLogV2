@@ -38,25 +38,25 @@ function Gate() {
   const { t } = useTheme();
 
   // Keep the selected org valid — same fallback rule as web's AppShell.
-  const memberships = me.data?.memberships ?? [];
   useEffect(() => {
+    const memberships = me.data?.memberships ?? [];
     const active = memberships.find((m) => m.org_id === currentOrgId()) ?? memberships[0];
     if (active && active.org_id !== currentOrgId()) setCurrentOrg(active.org_id);
-  }, [memberships]);
+  }, [me.data]);
 
   useEffect(() => {
     if (loading) return;
     const inLogin = segments[0] === 'login';
     if (!session && !inLogin) router.replace('/login');
     else if (session && inLogin) router.replace('/');
-  }, [session, loading, segments]);
+  }, [session, loading, segments, router]);
 
   useEffect(() => {
     if (!session || !me.isSuccess) return;
     const path = segments.join('/');
     const orglessOk = path.includes('onboarding') || path.includes('account') || path.includes('admin');
-    if (memberships.length === 0 && !orglessOk) router.replace('/onboarding');
-  }, [session, me.isSuccess, memberships.length, segments]);
+    if ((me.data?.memberships?.length ?? 0) === 0 && !orglessOk) router.replace('/onboarding');
+  }, [session, me.isSuccess, me.data, segments, router]);
 
   return (
     <>

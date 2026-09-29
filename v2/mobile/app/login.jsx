@@ -29,7 +29,7 @@ export default function Login() {
 
   useEffect(() => {
     if (session) router.replace('/');
-  }, [session]);
+  }, [session, router]);
 
   const submit = async () => {
     setBusy(true);

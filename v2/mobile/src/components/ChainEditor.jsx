@@ -1,6 +1,6 @@
 /** Mobile port of ChainEditor — name/doc_type + ordered step rows with
  *  office locations and optional conditions (event type or flag). */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react-native';
@@ -37,12 +37,14 @@ export function ChainEditor({ open, onClose, chain, docTypes = [], eventTypes = 
   const [docType, setDocType] = useState('');
   const [rows, setRows] = useState([emptyRow()]);
 
-  useEffect(() => {
-    if (!open) return;
+  const [formKey, setFormKey] = useState(null);
+  const key = open ? (chain?.id ?? 'new') : null;
+  if (key !== formKey) {
+    setFormKey(key);
     setName(chain?.name ?? '');
     setDocType(chain?.doc_type ?? '');
     setRows(chain?.steps?.length ? chain.steps.map(rowFromStep) : [emptyRow()]);
-  }, [open, chain]);
+  }
 
   const setRow = (i, patchRow) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patchRow } : r)));
   const removeRow = (i) => setRows((rs) => rs.filter((_, k) => k !== i));

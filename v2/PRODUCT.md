@@ -4,7 +4,7 @@
 
 ## Platform
 
-web · mobile (Expo — same API contract)
+adaptive
 
 ## Stack
 

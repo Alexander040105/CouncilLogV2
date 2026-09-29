@@ -10,7 +10,7 @@ import { useAuth } from '../../src/lib/auth';
 import { useMe, useActiveMembership } from '../../src/lib/me';
 import { useToast } from '../../src/lib/toast';
 import { useTheme } from '../../src/lib/theme';
-import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, HintBanner, PageHeader, Screen, Select, Skeleton } from '../../src/components/ui';
+import { Card, Chip, ConfirmDialog, Empty, ErrorState, HintBanner, PageHeader, Screen, Select, Skeleton } from '../../src/components/ui';
 
 const WD = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MEMBER_COL = 120;
@@ -82,7 +82,7 @@ export default function Attendance() {
 
       <HintBanner id="attendance">
         Each column is a day. ✓ = filed a journal entry, ∅ = declared no tasks. Members on
-        their assigned day who haven't filed yet show up as missing.
+        their assigned day who haven’t filed yet show up as missing.
       </HintBanner>
 
       <Card style={{ gap: 8 }}>

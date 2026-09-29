@@ -73,11 +73,15 @@ export default function Journal() {
     onError: (e) => toast.error(e.message),
   });
 
+  const [handledCompose, setHandledCompose] = useState(false);
+  if (params.compose === '1' && !handledCompose) {
+    setHandledCompose(true);
+    setComposeOpen(true);
+  }
   useEffect(() => {
-    if (params.compose === '1') setComposeOpen(true);
     if (params.notasks === '1') noTasks.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.compose, params.notasks]);
+  }, [params.notasks]);
 
   const canModify = (e) =>
     (e.member_id === session?.user?.id && e.entry_date === todayOrg()) ||
@@ -192,10 +196,10 @@ export default function Journal() {
       ))}
 
       <Sheet open={composeOpen} onClose={() => { setComposeOpen(false); setEditing(null); }}
-             title={editing ? 'Edit entry' : "Log today's work"}>
+             title={editing ? 'Edit entry' : 'Log today’s work'}>
         {editing ? (
           <Text style={{ fontSize: 12, color: t.ink3 }}>
-            Photos can't be changed on an existing entry — delete and re-file to swap photos.
+            Photos can’t be changed on an existing entry — delete and re-file to swap photos.
           </Text>
         ) : (
           <PhotoPicker photos={photos} onChange={setPhotos} />

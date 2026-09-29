@@ -1,6 +1,6 @@
 /** Mobile port of TemplateEditor — name/track/scope + ordered item rows with
  *  hints, optional toggle, when-conditions, due rules, reorder. */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react-native';
@@ -46,13 +46,15 @@ export function TemplateEditor({ open, onClose, template, eventTypes = [], flagN
   const [evt, setEvt] = useState('');
   const [rows, setRows] = useState([emptyRow()]);
 
-  useEffect(() => {
-    if (!open) return;
+  const [formKey, setFormKey] = useState(null);
+  const key = open ? (template?.id ?? 'new') : null;
+  if (key !== formKey) {
+    setFormKey(key);
     setName(template?.name ?? '');
     setTrack(template?.track ?? 'paper');
     setEvt(template?.event_type ?? '');
     setRows(template?.items?.length ? template.items.map(rowFromItem) : [emptyRow()]);
-  }, [open, template]);
+  }
 
   const setRow = (i, patchRow) => setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patchRow } : r)));
   const removeRow = (i) => setRows((rs) => rs.filter((_, k) => k !== i));
@@ -108,7 +110,7 @@ export function TemplateEditor({ open, onClose, template, eventTypes = [], flagN
       <View style={{ gap: 8 }}>
         <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>Items, in order</Text>
         <Text style={{ fontSize: 12, color: t.ink3 }}>
-          Each becomes a checklist item on matching projects. Hints say where to go or what to watch for; optional items are reminders that don't block.
+          Each becomes a checklist item on matching projects. Hints say where to go or what to watch for; optional items are reminders that don’t block.
         </Text>
         {rows.map((r, i) => (
           <View key={i} style={{ gap: 8, borderRadius: t.radiusCard, borderWidth: t.boxWidth, borderColor: t.boxColor, padding: 8 }}>

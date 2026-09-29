@@ -86,8 +86,8 @@ export default function Projects() {
         ) : null}
       />
       <HintBanner id="projects">
-        A project generates its checklist from templates: check "Needs papers" for
-        signatory-routed documents, "Needs logistics" for venue/equipment steps.
+        A project generates its checklist from templates: check “Needs papers” for
+        signatory-routed documents, “Needs logistics” for venue/equipment steps.
       </HintBanner>
       {list.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
       {list.isError ? <ErrorState error={list.error} retry={list.refetch} /> : null}

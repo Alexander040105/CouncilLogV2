@@ -100,6 +100,11 @@ body {
 .btn-primary { background: var(--accent); color: var(--accent-fg); }
 .btn-ghost { background: var(--surface-2); color: var(--ink); }
 
+a:focus-visible, .btn:focus-visible, [data-link]:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 2px;
+}
+
 /* coming-soon state — swap link for a quiet chip */
 .btn[data-empty] {
   background: var(--surface-3); color: var(--ink-3);
@@ -141,6 +146,22 @@ body {
 
 .qr-slot { border-top: 1px dashed var(--ink-3); padding-top: 12px; width: 100%; }
 .qr-slot img { width: 140px; height: 140px; border: 2px solid var(--line); }
+
+/* iPhone note — the zero-cost "app" answer until a real iOS build exists */
+.iphone-note {
+  margin-top: 20px;
+  border: 2px solid var(--line);
+  border-left-width: 10px;
+  border-left-color: var(--brand);
+  box-shadow: var(--shadow-1);
+  background: var(--surface-2);
+  padding: 22px;
+  max-width: 560px;
+  scroll-margin-top: 80px;
+}
+.iphone-note h3 { margin: 0 0 8px; font-size: 17px; font-weight: 800; }
+.iphone-note p { margin: 0 0 16px; font-size: 14px; color: var(--ink-3); }
+.iphone-note p b { color: var(--ink); }
 
 /* ── Footer ──────────────────────────────────────────────── */
 .footer {

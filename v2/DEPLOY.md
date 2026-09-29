@@ -257,21 +257,62 @@ One backend serves every client. Native apps aren't bound by CORS; they
 authenticate with the same Supabase Bearer JWT and `x-org-id` header the web
 app uses — nothing in `api/` changes for mobile.
 
-### Mobile
+### Mobile — ship the Android app (EAS Build)
 
-- `mobile/README.md` is the runbook: Expo Go QR, LAN API (`--host 0.0.0.0`),
-  `EXPO_PUBLIC_API_URL`, and the Google-OAuth caveat (dev builds with the
-  `councilog://` scheme are reliable; Expo Go needs an `exp://**` entry in
-  Supabase → Authentication → URL Configuration → Redirect URLs).
-- Store builds go through EAS (`eas build`); the `councilog` scheme is in
-  `mobile/app.json`.
+Expo Go is a dev tool — it can't serve members (it needs your laptop running
+Metro). For real users, build an installable APK with EAS (free tier works).
+
+**One-time setup** (needs an Expo account — free at expo.dev):
+
+```bash
+cd v2/mobile
+npm i -g eas-cli        # or: npx eas-cli@latest <command>
+eas login
+eas init                # links the project → writes extra.eas.projectId
+eas update:configure    # enables over-the-air JS fixes (updates.url)
+```
+
+**Build + distribute:**
+
+```bash
+eas build -p android --profile preview
+```
+
+- The `preview` profile in `eas.json` bakes the production `EXPO_PUBLIC_*`
+  values (Supabase, API, web URL) — the build works even though `.env` isn't
+  committed. If prod URLs change, edit `eas.json`, not code.
+- When the build finishes, expo.dev shows an install page + a direct APK
+  link. Members open that link on their phone and install (Android asks to
+  allow "install from this source" — normal for direct installs).
+- Paste the link into `v2/landing/links.js` → `androidUrl`.
+
+**iPhone members:** there is no free native-iOS path — Apple requires the
+$99/yr Developer Program for *any* iOS distribution (TestFlight, ad-hoc, or
+alt stores). The landing page shows them a Safari → "Add to Home Screen"
+flow that gives an app-icon, full-screen experience on the same backend.
+
+**Google sign-in on the app:** add `councilog://**` to Supabase →
+Authentication → URL Configuration → Redirect URLs (the scheme is declared
+in `mobile/app.json`). Email/password needs nothing extra.
+
+**Shipping fixes after launch:**
+
+```bash
+eas update --channel preview --message "short description"  # JS-only fixes, OTA
+eas build -p android --profile preview                      # native changes → new APK
+```
 
 ### Landing page
 
-`landing/` is framework-free static HTML — deploy to any static host (the
-same Vercel project as `web/` works, or GitHub Pages/Netlify). Wire the CTA
-buttons in `landing/links.js` — empty values render "coming soon" chips
-instead of dead links.
+`landing/` is framework-free static HTML — deploy to any static host:
+
+- **Vercel (recommended):** `vercel deploy v2/landing` or a third Vercel
+  project with root directory `v2/landing` — no build command, no framework.
+- **GitHub Pages / Netlify** work identically — it's three static files.
+
+Wire the CTA buttons in `landing/links.js` — `webUrl` is already set to the
+production app; paste the EAS APK link into `androidUrl` after your first
+build. Empty values render "coming soon" chips instead of dead links.
 
 ---
 

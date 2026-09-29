@@ -41,6 +41,7 @@ export function PhotoPicker({ photos, onChange, max = 4 }) {
     for (const a of assets) {
       const p = await normalize(a);
       if (!ACCEPT.includes(p.type)) { toast.error('Photos must be JPG, PNG, or WebP.'); continue; }
+      if (!p.size) { toast.error('That photo looks empty — try taking or picking it again.'); continue; }
       if (p.size > MAX_BYTES) { toast.error('Photo too large — 5 MB max.'); continue; }
       ok.push(p);
     }

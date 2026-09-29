@@ -12,7 +12,7 @@ import { STARTER_CHAINS, STARTER_CONTACTS, STARTER_TEMPLATES } from '../../src/l
 import { useToast } from '../../src/lib/toast';
 import { useTheme } from '../../src/lib/theme';
 import { useMe, useActiveMembership } from '../../src/lib/me';
-import { Button, Card, PageHeader, Screen, Sheet } from '../../src/components/ui';
+import { Button, Card, ErrorState, PageHeader, Screen, Sheet, Skeleton } from '../../src/components/ui';
 
 const Section = ({ title, children }) => {
   const { t } = useTheme();
@@ -27,6 +27,16 @@ const Section = ({ title, children }) => {
 const P = ({ children }) => {
   const { t } = useTheme();
   return <Text style={{ fontSize: 14, color: t.ink2 }}>{children}</Text>;
+};
+
+const Group = ({ title, children }) => {
+  const { t } = useTheme();
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={{ fontSize: 12, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink3 }}>{title}</Text>
+      {children}
+    </View>
+  );
 };
 
 const RULES = [
@@ -137,7 +147,6 @@ function LibraryEntry({ kind, entry, present, isOwner, onInstall }) {
 
 export default function Guide() {
   const org = useOrgId();
-  const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
   const { t } = useTheme();
@@ -174,9 +183,6 @@ export default function Guide() {
   };
   const endpoint = (kind) =>
     kind === 'chain' ? 'signatory-chains' : kind === 'template' ? 'checklist-templates' : 'contacts';
-  const destTab = (kind) =>
-    kind === 'chain' ? 'chains' : kind === 'template' ? 'templates' : 'contacts';
-
   const install = useMutation({
     mutationFn: async (entries) => {
       for (const { kind, entry, ord } of entries) {
@@ -198,13 +204,6 @@ export default function Guide() {
     ...STARTER_CONTACTS.map((e, i) => ({ kind: 'contact', entry: e, ord: i })),
   ].filter(({ kind, entry }) => !isPresent(kind, entry));
 
-  const Group = ({ title, children }) => (
-    <View style={{ gap: 8 }}>
-      <Text style={{ fontSize: 12, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink3 }}>{title}</Text>
-      {children}
-    </View>
-  );
-
   return (
     <Screen>
       <PageHeader
@@ -220,12 +219,12 @@ export default function Guide() {
           </P>
           <P>
             A checklist template is a reusable to-do list. When a project
-            is created (or its checklist generated), every matching template's items are copied onto it.
+            is created (or its checklist generated), every matching template’s items are copied onto it.
           </P>
           <P>
             Both are copies: what lands on your project or paper is a
-            snapshot. Editing the template later never rewrites what's already running — and deleting a
-            template never deletes a project's checklist.
+            snapshot. Editing the template later never rewrites what’s already running — and deleting a
+            template never deletes a project’s checklist.
           </P>
         </Card>
       </Section>
@@ -240,39 +239,52 @@ export default function Guide() {
 
       <Section title="Starter library">
         <P>
-          Worked examples from a real student council's handbook — chains, checklist templates, and the
-          who-to-ask directory. Expand any entry to read its full contents and why it's built that way;
+          Worked examples from a real student council’s handbook — chains, checklist templates, and the
+          who-to-ask directory. Expand any entry to read its full contents and why it’s built that way;
           owners can add it to this org with one tap, then edit or delete it like anything hand-typed.
         </P>
-        {isOwner && missing.length > 0 ? (
-          <Button variant="secondary" onPress={() => install.mutate(missing)} disabled={install.isPending} busy={install.isPending}>
-            <Library size={16} color={t.ink} /><Text style={{ fontSize: 13, fontWeight: '700', color: t.ink }}>{`Add everything (${missing.length})`}</Text>
-          </Button>
+        {templates.isLoading || chains.isLoading || contacts.isLoading ? (
+          <Skeleton style={{ height: 160 }} />
         ) : null}
-        {isOwner && missing.length === 0 ? (
-          <Text style={{ fontSize: 12, color: t.ink3 }}>Everything in the library is already in your org.</Text>
+        {templates.isError || chains.isError || contacts.isError ? (
+          <ErrorState
+            error={templates.error ?? chains.error ?? contacts.error}
+            retry={() => { templates.refetch(); chains.refetch(); contacts.refetch(); }}
+          />
         ) : null}
-        <Group title="Signatory chains">
-          {STARTER_CHAINS.map((e) => (
-            <LibraryEntry key={e.name} kind="chain" entry={e}
-                          present={isPresent('chain', e)} isOwner={isOwner}
-                          onInstall={(k, en) => setPreview({ kind: k, entry: en })} />
-          ))}
-        </Group>
-        <Group title="Checklist templates">
-          {STARTER_TEMPLATES.map((e) => (
-            <LibraryEntry key={e.name} kind="template" entry={e}
-                          present={isPresent('template', e)} isOwner={isOwner}
-                          onInstall={(k, en) => setPreview({ kind: k, entry: en })} />
-          ))}
-        </Group>
-        <Group title="Who-to-ask contacts">
-          {STARTER_CONTACTS.map((e) => (
-            <LibraryEntry key={e.label} kind="contact" entry={e}
-                          present={isPresent('contact', e)} isOwner={isOwner}
-                          onInstall={(k, en) => setPreview({ kind: k, entry: en })} />
-          ))}
-        </Group>
+        {templates.isSuccess && chains.isSuccess && contacts.isSuccess ? (
+          <>
+            {isOwner && missing.length > 0 ? (
+              <Button variant="secondary" onPress={() => install.mutate(missing)} disabled={install.isPending} busy={install.isPending}>
+                <Library size={16} color={t.ink} /><Text style={{ fontSize: 13, fontWeight: '700', color: t.ink }}>{`Add everything (${missing.length})`}</Text>
+              </Button>
+            ) : null}
+            {isOwner && missing.length === 0 ? (
+              <Text style={{ fontSize: 12, color: t.ink3 }}>Everything in the library is already in your org.</Text>
+            ) : null}
+            <Group title="Signatory chains">
+              {STARTER_CHAINS.map((e) => (
+                <LibraryEntry key={e.name} kind="chain" entry={e}
+                              present={isPresent('chain', e)} isOwner={isOwner}
+                              onInstall={(k, en) => setPreview({ kind: k, entry: en })} />
+              ))}
+            </Group>
+            <Group title="Checklist templates">
+              {STARTER_TEMPLATES.map((e) => (
+                <LibraryEntry key={e.name} kind="template" entry={e}
+                              present={isPresent('template', e)} isOwner={isOwner}
+                              onInstall={(k, en) => setPreview({ kind: k, entry: en })} />
+              ))}
+            </Group>
+            <Group title="Who-to-ask contacts">
+              {STARTER_CONTACTS.map((e) => (
+                <LibraryEntry key={e.label} kind="contact" entry={e}
+                              present={isPresent('contact', e)} isOwner={isOwner}
+                              onInstall={(k, en) => setPreview({ kind: k, entry: en })} />
+              ))}
+            </Group>
+          </>
+        ) : null}
       </Section>
 
       <Section title="Building a chain, step by step">
@@ -341,7 +353,7 @@ export default function Guide() {
             {preview.kind === 'template' ? <ItemList items={preview.entry.items} /> : null}
             {preview.kind === 'contact' ? <Text style={{ fontSize: 12, color: t.ink2 }}>{preview.entry.value}</Text> : null}
             <Text style={{ fontSize: 12, color: t.ink3 }}>
-              This is a starting point — load it, then change whatever doesn't fit.
+              This is a starting point — load it, then change whatever doesn’t fit.
             </Text>
             <Button style={{ width: '100%' }} disabled={install.isPending} busy={install.isPending}
                     onPress={() => install.mutate([{

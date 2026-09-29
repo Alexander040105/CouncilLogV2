@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>CounciLog — student-org operations, minus the group-chat archaeology</title>
 <meta name="description" content="CounciLog tracks duty, journals, papers, and projects for student organizations — on the web and on your phone." />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="CounciLog — the paper trail, without the paper chase" />
+<meta property="og:description" content="Duty roster, journals, signatory routes, and project checklists in one place — built for student councils." />
+<meta name="theme-color" content="#27146e" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%2327146e'/%3E%3Ctext x='32' y='42' font-family='system-ui,sans-serif' font-size='28' font-weight='800' fill='%23f4be04' text-anchor='middle'%3ECL%3C/text%3E%3C/svg%3E" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -34,8 +39,8 @@
     <div class="cta-row" id="cta-row">
       <!-- filled by links.js render -->
       <a class="btn btn-primary" data-link="webUrl" href="#pick">Open the web app</a>
-      <span class="btn btn-ghost" data-link="iosUrl">iOS app</span>
       <span class="btn btn-ghost" data-link="androidUrl">Android app</span>
+      <a class="btn btn-ghost" href="#iphone">On iPhone?</a>
     </div>
     <p class="fineprint">Same account, same org — browser and phone stay in sync.</p>
   </section>
@@ -93,16 +98,26 @@
       </article>
       <article class="card pick-card">
         <h3>On your phone</h3>
-        <p>Duty check-ins and paper moves from the hallway — iOS and Android.</p>
+        <p>Duty check-ins and paper moves from the hallway.</p>
         <div class="cta-row">
-          <span class="btn btn-primary" data-link="iosUrl">App Store</span>
-          <span class="btn btn-primary" data-link="androidUrl">Play Store</span>
+          <span class="btn btn-primary" data-link="androidUrl">Get the Android app</span>
         </div>
         <div class="qr-slot" data-slot="expoQr" hidden>
           <p class="fineprint">Developer preview — scan with Expo Go:</p>
           <img data-qr-img alt="Expo Go QR code for the CounciLog dev build" />
         </div>
       </article>
+    </div>
+    <div class="iphone-note" id="iphone">
+      <h3>On iPhone?</h3>
+      <p>
+        There's no iPhone app yet — and there doesn't need to be. Open the web
+        app in <b>Safari</b>, tap <b>Share</b>, then <b>Add to Home Screen</b>.
+        It sits on your home screen and opens full-screen like an app — same
+        account, same data.
+      </p>
+      <a class="btn btn-ghost" data-link="webUrl" href="#">Open the web app</a>
+    </div>
     </div>
   </section>
 </main>

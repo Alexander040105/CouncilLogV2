@@ -12,7 +12,7 @@ import { collectFlagNames, describeCondition, describeItemRule } from '../../src
 import { useToast } from '../../src/lib/toast';
 import { useTheme } from '../../src/lib/theme';
 import { useMe, useActiveMembership } from '../../src/lib/me';
-import { Button, Card, ConfirmDialog, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Screen, Select, Sheet, Skeleton, ThemePicker } from '../../src/components/ui';
+import { Button, Card, ConfirmDialog, Empty, ErrorState, HintBanner, Input, PageHeader, Screen, Select, Skeleton, ThemePicker } from '../../src/components/ui';
 import { MemberManager } from '../../src/components/MemberManager';
 import { TemplateEditor } from '../../src/components/TemplateEditor';
 import { ChainEditor } from '../../src/components/ChainEditor';
@@ -33,7 +33,6 @@ export default function Settings() {
   const me = useMe();
   const active = useActiveMembership(me.data);
   const org = useOrgId();
-  const toast = useToast();
   const [copied, setCopied] = useState(false);
   const canWrite = active ? atLeast(active.role, 'owner') : false;
 
@@ -51,7 +50,7 @@ export default function Settings() {
 
       {!canWrite ? (
         <HintBanner id="settings-readonly">
-          Only owners can change these settings — you're viewing read-only.
+          Only owners can change these settings — you’re viewing read-only.
         </HintBanner>
       ) : null}
 
@@ -71,7 +70,7 @@ export default function Settings() {
         </View>
         <Text style={{ fontSize: 12, color: t.ink3 }}>
           Share this ID with people who want to request access — they paste it on the
-          "join" screen. For instant joins, mint an invite link below instead.
+          “join” screen. For instant joins, mint an invite link below instead.
         </Text>
       </Card>
 
@@ -94,7 +93,7 @@ export default function Settings() {
         <Card style={{ gap: 8 }}>
           <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>Members &amp; roles</Text>
           <Text style={{ fontSize: 12, color: t.ink3 }}>
-            Roles decide what each member can do — see the descriptions under each name. Owners are set at org creation and can't be changed here.
+            Roles decide what each member can do — see the descriptions under each name. Owners are set at org creation and can’t be changed here.
           </Text>
           <MemberManager />
         </Card>
@@ -341,7 +340,7 @@ function Templates({ canWrite }) {
           ) : null}
         </View>
         <Text style={{ fontSize: 12, color: t.ink3 }}>
-          Reusable step lists that become a project's checklist. A project picks up a
+          Reusable step lists that become a project’s checklist. A project picks up a
           template when it needs that track (papers / logistics) AND the event types
           match — or the template has no event type.
         </Text>
@@ -444,7 +443,7 @@ function Chains({ canWrite }) {
         </View>
         <Text style={{ fontSize: 12, color: t.ink3 }}>
           A chain is the signing route for a paper. When an officer registers a document
-          whose type matches a chain's doc type, these steps attach in order —
+          whose type matches a chain’s doc type, these steps attach in order —
           automatically. The doc type must match exactly.
         </Text>
         {c.isLoading ? <Skeleton style={{ height: 96 }} /> : null}

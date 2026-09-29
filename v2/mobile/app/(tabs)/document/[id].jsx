@@ -221,7 +221,7 @@ export default function DocumentDetail() {
             }}>
               <AlertTriangle size={16} color={t.alert} style={{ marginTop: 2 }} />
               <Text style={{ flex: 1, fontSize: 13, color: t.ink2 }}>
-                No signatory chain matches {d.data.doc_type} — this paper isn't routed for signatures.
+                No signatory chain matches {d.data.doc_type} — this paper isn’t routed for signatures.
                 {isOwner ? ' Add a chain in Settings → chains, or attach one below.' : ' Ask an owner to configure one, or attach an existing chain below.'}
               </Text>
             </View>
@@ -413,7 +413,7 @@ export default function DocumentDetail() {
         <Field label="Where is it now?"><Input value={location} onChangeText={setLocation} /></Field>
         <Field label="Note (optional)"><Input value={note} onChangeText={setNote} /></Field>
         <Text style={{ fontSize: 12, color: t.ink3 }}>
-          Photos can't be changed on a movement — delete and re-record to swap a photo.
+          Photos can’t be changed on a movement — delete and re-record to swap a photo.
         </Text>
         <Button style={{ width: '100%' }} onPress={() => editMovement.mutate()}
                 disabled={!location || editMovement.isPending} busy={editMovement.isPending}>

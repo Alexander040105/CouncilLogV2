@@ -1,10 +1,10 @@
 /** RN port of web/src/components/ui.jsx — same component names and props so
  *  screens translate almost line-for-line (div→View, button→Button, select→Select).
  *  All styling resolves through useTheme() tokens — never hardcode colors. */
-import { Component, useEffect, useRef, useState } from 'react';
+import { Component, useEffect, useState } from 'react';
 import {
   ActivityIndicator, Animated, Image, KeyboardAvoidingView, Modal, Platform,
-  Pressable, RefreshControl, ScrollView, Text, TextInput, View,
+  Pressable, RefreshControl, ScrollView, Text, TextInput, useAnimatedValue, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -285,7 +285,7 @@ export function HintBanner({ id, children }) {
   const [dismissed, setDismissed] = useState(true); // hide until storage says otherwise
   useEffect(() => {
     AsyncStorage.getItem(KEY).then((v) => setDismissed(v === '1')).catch(() => setDismissed(false));
-  }, [id]);
+  }, [KEY]);
   if (dismissed) return null;
   return (
     <View style={{
@@ -308,7 +308,7 @@ export function HintBanner({ id, children }) {
 
 export function Skeleton({ style }) {
   const { t } = useTheme();
-  const opacity = useRef(new Animated.Value(0.5)).current;
+  const opacity = useAnimatedValue(0.5);
   useEffect(() => {
     const loop = Animated.loop(Animated.sequence([
       Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
@@ -370,7 +370,11 @@ export function Sheet({ open, onClose, children, title }) {
  *  matches exactly (used for account/org deletion). */
 export function ConfirmDialog({ open, onClose, onConfirm, title, body, confirmLabel = 'Confirm', danger = true, busy, requireText }) {
   const [typed, setTyped] = useState('');
-  useEffect(() => { if (!open) setTyped(''); }, [open]);
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (!open) setTyped('');
+  }
   const confirmed = !requireText || typed === requireText;
   return (
     <Sheet open={open} onClose={onClose} title={title}>
@@ -411,7 +415,7 @@ export function Avatar({ name, url, size = 28 }) {
 
 /** Theme picker — system + 4 variants via a Sheet. */
 export function ThemePicker({ style }) {
-  const { t, choice, setChoice } = useTheme();
+  const { choice, setChoice } = useTheme();
   return (
     <Select
       value={choice}
