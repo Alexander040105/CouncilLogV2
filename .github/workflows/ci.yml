@@ -1,0 +1,89 @@
+name: ci
+
+# Runs the API's test suite, the web app's build, and the mobile app's
+# bundling on every push and on pull requests into main — so a broken
+# commit shows up before it merges.
+on:
+  push:
+    paths-ignore: ['**.md']        # docs-only pushes don't need a run
+  pull_request:
+    branches: [main]
+    paths-ignore: ['**.md']
+  workflow_dispatch:               # manual "Run workflow" button in the Actions tab
+
+concurrency:
+  # a newer push on the same branch cancels the older, now-stale run
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read                   # jobs only read the code — nothing else
+
+jobs:
+  api:
+    # runs the FastAPI test suite — pure sqlite, no secrets or services needed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: v2/api/requirements.txt
+      - name: Install API dependencies
+        working-directory: v2/api
+        run: pip install -r requirements.txt
+      - name: Run pytest
+        working-directory: v2/api
+        run: python -m pytest
+
+  web:
+    # verifies the React app still builds — needs no env vars (VITE_* is
+    # only checked at runtime, never during vite build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: v2/web/package-lock.json
+      - name: Install web dependencies
+        working-directory: v2/web
+        run: npm ci
+      - name: Build the web app
+        working-directory: v2/web
+        run: npm run build
+
+  mobile:
+    # bundles the Expo app — catches broken imports/syntax in the React
+    # Native code without needing a device or emulator
+    if: hashFiles('v2/mobile/package.json') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: v2/mobile/package-lock.json
+      - name: Install mobile dependencies
+        working-directory: v2/mobile
+        run: npm ci                       # .npmrc already pins legacy-peer-deps
+      - name: Bundle the Expo app (compile check)
+        working-directory: v2/mobile
+        env:
+          # placeholders — bundling only inlines them, the code never runs
+          EXPO_PUBLIC_API_URL: http://localhost
+          EXPO_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: placeholder
+        run: npx expo export --platform android --output-dir dist-ci
+
+  ci:
+    # single gate check — GitHub branch protection requires just this name,
+    # so adding more jobs later never means editing the protection rule
+    # skipped needs (e.g. mobile on branches without v2/mobile/) count as OK
+    needs: [api, web, mobile]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "api tests, web build, and mobile bundle all passed"
