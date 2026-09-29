@@ -34,6 +34,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="attendance" options={{ title: 'Attendance', tabBarIcon: ({ color }) => <CalendarCheck size={22} color={color} /> }} />
       <Tabs.Screen name="projects" options={{ title: 'Projects', tabBarIcon: ({ color }) => <FolderKanban size={22} color={color} /> }} />
       <Tabs.Screen name="more" options={{ title: 'More', tabBarIcon: ({ color }) => <MoreHorizontal size={22} color={color} /> }} />
+      <Tabs.Screen name="tasks" options={HIDDEN} />
       <Tabs.Screen name="documents" options={HIDDEN} />
       <Tabs.Screen name="document/[id]" options={HIDDEN} />
       <Tabs.Screen name="project/[id]" options={HIDDEN} />

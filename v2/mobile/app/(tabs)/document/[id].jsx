@@ -13,6 +13,7 @@ import { useToast } from '../../../src/lib/toast';
 import { useTheme } from '../../../src/lib/theme';
 import { useMe, useActiveMembership } from '../../../src/lib/me';
 import { PhotoPicker } from '../../../src/components/PhotoPicker';
+import { ChainFlow } from '../../../src/components/ChainFlow';
 import { Button, Card, CheckRow, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, Screen, Select, Sheet, Skeleton } from '../../../src/components/ui';
 
 export default function DocumentDetail() {
@@ -154,8 +155,6 @@ export default function DocumentDetail() {
 
   const steps = d.signatory_steps;
   const RESOLVED = new Set(['signed', 'skipped', 'revision_requested']);
-  const rounds = [...new Set(steps.map((s) => s.round_no))].sort((a, b) => a - b);
-  const multiRound = rounds.length > 1;
   const pendingNow = steps.filter((s) => s.status === 'pending' && s.round_no === d.current_round);
   const resolvedSteps = steps.filter((s) => RESOLVED.has(s.status));
 
@@ -164,12 +163,6 @@ export default function DocumentDetail() {
     setRevNote('');
     setResend(new Set(resolvedSteps.map((s) => s.id)));
   };
-
-  const stepChip = (s) =>
-    s.status === 'revision_requested' ? { kind: 'alert', label: 'sent back' }
-    : s.status === 'superseded' ? { kind: 'skip', label: 'superseded' }
-    : s.status === 'signed' ? { kind: 'done', label: 'signed' }
-    : { kind: 'skip', label: 'skipped' };
 
   const miniBtn = {
     minHeight: 36, paddingHorizontal: 10, justifyContent: 'center',
@@ -252,70 +245,20 @@ export default function DocumentDetail() {
             ) : null}
           </View>
         ) : null}
-        <View style={{ gap: 12 }}>
-          {rounds.map((rn) => {
-            const rSteps = steps.filter((s) => s.round_no === rn);
-            const rev = (d.revisions ?? []).find((r) => r.round_no === rn);
-            return (
-              <View key={rn} style={{ gap: 6 }}>
-                {rn > 1 && rev ? (
-                  <View style={{
-                    flexDirection: 'row', gap: 8, alignItems: 'flex-start',
-                    borderRadius: t.radiusCard, borderWidth: Math.max(t.boxWidth, 1), borderColor: t.alert, padding: 10,
-                  }}>
-                    <Undo2 size={14} color={t.alert} style={{ marginTop: 1 }} />
-                    <Text style={{ flex: 1, fontSize: 12, color: t.ink2 }}>
-                      <Text style={{ fontWeight: '700' }}>Returned for revision</Text> — {rev.note}
-                      <Text style={{ color: t.ink3 }}>
-                        {nameOf(rev.created_by) ? ` · ${nameOf(rev.created_by)}` : ''}
-                        {' · '}{new Date(rev.created_at).toLocaleString()}
-                      </Text>
-                    </Text>
-                  </View>
-                ) : null}
-                {multiRound ? (
-                  <Text style={{ fontSize: 12, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink3 }}>
-                    Round {rn}{rn > 1 ? ' — revision' : ''}
-                  </Text>
-                ) : null}
-                {rSteps.map((s) => (
-                  <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <View style={{ flexShrink: 1 }}>
-                      <Text style={{ fontSize: 14, color: s.status !== 'pending' ? t.ink3 : t.ink, textDecorationLine: s.status !== 'pending' ? 'line-through' : 'none' }}>
-                        {s.ord}. {s.label}
-                      </Text>
-                      {s.office ? <Text style={{ fontSize: 12, color: t.ink3 }}>{s.office}</Text> : null}
-                      {s.note ? <Text style={{ fontSize: 12, color: t.ink3 }}>note: {s.note}</Text> : null}
-                    </View>
-                    {s.status === 'pending' ? (
-                      canWrite ? (
-                        <View style={{ flexDirection: 'row', gap: 4, flexShrink: 0 }}>
-                          <Pressable accessibilityRole="button" style={miniBtn}
-                                     onPress={() => advance.mutate({ stepId: s.id, status: 'signed' })}>
-                            <Text style={{ fontSize: 12, color: t.ink2, fontWeight: '700' }}>Sign</Text>
-                          </Pressable>
-                          <Pressable accessibilityRole="button" style={[miniBtn, { backgroundColor: 'transparent', borderWidth: 0 }]}
-                                     onPress={() => { setSkipStep(s); setSkipNote(''); }}>
-                            <Text style={{ fontSize: 12, color: t.ink2 }}>Skip</Text>
-                          </Pressable>
-                          <Pressable accessibilityRole="button" accessibilityLabel={`Send back for revision at ${s.label}`}
-                                     style={[miniBtn, { backgroundColor: 'transparent', borderWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 3 }]}
-                                     onPress={() => openRevision(s)}>
-                            <Undo2 size={12} color={t.ink2} /><Text style={{ fontSize: 12, color: t.ink2 }}>Back</Text>
-                          </Pressable>
-                        </View>
-                      ) : (
-                        <Chip kind="pending" label="awaiting signature" />
-                      )
-                    ) : (
-                      <Chip kind={stepChip(s).kind} label={stepChip(s).label} />
-                    )}
-                  </View>
-                ))}
-              </View>
-            );
-          })}
-        </View>
+        {d.signatory_steps.length > 0 ? (
+          <ChainFlow
+            steps={steps}
+            revisions={d.revisions}
+            movements={d.movements}
+            currentRound={d.current_round}
+            nameOf={nameOf}
+            canWrite={canWrite}
+            docId={id}
+            onSign={(s) => advance.mutate({ stepId: s.id, status: 'signed' })}
+            onSkip={(s) => { setSkipStep(s); setSkipNote(''); }}
+            onSendBack={(s) => openRevision(s)}
+          />
+        ) : null}
       </Card>
 
       <Card style={{ gap: 10 }}>

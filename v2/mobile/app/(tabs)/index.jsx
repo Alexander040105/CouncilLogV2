@@ -9,6 +9,7 @@ import { todayOrg, useOrgId } from '../../src/lib/org';
 import { useMe } from '../../src/lib/me';
 import { useTheme } from '../../src/lib/theme';
 import { Button, Card, Chip, Empty, ErrorState, HintBanner, PageHeader, Screen, Skeleton } from '../../src/components/ui';
+import { BellButton } from '../../src/components/BellButton';
 
 export default function Dashboard() {
   const me = useMe();
@@ -44,6 +45,7 @@ export default function Dashboard() {
       <PageHeader
         title="Today"
         description="Your duty day at a glance: file once, you’re accounted."
+        action={<BellButton />}
       />
 
       <HintBanner id="dashboard">
