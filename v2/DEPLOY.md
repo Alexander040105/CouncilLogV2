@@ -240,3 +240,27 @@ cd api && .venv/Scripts/python tests/smoke_e2e.py
 cd web && npm run build
 cd web && npx playwright test
 ```
+
+---
+
+## Require CI before merging to main
+
+`.github/workflows/ci.yml` runs the API test suite and the web build on
+every push and on pull requests into `main`. That makes breakage *visible*;
+the settings below make it *blocking* — a one-time GitHub UI change, not
+repo code.
+
+1. GitHub repo → **Settings → Branches → Add branch ruleset** (or the
+   classic "Add rule" if rulesets aren't shown).
+2. Target: `main`.
+3. Enable **Require a pull request before merging**.
+4. Enable **Require status checks to pass** → in the check picker, search
+   for **`ci`** and select it.
+   - Gotcha: `ci` only appears in the picker **after the workflow has run
+     at least once** (any push or PR). Push first, then set this.
+5. Optional but recommended: **Require branches to be up to date before
+   merging** — guarantees the check ran against the exact code being merged.
+
+Why one `ci` check instead of `api` + `web` separately: the gate job only
+passes when every real job passes, so new jobs added later are covered
+automatically — the protection rule never needs editing.

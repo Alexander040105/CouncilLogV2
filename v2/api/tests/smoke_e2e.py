@@ -169,6 +169,75 @@ if item:
     s, r = api("PATCH", f"/orgs/{org_a}/checklist-items/{item['id']}", tok_b, {"done": True}, org=org_a)
     check("officer checks item", s == 200 and r["data"]["done"], f"{s}")
 
+# ── 6b. Template PATCH/DELETE, flags, instantiate guard ────────────────
+tpl_id = tpl["data"]["id"]
+s, r2 = api("POST", "/orgs", tok_c, {"name": "Other Dept", "slug": f"{SLUG}-other", "school_year_label": "SY 2025-2026"})
+org_c = r2.get("id") or (r2.get("data") or {}).get("id")
+
+# cross-org isolation on the new endpoints (org_c owner poking org_a rows)
+s, r = api("PATCH", f"/orgs/{org_c}/checklist-templates/{tpl_id}", tok_c, {"name": "hijack"}, org=org_c)
+check("cross-org template patch -> 404", s == 404, f"{s}")
+s, r = api("DELETE", f"/orgs/{org_c}/checklist-templates/{tpl_id}", tok_c, org=org_c)
+check("cross-org template delete -> 404", s == 404, f"{s}")
+
+# owner PATCH: rename + wholesale item replace
+s, r = api("PATCH", f"/orgs/{org_a}/checklist-templates/{tpl_id}", tok_a,
+           {"name": "Paper processing v2",
+            "items": [{"ord": 1, "label": "Draft concept paper"},
+                      {"ord": 2, "label": "CHED letter",
+                       "rule_json": {"include_if_flag": "off_campus",
+                                     "due_days_before_event": 15}}]}, org=org_a)
+check("owner patches template", s == 200 and r["data"]["name"] == "Paper processing v2", f"{s}")
+s, r = api("GET", f"/orgs/{org_a}/checklist-templates", tok_a, org=org_a)
+tp = next((t for t in r["data"] if t["id"] == tpl_id), None)
+check("patch replaced items wholesale", tp and len(tp["items"]) == 2 and tp["items"][1]["label"] == "CHED letter",
+      str(tp)[:140] if tp else "not found")
+
+# non-owner writes denied
+s, r = api("PATCH", f"/orgs/{org_a}/checklist-templates/{tpl_id}", tok_b, {"name": "x"}, org=org_a)
+check("officer cannot patch template", s == 403, f"{s}")
+s, r = api("DELETE", f"/orgs/{org_a}/checklist-templates/{tpl_id}", tok_b, org=org_a)
+check("officer cannot delete template", s == 403, f"{s}")
+
+# re-instantiate populated project -> 409; append=true -> duplicates on purpose
+s, r = api("POST", f"/orgs/{org_a}/projects/{pid}/instantiate", tok_a, {}, org=org_a)
+check("re-instantiate -> 409 ALREADY_INSTANTIATED",
+      s == 409 and r["error"]["code"] == "ALREADY_INSTANTIATED", f"{s} {str(r)[:120]}")
+s, r = api("POST", f"/orgs/{org_a}/projects/{pid}/instantiate", tok_a, {"append": True}, org=org_a)
+check("append=true re-instantiates", s == 201 and r.get("instantiated_items", 0) >= 1, f"{s}")
+
+# flags: a flagged project picks up the flag-gated CHED item (due T-15d)
+s, proj2 = api("POST", f"/orgs/{org_a}/projects", tok_a,
+               {"title": "Educ Tour", "event_type": "educ_tour", "target_date": "2026-11-30",
+                "needs_paper_processing": True, "flags": {"off_campus": True}}, org=org_a)
+pid2 = (proj2.get("data") or {}).get("id") if s == 201 else None
+check("project persists flags", s == 201 and (proj2.get("data") or {}).get("flags", {}).get("off_campus") is True,
+      f"{s} {str(proj2)[:140]}")
+s, r = api("POST", f"/orgs/{org_a}/projects/{pid2}/instantiate", tok_a, {}, org=org_a)
+check("flagged project instantiates gated item", s == 201 and r.get("instantiated_items") == 2, f"{s} {str(r)[:120]}")
+s, r = api("GET", f"/orgs/{org_a}/projects/{pid2}", tok_a, org=org_a)
+ched = [i for i in r.get("checklist", []) if "CHED" in i["label"]]
+check("CHED due = target - 15d", ched and ched[0].get("due_date") == "2026-11-15", str(ched)[:160])
+
+# unflagged same-type project does NOT get the gated item
+s, proj3 = api("POST", f"/orgs/{org_a}/projects", tok_a,
+               {"title": "Plain Trip", "event_type": "educ_tour",
+                "needs_paper_processing": True}, org=org_a)
+pid3 = (proj3.get("data") or {}).get("id") if s == 201 else None
+s, r = api("POST", f"/orgs/{org_a}/projects/{pid3}/instantiate", tok_a, {}, org=org_a)
+check("unflagged project skips gated item", s == 201 and r.get("instantiated_items") == 1, f"{s} {str(r)[:120]}")
+
+# template delete: instances keep their snapshot, template_id nulls
+s, r = api("GET", f"/orgs/{org_a}/projects/{pid2}", tok_a, org=org_a)
+pre_del = len(r.get("checklist", []))
+s, r = api("DELETE", f"/orgs/{org_a}/checklist-templates/{tpl_id}", tok_a, org=org_a)
+check("owner deletes template", s == 200, f"{s}")
+s, r = api("GET", f"/orgs/{org_a}/projects/{pid2}", tok_a, org=org_a)
+check("checklist survives template delete (SET NULL provenance)",
+      s == 200 and len(r.get("checklist", [])) == pre_del
+      and all(i["template_id"] is None for i in r.get("checklist", [])),
+      f"{s} {str(r.get('checklist'))[:140]}")
+
 # ── 7. Documents ────────────────────────────────────────────────────────
 s, ch = api("POST", f"/orgs/{org_a}/signatory-chains", tok_a,
             {"name": "Concept paper route", "doc_type": "concept_paper",
@@ -263,6 +332,76 @@ s, r = api("POST", f"/orgs/{org_a}/documents/{did3}/revisions", tok_b,
            {"note": "x"}, org=org_a)
 check("unrouted doc revision -> 409", s == 409, f"{s}")
 
+# ── 7c. Chain PATCH/DELETE + conditional steps ─────────────────────────
+ch_id = ch["data"]["id"]
+s, r = api("PATCH", f"/orgs/{org_c}/signatory-chains/{ch_id}", tok_c, {"name": "hijack"}, org=org_c)
+check("cross-org chain patch -> 404", s == 404, f"{s}")
+s, r = api("DELETE", f"/orgs/{org_c}/signatory-chains/{ch_id}", tok_c, org=org_c)
+check("cross-org chain delete -> 404", s == 404, f"{s}")
+s, r = api("PATCH", f"/orgs/{org_a}/signatory-chains/{ch_id}", tok_b, {"name": "x"}, org=org_a)
+check("officer cannot patch chain", s == 403, f"{s}")
+
+# owner PATCH: add conditional RFP + Marketing steps to the concept-paper chain
+s, r = api("PATCH", f"/orgs/{org_a}/signatory-chains/{ch_id}", tok_a,
+           {"steps": [{"ord": 1, "label": "Adviser"},
+                      {"ord": 2, "label": "RFP desk",
+                       "condition_json": {"include_if_event_type": "webinar_intl"}},
+                      {"ord": 3, "label": "Marketing",
+                       "condition_json": {"include_if_flag": "has_merch"}},
+                      {"ord": 4, "label": "SD office"}]}, org=org_a)
+check("owner patches chain steps", s == 200, f"{s}")
+
+# already-routed doc keeps its snapshot — chain edits don't rewrite live routes
+s, d = api("GET", f"/orgs/{org_a}/documents/{did}", tok_a, org=org_a)
+check("routed doc keeps old snapshot after chain edit",
+      s == 200 and len(d.get("signatory_steps", [])) == 2
+      and "RFP" not in str(d.get("signatory_steps")), f"{s} {str(d.get('signatory_steps'))[:140]}")
+
+# event-type-gated step fires only via the linked project's event_type
+s, proj4 = api("POST", f"/orgs/{org_a}/projects", tok_a,
+               {"title": "Intl Webinar", "event_type": "webinar_intl"}, org=org_a)
+pid4 = (proj4.get("data") or {}).get("id") if s == 201 else None
+s, doc4 = api("POST", f"/orgs/{org_a}/documents", tok_b,
+              {"title": "Intl concept paper", "doc_type": "concept_paper", "project_id": pid4}, org=org_a)
+did4 = (doc4.get("data") or {}).get("id") if s == 201 else None
+s, d4 = api("GET", f"/orgs/{org_a}/documents/{did4}", tok_a, org=org_a)
+check("webinar_intl linked doc gets RFP step",
+      s == 200 and any("RFP" in x["label"] for x in d4.get("signatory_steps", [])),
+      f"{s} {str(d4.get('signatory_steps'))[:140]}")
+s, doc5 = api("POST", f"/orgs/{org_a}/documents", tok_b,
+              {"title": "Unlinked concept paper", "doc_type": "concept_paper"}, org=org_a)
+did5 = (doc5.get("data") or {}).get("id") if s == 201 else None
+s, d5 = api("GET", f"/orgs/{org_a}/documents/{did5}", tok_a, org=org_a)
+check("unlinked doc gets no conditional steps",
+      s == 200 and not any("RFP" in x["label"] or "Marketing" in x["label"]
+                           for x in d5.get("signatory_steps", [])),
+      f"{s} {str(d5.get('signatory_steps'))[:140]}")
+
+# flag-gated step via stored document flags — and attach_chain respects them
+s, doc6 = api("POST", f"/orgs/{org_a}/documents", tok_b,
+              {"title": "Merch letter", "doc_type": "letter", "flags": {"has_merch": True}}, org=org_a)
+did6 = (doc6.get("data") or {}).get("id") if s == 201 else None
+check("document persists flags",
+      s == 201 and (doc6.get("data") or {}).get("flags", {}).get("has_merch") is True,
+      f"{s} {str(doc6)[:140]}")
+s, r = api("POST", f"/orgs/{org_a}/documents/{did6}/attach-chain", tok_b, {"chain_id": ch_id}, org=org_a)
+check("attach-chain routes unrouted doc", s == 200, f"{s}")
+s, d6 = api("GET", f"/orgs/{org_a}/documents/{did6}", tok_a, org=org_a)
+check("attach_chain uses stored doc.flags (Marketing in, RFP out)",
+      s == 200 and any("Marketing" in x["label"] for x in d6.get("signatory_steps", []))
+      and not any("RFP" in x["label"] for x in d6.get("signatory_steps", [])),
+      f"{s} {str(d6.get('signatory_steps'))[:140]}")
+s, r = api("POST", f"/orgs/{org_a}/documents/{did6}/attach-chain", tok_b, {"chain_id": ch_id}, org=org_a)
+check("second attach-chain -> 409 CHAIN_EXISTS", s == 409 and r["error"]["code"] == "CHAIN_EXISTS", f"{s}")
+
+# chain delete is safe with routed docs (document steps have no FK back)
+s, r = api("DELETE", f"/orgs/{org_a}/signatory-chains/{ch_id}", tok_b, org=org_a)
+check("officer cannot delete chain", s == 403, f"{s}")
+s, r = api("DELETE", f"/orgs/{org_a}/signatory-chains/{ch_id}", tok_a, org=org_a)
+check("owner deletes chain", s == 200, f"{s}")
+s, d = api("GET", f"/orgs/{org_a}/documents/{did}", tok_a, org=org_a)
+check("routed doc unaffected by chain delete", s == 200 and len(d.get("signatory_steps", [])) >= 2, f"{s}")
+
 # ── 8. Contacts + audit ─────────────────────────────────────────────────
 s, r = api("POST", f"/orgs/{org_a}/contacts", tok_a, {"label": "Concept papers", "value": "SAS office, 2nd floor"}, org=org_a)
 check("contact added", s == 201, f"{s}")
@@ -272,10 +411,7 @@ s, r = api("GET", f"/orgs/{org_a}/audit", tok_b, org=org_a)
 check("audit denied to officer", s == 403, f"{s}")
 
 # ── 9. Tenant isolation hard stop ───────────────────────────────────────
-s, r = api("GET", f"/orgs/{org_a}/documents", tok_c, org=org_a)
-# tok_c was approved as member earlier! create a real outsider check:
-s, r2 = api("POST", "/orgs", tok_c, {"name": "Other Dept", "slug": f"{SLUG}-other", "school_year_label": "SY 2025-2026"})
-org_c = r2.get("id") or (r2.get("data") or {}).get("id")
+# org_c was created in §6b (tok_c is its owner, member of org_a)
 s, r = api("GET", f"/orgs/{org_c}/documents", tok_a, org=org_c)
 check("org A member cannot read org B documents", s in (403, 404), f"{s}")
 
@@ -332,6 +468,28 @@ check("removed member loses org access", s in (403, 404), f"{s}")
 s, r = call("POST", f"{SUPA}/auth/v1/token?grant_type=password", ANON,
             {"email": EMAIL_B, "password": PASS})
 check("banned user cannot sign in", s >= 400, f"{s} {str(r)[:120]}")
+
+# ── 11. Member-removal guards + org archive ─────────────────────────────
+# last-owner protection: the only owner can't be removed or demoted
+s, r = api("PATCH", f"/orgs/{org_a}/members/{uid_a}", tok_a, {"status": "removed"}, org=org_a)
+check("sole owner can't be removed", s == 409 and r["error"]["code"] == "SOLE_OWNER", f"{s} {str(r)[:140]}")
+
+# ordinary member removal still works (uid_c is a member of org_a)
+s, r = api("PATCH", f"/orgs/{org_a}/members/{uid_c}", tok_a, {"status": "removed"}, org=org_a)
+check("owner removes member", s == 200 and r["data"]["status"] == "removed", f"{s} {str(r)[:120]}")
+
+# archive: org vanishes for members, leaves /me, restore is admin-only
+s, r = api("POST", f"/orgs/{org_a}/archive", tok_a, {}, org=org_a)
+check("owner archives org", s == 200 and r["data"].get("archived_at"), f"{s} {str(r)[:120]}")
+s, r = api("GET", f"/orgs/{org_a}", tok_c, org=org_a)
+check("archived org 404s even for its removed member", s == 404, f"{s}")
+s, me_a = api("GET", "/me", tok_a)
+check("archived org leaves memberships",
+      all(m["org_id"] != org_a for m in me_a["memberships"]) and not me_a.get("is_admin"))
+s, r = api("POST", f"/admin/orgs/{org_a}/restore", tok_a)
+check("non-admin can't restore", s == 403, f"{s}")
+s, r = api("GET", "/admin/orgs", tok_c)
+check("/admin/orgs blocked for non-admin", s == 403, f"{s}")
 
 print(f"\n=== {len(ok)} passed, {len(fail)} failed ===")
 if fail: print("FAILED:", fail); sys.exit(1)

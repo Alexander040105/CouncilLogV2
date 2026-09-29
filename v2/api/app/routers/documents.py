@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import func
-from sqlmodel import select
+from sqlmodel import delete, select
 
 from ..deps import Membership, Session, authorize
 from ..errors import APIError, not_found
@@ -59,6 +59,44 @@ async def create_chain(org_id: uuid.UUID, body: ChainIn, session: Session, membe
     return {"data": c}
 
 
+class ChainPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    doc_type: str | None = Field(default=None, min_length=1, max_length=60)
+    steps: list[StepIn] | None = None  # provided → wholesale replace
+
+
+@router.patch("/orgs/{org_id}/signatory-chains/{chain_id}")
+async def patch_chain(org_id: uuid.UUID, chain_id: uuid.UUID, body: ChainPatch, session: Session, member: Membership = Depends(authorize("owner"))):
+    c = await session.get(SignatoryChain, chain_id)
+    if c is None or c.org_id != org_id:
+        raise not_found("signatory chain")
+    if body.name is not None:
+        c.name = body.name
+    if body.doc_type is not None:
+        c.doc_type = body.doc_type
+    if body.steps is not None:
+        await session.execute(delete(SignatoryStep).where(SignatoryStep.chain_id == c.id))
+        for s in body.steps:
+            session.add(SignatoryStep(chain_id=c.id, **s.model_dump()))
+    await audit(session, org_id=org_id, actor_id=member.user_id, action="chain.updated",
+                entity_type="signatory_chain", entity_id=c.id, metadata={"name": c.name})
+    await session.commit()
+    return {"data": c}
+
+
+@router.delete("/orgs/{org_id}/signatory-chains/{chain_id}")
+async def delete_chain(org_id: uuid.UUID, chain_id: uuid.UUID, session: Session, member: Membership = Depends(authorize("owner"))):
+    c = await session.get(SignatoryChain, chain_id)
+    if c is None or c.org_id != org_id:
+        raise not_found("signatory chain")
+    # Document steps are instantiated snapshots with no FK back — always safe.
+    await audit(session, org_id=org_id, actor_id=member.user_id, action="chain.deleted",
+                entity_type="signatory_chain", entity_id=c.id, metadata={"name": c.name})
+    await session.delete(c)
+    await session.commit()
+    return {"ok": True}
+
+
 # ── Documents + movements + step progression ────────────────────────────
 class DocIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
@@ -84,16 +122,18 @@ async def list_documents(org_id: uuid.UUID, session: Session, status: str | None
 
 @router.post("/orgs/{org_id}/documents", status_code=201)
 async def create_document(org_id: uuid.UUID, body: DocIn, session: Session, member: Membership = Depends(authorize("officer"))):
+    proj = None
     if body.project_id:
         proj = await session.get(Project, body.project_id)
         if proj is None or proj.org_id != org_id:
             raise not_found("project")
-        event_type = proj.event_type
-    else:
-        event_type = None
+    event_type = proj.event_type if proj else None
+    # explicit body flags win; otherwise inherit the linked project's flags
+    flags = body.flags or (proj.flags if proj else None) or {}
 
     doc = Document(org_id=org_id, project_id=body.project_id, title=body.title,
-                   doc_type=body.doc_type, created_by=uuid.UUID(member.user_id))
+                   doc_type=body.doc_type, flags=flags,
+                   created_by=uuid.UUID(member.user_id))
     session.add(doc)
     await session.flush()
 
@@ -108,7 +148,7 @@ async def create_document(org_id: uuid.UUID, body: DocIn, session: Session, memb
         raw = (await session.execute(select(SignatoryStep).where(
             SignatoryStep.chain_id == chain_id).order_by(SignatoryStep.ord))).scalars().all()
         for s in instantiate.instantiate_chain(
-                [x.model_dump() for x in raw], event_type=event_type, flags=body.flags):
+                [x.model_dump() for x in raw], event_type=event_type, flags=flags):
             session.add(DocumentSignatoryStep(
                 org_id=org_id, document_id=doc.id, ord=s["ord"], label=s["label"],
                 office=s.get("office")))
@@ -165,7 +205,7 @@ async def attach_chain(org_id: uuid.UUID, doc_id: uuid.UUID, body: AttachChain, 
     raw = (await session.execute(select(SignatoryStep).where(
         SignatoryStep.chain_id == chain.id).order_by(SignatoryStep.ord))).scalars().all()
     for s in instantiate.instantiate_chain(
-            [x.model_dump() for x in raw], event_type=event_type, flags={}):
+            [x.model_dump() for x in raw], event_type=event_type, flags=doc.flags or {}):
         session.add(DocumentSignatoryStep(
             org_id=org_id, document_id=doc.id, ord=s["ord"], label=s["label"],
             office=s.get("office")))

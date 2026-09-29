@@ -138,18 +138,32 @@ export function Skeleton({ className = '' }) {
 }
 
 export function Sheet({ open, onClose, children, title }) {
+  // hooks must run before the `!open` early return
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden'; // background scroll-lock
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-t-[var(--radius-sheet)] [border:var(--border-box)] [box-shadow:var(--shadow-2)] bg-[var(--color-surface-2)] p-5 sm:rounded-[var(--radius-sheet)]">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="relative flex max-h-[85vh] max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-[var(--radius-sheet)] [border:var(--border-box)] [box-shadow:var(--shadow-2)] bg-[var(--color-surface-2)] sm:rounded-[var(--radius-sheet)]">
+        <div className="flex items-center justify-between p-5 pb-4">
           <h2 className="heading-strong text-lg">{title}</h2>
           <button onClick={onClose} className="flex min-h-[44px] min-w-[44px] items-center justify-center text-[var(--color-ink-3)]" aria-label="Close">
             <X size={18} />
           </button>
         </div>
-        {children}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          {children}
+        </div>
       </div>
     </div>
   );

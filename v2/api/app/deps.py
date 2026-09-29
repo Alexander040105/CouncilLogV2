@@ -12,7 +12,7 @@ from sqlmodel import select
 
 from .db import get_session
 from .errors import APIError, forbidden
-from .models import OrgMember
+from .models import OrgMember, Organization, Profile
 from .security import AuthUser, verify_token
 
 ROLE_RANK = {"member": 0, "officer": 1, "adviser": 2, "owner": 3}
@@ -43,11 +43,30 @@ async def _membership(session: AsyncSession, org_id: UUID, user_id: str) -> OrgM
     return row
 
 
+async def is_platform_admin(session: AsyncSession, user: AuthUser) -> bool:
+    """profiles.is_admin — platform-wide flag on the user, survives email
+    changes. Admins act as owner in every org (authorize() bypass below)."""
+    profile = await session.get(Profile, UUID(user.id))
+    return bool(profile and profile.is_admin)
+
+
+async def require_platform_admin(session: Session, user: CurrentUser) -> AuthUser:
+    """Route dependency for /admin/* endpoints — org-less, platform-scoped."""
+    if not await is_platform_admin(session, user):
+        raise APIError(403, "FORBIDDEN", "Platform admins only")
+    return user
+
+
 def authorize(min_role: str = "member"):
     """Route dependency factory: resolves org membership for the caller.
 
     Usage:  member: Membership = Depends(authorize("officer"))
     Path must contain {org_id}.
+
+    Platform admins (profiles.is_admin) bypass membership entirely: they act
+    as owner in every org — including archived ones — and may cross orgs
+    regardless of the X-Org-Id header. Their actions still land in the org's
+    own audit log under their user id.
     """
 
     async def dep(
@@ -56,11 +75,18 @@ def authorize(min_role: str = "member"):
         user: CurrentUser,
         x_org_id: Annotated[str | None, Header()] = None,
     ) -> Membership:
-        if x_org_id and x_org_id != str(org_id):
+        admin = await is_platform_admin(session, user)
+        if x_org_id and x_org_id != str(org_id) and not admin:
             raise forbidden("Org context mismatch")
+        if admin:
+            return Membership(org_id=org_id, user_id=user.id, role="owner")
         m = await _membership(session, org_id, user.id)
         if m is None or m.status != "active":
             # 404 over 403 — don't confirm the org exists to outsiders
+            raise APIError(404, "NOT_FOUND", "Organization not found")
+        org = await session.get(Organization, org_id)
+        if org is None or org.archived_at is not None:
+            # archived orgs are invisible to members — same 404 as outsiders
             raise APIError(404, "NOT_FOUND", "Organization not found")
         if not m.role or ROLE_RANK[m.role] < ROLE_RANK[min_role]:
             raise forbidden(f"Requires role ≥ {min_role}")

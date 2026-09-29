@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { get, post, patch } from '../lib/api';
 import { currentOrgId, setCurrentOrg } from '../lib/org';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import { Button, Card, Field, Input } from '../components/ui';
@@ -65,6 +66,13 @@ export default function Onboarding() {
       await qc.invalidateQueries({ queryKey: ['me'] });
       nav('/');
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  // /onboarding sits outside AppShell — sign out must route to /login itself
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setCurrentOrg(null);
+    nav('/login');
   };
 
   const requestJoin = async () => {
@@ -162,6 +170,13 @@ export default function Onboarding() {
           </div>
         )}
         {err && <p className="text-sm text-[var(--color-status-alert)]">{err}</p>}
+        {/* escape hatch — org-less users have no other way out of this page */}
+        <div className="flex items-center justify-between gap-2 border-t border-[var(--color-line)] pt-3 text-xs text-[var(--color-ink-3)]">
+          <span className="truncate">Signed in as {session?.user?.email}</span>
+          <button className="label-strong min-h-[36px] shrink-0 px-2 hover:text-[var(--color-ink)]" onClick={signOut}>
+            Sign out
+          </button>
+        </div>
       </Card>
     </div>
   );

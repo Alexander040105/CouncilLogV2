@@ -15,3 +15,5 @@ __pycache__/
 # node
 node_modules/
 dist/
+test-results/          # playwright output — generated, not source
+COUNCIL_HANDBOOK_V2.md

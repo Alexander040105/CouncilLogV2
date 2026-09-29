@@ -56,6 +56,45 @@ def test_flag_conditions():
     assert len(instantiate.instantiate_chain(steps, event_type=None, flags={})) == 1
 
 
+def test_flag_gated_checklist_items():
+    items = [
+        {"ord": 1, "label": "always"},
+        {"ord": 2, "label": "CHED letter", "rule_json": {"include_if_flag": "off_campus"}},
+    ]
+    on = instantiate.instantiate_checklist(items, event_type=None, flags={"off_campus": True})
+    off = instantiate.instantiate_checklist(items, event_type=None, flags={"off_campus": False})
+    assert [i["label"] for i in on] == ["always", "CHED letter"]
+    assert [i["label"] for i in off] == ["always"]
+    # absent key is the same as false
+    assert [i["label"] for i in instantiate.instantiate_checklist(items, event_type=None)] == ["always"]
+
+
+def test_combined_flag_and_due_rule():
+    t = date(2026, 10, 30)
+    items = [
+        {"ord": 1, "label": "CHED letter",
+         "rule_json": {"include_if_flag": "off_campus", "due_days_before_event": 15}},
+    ]
+    on = instantiate.instantiate_checklist(
+        items, event_type=None, flags={"off_campus": True}, target_date=t)
+    assert len(on) == 1 and on[0]["due_date"] == date(2026, 10, 15)
+    assert instantiate.instantiate_checklist(items, event_type=None, flags={}, target_date=t) == []
+
+
+def test_event_and_flag_both_required():
+    # a rule carrying both keys must satisfy both (AND semantics)
+    items = [
+        {"ord": 1, "label": "x",
+         "rule_json": {"include_if_event_type": "webinar_intl", "include_if_flag": "off_campus"}},
+    ]
+    assert instantiate.instantiate_checklist(
+        items, event_type="webinar_intl", flags={"off_campus": True})
+    assert not instantiate.instantiate_checklist(
+        items, event_type="webinar_intl", flags={})
+    assert not instantiate.instantiate_checklist(
+        items, event_type="seminar", flags={"off_campus": True})
+
+
 def tpl(track, event_type=None):
     return NS(track=track, event_type=event_type)
 

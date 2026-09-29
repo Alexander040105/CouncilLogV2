@@ -208,6 +208,11 @@ contacts directory, invites, audit log (read-only table, filterable).
 **Onboarding.** Split: "Start your organization" vs "Join with code /
 request access" — two cards, one screen; Google button on both paths.
 
+**Guide (`/guide`).** The app's first Read-mode surface — comprehension over
+task-completion: prose sections, expandable worked examples (the starter
+library), and owner-only "Add to my org" install actions. Linked from
+Settings tabs and the preview/diagnosis surfaces where confusion happens.
+
 ## 4. Layout rules
 
 - **Mobile-first at 360px** — every surface designed there first; desktop

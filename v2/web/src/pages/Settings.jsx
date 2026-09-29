@@ -1,17 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
-import { Check, Copy } from 'lucide-react';
-import { get, post, put } from '../lib/api';
-import { atLeast, currentOrgId } from '../lib/org';
+import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
+import { Check, Copy, Plus } from 'lucide-react';
+import { get, post, put, del as delApi } from '../lib/api';
+import { atLeast, currentOrgId, setCurrentOrg } from '../lib/org';
+import { collectFlagNames, describeCondition, describeItemRule } from '../lib/rules';
 import { useToast } from '../lib/toast';
 import { Button, Card, ConfirmDialog, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Skeleton, ThemePicker } from '../components/ui';
 import { MemberManager } from '../components/MemberManager';
+import { TemplateEditor } from '../components/TemplateEditor';
+import { ChainEditor } from '../components/ChainEditor';
 
 const TABS = ['members', 'positions', 'duty', 'templates', 'chains', 'contacts', 'invites', 'audit'];
 
 export default function Settings() {
-  const [tab, setTab] = useState('positions');
+  // tab lives in the URL so guide/settings link-outs land on the right pane
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.includes(params.get('tab')) ? params.get('tab') : 'positions';
+  const setTab = (t) => setParams({ tab: t });
   const { active } = useOutletContext() ?? {};
   const org = currentOrgId();
   const toast = useToast();
@@ -86,7 +92,52 @@ export default function Settings() {
       {tab === 'contacts' && <Contacts canWrite={canWrite} />}
       {tab === 'invites' && <Invites />}
       {tab === 'audit' && <Audit />}
+
+      {canWrite && <DangerZone orgName={active?.org_name} />}
     </div>
+  );
+}
+
+// ── Danger zone ─────────────────────────────────────────────────────────
+function DangerZone({ orgName }) {
+  const org = currentOrgId();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+
+  const archive = useMutation({
+    mutationFn: () => post(`/orgs/${org}/archive`),
+    onSuccess: async () => {
+      // memberships now empty → /me refetch drops the org → AppShell lands
+      // on /onboarding. Clear the stored pick first so nothing queries a
+      // dead org in the meantime.
+      setCurrentOrg(null);
+      await qc.invalidateQueries({ queryKey: ['me'] });
+    },
+    onError: (e) => { setOpen(false); toast.error(e.message); },
+  });
+
+  return (
+    <Card className="space-y-3 border-[var(--color-status-alert)]/40">
+      <h2 className="label-strong text-[var(--color-status-alert)]">Danger zone</h2>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-[var(--color-ink-2)]">
+          Archive this org — it disappears for every member, including you.
+          Nothing is deleted; a CounciLog admin can bring it back.
+        </p>
+        <Button variant="danger" onClick={() => setOpen(true)}>Archive org</Button>
+      </div>
+      <ConfirmDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        onConfirm={() => archive.mutate()}
+        busy={archive.isPending}
+        title={`Archive ${orgName ?? 'this org'}?`}
+        body="Every member loses access immediately — projects, papers, journals, all hidden. Nothing is deleted and the audit trail stays, but only a CounciLog admin can restore it."
+        confirmLabel="Archive org"
+        requireText={orgName}
+      />
+    </Card>
   );
 }
 
@@ -222,17 +273,36 @@ function Duty({ canWrite }) {
 }
 
 // ── Checklist templates ─────────────────────────────────────────────────
+const EVENT_TYPE_SUGGESTIONS = ['seminar', 'competition', 'webinar', 'webinar_intl',
+                                'outside', 'ces', 'educ_tour', 'merch'];
+
+function LibraryCard() {
+  return (
+    <Card className="space-y-1">
+      <div className="text-sm font-medium">New here?</div>
+      <p className="text-xs text-[var(--color-ink-3)]">
+        The Guide has worked examples you can load and adapt — with notes on why
+        each is built the way it is.{' '}
+        <Link to="/guide#library" className="text-[var(--color-accent)] underline">Open the starter library</Link>
+      </p>
+    </Card>
+  );
+}
+
 function Templates({ canWrite }) {
   const org = currentOrgId();
   const qc = useQueryClient();
   const toast = useToast();
-  const [name, setName] = useState('');
-  const [track, setTrack] = useState('paper');
-  const [evt, setEvt] = useState('');
-  const [items, setItems] = useState('');
+  const [editor, setEditor] = useState(null); // {template} or {} for new
+  const [deleting, setDeleting] = useState(null);
   const t = useQuery({
     queryKey: ['templates', org],
     queryFn: () => get(`/orgs/${org}/checklist-templates`),
+    enabled: !!org,
+  });
+  const chains = useQuery({
+    queryKey: ['chains', org],
+    queryFn: () => get(`/orgs/${org}/signatory-chains`),
     enabled: !!org,
   });
   const projects = useQuery({
@@ -240,65 +310,92 @@ function Templates({ canWrite }) {
     queryFn: () => get(`/orgs/${org}/projects?pageSize=100`),
     enabled: !!org,
   });
-  const knownEventTypes = [...new Set(
-    (projects.data?.data ?? []).map((p) => p.event_type).filter(Boolean))].sort();
-  const add = useMutation({
-    mutationFn: () => post(`/orgs/${org}/checklist-templates`, {
-      name, track, event_type: evt.trim() || null,
-      items: items.split('\n').filter(Boolean).map((label, i) => ({ ord: i + 1, label })),
-    }),
+  const knownEventTypes = [...new Set([
+    ...EVENT_TYPE_SUGGESTIONS,
+    ...(projects.data?.data ?? []).map((p) => p.event_type),
+    ...(t.data?.data ?? []).map((x) => x.event_type),
+  ].filter(Boolean))].sort();
+  const flagNames = collectFlagNames({ chains: chains.data?.data, templates: t.data?.data });
+  const del = useMutation({
+    mutationFn: (id) => delApi(`/orgs/${org}/checklist-templates/${id}`),
     onSuccess: () => {
-      toast.success('Template created.');
-      setName(''); setEvt(''); setItems('');
+      toast.success('Template deleted — generated checklists keep their copies.');
+      setDeleting(null);
       qc.invalidateQueries({ queryKey: ['templates', org] });
     },
     onError: (e) => toast.error(e.message),
   });
 
   return (
-    <Card className="space-y-3">
-      <div className="text-sm font-medium">Checklist templates</div>
-      <div className="text-xs text-[var(--color-ink-3)]">
-        Reusable step lists that become a project's checklist. A project picks up a
-        template when it needs that track (papers / logistics) AND the event types
-        match — or the template has no event type.
-      </div>
-      {t.isLoading && <Skeleton className="h-24" />}
-      {t.isError && <ErrorState error={t.error} retry={t.refetch} />}
-      {t.data && t.data.data.length === 0 && (
-        <Empty title="No templates" hint="e.g. a paper-processing checklist for events. Projects will show 'no templates exist' until you add one." />
-      )}
-      {t.data?.data.map((x) => (
-        <div key={x.id} className="rounded-[var(--radius-card)] [border:var(--border-box)] p-2">
-          <div className="text-sm font-medium">{x.name}</div>
-          <div className="text-xs text-[var(--color-ink-3)]">
-            {x.track === 'both' ? 'any project' : `projects needing ${x.track}`}
-            {x.event_type ? ` · only "${x.event_type}" events` : ' · any event type'}
-          </div>
-          <ul className="ml-4 list-disc text-xs text-[var(--color-ink-2)]">
-            {x.items.map((i, k) => <li key={k}>{i.label}</li>)}
-          </ul>
+    <>
+      <LibraryCard />
+      <Card className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-medium">Checklist templates</div>
+          {canWrite && (
+            <Button variant="secondary" onClick={() => setEditor({})}><Plus size={16} />New template</Button>
+          )}
         </div>
-      ))}
-      <Field label="New template name"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-      <Field label="Track" hint="paper = signatory-routed docs · logistics = venue/equipment · both = applies to either">
-        <select className="min-h-[44px] w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 text-sm"
-                value={track} onChange={(e) => setTrack(e.target.value)}>
-          <option value="paper">paper</option><option value="logistics">logistics</option><option value="both">both</option>
-        </select>
-      </Field>
-      <Field label="Event type (optional)" hint="Leave blank to match every event type — or scope to one, e.g. webinar_intl.">
-        <Input list="tmpl-event-types" value={evt} onChange={(e) => setEvt(e.target.value)} placeholder="any" />
-        <datalist id="tmpl-event-types">
-          {knownEventTypes.map((t2) => <option key={t2} value={t2} />)}
-        </datalist>
-      </Field>
-      <Field label="Items (one per line)" hint="Each line becomes one checklist item, in this order.">
-        <textarea className="min-h-24 w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] p-2 text-sm"
-                  value={items} onChange={(e) => setItems(e.target.value)} />
-      </Field>
-      <Button onClick={() => add.mutate()} disabled={!canWrite || !name || !items || add.isPending}>Create template</Button>
-    </Card>
+        <div className="text-xs text-[var(--color-ink-3)]">
+          Reusable step lists that become a project's checklist. A project picks up a
+          template when it needs that track (papers / logistics) AND the event types
+          match — or the template has no event type.
+        </div>
+        {t.isLoading && <Skeleton className="h-24" />}
+        {t.isError && <ErrorState error={t.error} retry={t.refetch} />}
+        {t.data && t.data.data.length === 0 && (
+          <Empty title="No templates"
+                 hint={canWrite
+                   ? 'Create one, or load a worked example from the starter library in the Guide.'
+                   : 'Projects will show "no templates exist" until an owner adds one.'}
+                 action={canWrite ? <Button variant="secondary" onClick={() => setEditor({})}>New template</Button> : null} />
+        )}
+        {t.data?.data.map((x) => (
+          <div key={x.id} className="space-y-1 rounded-[var(--radius-card)] [border:var(--border-box)] p-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-sm font-medium">{x.name}</div>
+                <div className="text-xs text-[var(--color-ink-3)]">
+                  {x.track === 'both' ? 'any project' : `projects needing ${x.track}`}
+                  {x.event_type ? ` · only "${x.event_type}" events` : ' · any event type'}
+                </div>
+              </div>
+              {canWrite && (
+                <div className="flex shrink-0 gap-1">
+                  <Button variant="ghost" className="min-h-[36px] px-2 text-xs"
+                          onClick={() => setEditor({ template: x })}>Edit</Button>
+                  <Button variant="ghost" className="min-h-[36px] px-2 text-xs text-[var(--color-status-alert)]"
+                          onClick={() => setDeleting(x)}>Delete</Button>
+                </div>
+              )}
+            </div>
+            <ul className="ml-4 list-disc text-xs text-[var(--color-ink-2)]">
+              {x.items.map((i, k) => {
+                const rule = describeItemRule(i.rule_json);
+                return (
+                  <li key={k}>
+                    {i.label}{i.required === false ? ' (optional)' : ''}
+                    {i.hint && <span className="block text-[var(--color-ink-3)]">{i.hint}</span>}
+                    {rule && <span className="block text-[var(--color-ink-3)]">{rule}</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </Card>
+      <TemplateEditor
+        open={editor !== null} onClose={() => setEditor(null)}
+        template={editor?.template ?? null}
+        eventTypes={knownEventTypes} flagNames={flagNames} />
+      <ConfirmDialog
+        open={!!deleting} onClose={() => setDeleting(null)}
+        onConfirm={() => del.mutate(deleting.id)} busy={del.isPending}
+        title={`Delete "${deleting?.name}"?`}
+        body="Projects already generated from this template keep their copies — only the template goes away."
+        confirmLabel="Delete template"
+      />
+    </>
   );
 }
 
@@ -309,12 +406,16 @@ function Chains({ canWrite }) {
   const org = currentOrgId();
   const qc = useQueryClient();
   const toast = useToast();
-  const [name, setName] = useState('');
-  const [docType, setDocType] = useState('');
-  const [steps, setSteps] = useState('');
+  const [editor, setEditor] = useState(null); // {chain} or {} for new
+  const [deleting, setDeleting] = useState(null);
   const c = useQuery({
     queryKey: ['chains', org],
     queryFn: () => get(`/orgs/${org}/signatory-chains`),
+    enabled: !!org,
+  });
+  const templates = useQuery({
+    queryKey: ['templates', org],
+    queryFn: () => get(`/orgs/${org}/checklist-templates`),
     enabled: !!org,
   });
   const docs = useQuery({
@@ -324,65 +425,93 @@ function Chains({ canWrite }) {
   });
   const usedTypes = [...new Set((docs.data?.data ?? []).map((d) => d.doc_type))];
   const typeSuggestions = [...new Set([...usedTypes, ...STANDARD_DOC_TYPES])].sort();
+  const flagNames = collectFlagNames({ chains: c.data?.data, templates: templates.data?.data });
   const matchCount = (dt) => (docs.data?.data ?? []).filter((d) => d.doc_type === dt).length;
-  const add = useMutation({
-    mutationFn: () => post(`/orgs/${org}/signatory-chains`, {
-      name, doc_type: docType,
-      steps: steps.split('\n').filter(Boolean).map((label, i) => ({ ord: i + 1, label })),
-    }),
+  const del = useMutation({
+    mutationFn: (id) => delApi(`/orgs/${org}/signatory-chains/${id}`),
     onSuccess: () => {
-      toast.success('Chain created.');
-      setName(''); setDocType(''); setSteps('');
+      toast.success('Chain deleted — papers already routing keep their steps.');
+      setDeleting(null);
       qc.invalidateQueries({ queryKey: ['chains', org] });
     },
     onError: (e) => toast.error(e.message),
   });
 
   return (
-    <Card className="space-y-3">
-      <div className="text-sm font-medium">Signatory chains</div>
-      <div className="text-xs text-[var(--color-ink-3)]">
-        A chain is the signing route for a paper. When an officer registers a document
-        whose type matches a chain's doc type, these steps attach in order —
-        automatically. The doc type must match <span className="font-medium">exactly</span>.
-      </div>
-      {c.isLoading && <Skeleton className="h-24" />}
-      {c.isError && <ErrorState error={c.error} retry={c.refetch} />}
-      {c.data && c.data.data.length === 0 && (
-        <Empty title="No chains" hint="e.g. Concept paper → Adviser → SAS → School Director. Documents will register unrouted until you add chains." />
-      )}
-      {c.data?.data.map((x) => {
-        const n = matchCount(x.doc_type);
-        return (
-          <div key={x.id} className="rounded-[var(--radius-card)] [border:var(--border-box)] p-2">
-            <div className="text-sm font-medium">
-              {x.name} <span className="font-mono text-xs text-[var(--color-ink-3)]">· {x.doc_type}</span>
+    <>
+      <LibraryCard />
+      <Card className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-medium">Signatory chains</div>
+          {canWrite && (
+            <Button variant="secondary" onClick={() => setEditor({})}><Plus size={16} />New chain</Button>
+          )}
+        </div>
+        <div className="text-xs text-[var(--color-ink-3)]">
+          A chain is the signing route for a paper. When an officer registers a document
+          whose type matches a chain's doc type, these steps attach in order —
+          automatically. The doc type must match <span className="font-medium">exactly</span>.
+        </div>
+        {c.isLoading && <Skeleton className="h-24" />}
+        {c.isError && <ErrorState error={c.error} retry={c.refetch} />}
+        {c.data && c.data.data.length === 0 && (
+          <Empty title="No chains"
+                 hint={canWrite
+                   ? 'Create one, or load a worked example from the starter library in the Guide.'
+                   : 'Documents will register unrouted until an owner adds chains.'}
+                 action={canWrite ? <Button variant="secondary" onClick={() => setEditor({})}>New chain</Button> : null} />
+        )}
+        {c.data?.data.map((x) => {
+          const n = matchCount(x.doc_type);
+          return (
+            <div key={x.id} className="space-y-1 rounded-[var(--radius-card)] [border:var(--border-box)] p-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">
+                    {x.name} <span className="font-mono text-xs text-[var(--color-ink-3)]">· {x.doc_type}</span>
+                  </div>
+                  <div className={`text-xs ${n === 0 ? 'text-[var(--color-status-alert)]' : 'text-[var(--color-ink-3)]'}`}>
+                    {n === 0
+                      ? 'matches no registered papers — check the doc type spelling'
+                      : `covers ${n} registered paper${n === 1 ? '' : 's'}`}
+                  </div>
+                </div>
+                {canWrite && (
+                  <div className="flex shrink-0 gap-1">
+                    <Button variant="ghost" className="min-h-[36px] px-2 text-xs"
+                            onClick={() => setEditor({ chain: x })}>Edit</Button>
+                    <Button variant="ghost" className="min-h-[36px] px-2 text-xs text-[var(--color-status-alert)]"
+                            onClick={() => setDeleting(x)}>Delete</Button>
+                  </div>
+                )}
+              </div>
+              <ol className="ml-4 list-decimal text-xs text-[var(--color-ink-2)]">
+                {x.steps.map((s, k) => {
+                  const cond = describeCondition(s.condition_json);
+                  return (
+                    <li key={k}>
+                      {s.label}{s.office ? <span className="text-[var(--color-ink-3)]"> — {s.office}</span> : ''}
+                      {cond && <span className="block text-[var(--color-ink-3)]">{cond}</span>}
+                    </li>
+                  );
+                })}
+              </ol>
             </div>
-            <div className={`text-xs ${n === 0 ? 'text-[var(--color-status-alert)]' : 'text-[var(--color-ink-3)]'}`}>
-              {n === 0
-                ? 'matches no registered papers — check the doc type spelling'
-                : `covers ${n} registered paper${n === 1 ? '' : 's'}`}
-            </div>
-            <ol className="ml-4 list-decimal text-xs text-[var(--color-ink-2)]">
-              {x.steps.map((s, k) => <li key={k}>{s.label}</li>)}
-            </ol>
-          </div>
-        );
-      })}
-      <Field label="Chain name" hint="e.g. Standard concept paper route"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-      <Field label="Doc type" hint="Types already in use are suggested — must match the document's type exactly.">
-        <Input list="doc-types" value={docType} onChange={(e) => setDocType(e.target.value)} placeholder="concept_paper" />
-        <datalist id="doc-types">
-          {typeSuggestions.map((t2) => <option key={t2} value={t2} />)}
-        </datalist>
-      </Field>
-      <Field label="Steps in order (one per line)" hint="Each line is one signer, top to bottom — 1st signs first.">
-        <textarea className="min-h-24 w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] p-2 text-sm"
-                  value={steps} onChange={(e) => setSteps(e.target.value)}
-                  placeholder={'SSC President\nSAS routing\nSchool Director'} />
-      </Field>
-      <Button onClick={() => add.mutate()} disabled={!canWrite || !name || !docType || !steps || add.isPending}>Create chain</Button>
-    </Card>
+          );
+        })}
+      </Card>
+      <ChainEditor
+        open={editor !== null} onClose={() => setEditor(null)}
+        chain={editor?.chain ?? null}
+        docTypes={typeSuggestions} eventTypes={EVENT_TYPE_SUGGESTIONS} flagNames={flagNames} />
+      <ConfirmDialog
+        open={!!deleting} onClose={() => setDeleting(null)}
+        onConfirm={() => del.mutate(deleting.id)} busy={del.isPending}
+        title={`Delete "${deleting?.name}"?`}
+        body="Papers already routing on this chain keep their steps — only the chain goes away."
+        confirmLabel="Delete chain"
+      />
+    </>
   );
 }
 

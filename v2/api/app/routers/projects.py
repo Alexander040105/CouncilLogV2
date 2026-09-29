@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import func
-from sqlmodel import select
+from sqlmodel import delete, select
 
 from ..deps import Membership, Session, authorize, require_user_in_org
 from ..errors import APIError, not_found
@@ -59,7 +59,7 @@ async def create_project(org_id: uuid.UUID, body: ProjectIn, session: Session, b
     if body.owner_id:
         await require_user_in_org(session, org_id, str(body.owner_id))
     p = Project(org_id=org_id, owner_id=body.owner_id or uuid.UUID(member.user_id),
-                **body.model_dump(exclude={"owner_id", "flags"}))
+                **body.model_dump(exclude={"owner_id"}))
     session.add(p)
     await audit(session, org_id=org_id, actor_id=member.user_id, action="project.created",
                 entity_type="project", entity_id=p.id, metadata={"title": p.title})
@@ -78,15 +78,27 @@ async def get_project(org_id: uuid.UUID, project_id: uuid.UUID, session: Session
     return {"data": p, "checklist": items}
 
 
+class ProjectPatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    details: str | None = None
+    event_type: str | None = None
+    target_date: date | None = None
+    owner_id: uuid.UUID | None = None
+    status: str | None = Field(default=None, pattern="^(draft|active|done|archived)$")
+    needs_paper_processing: bool | None = None
+    needs_logistics: bool | None = None
+    flags: dict[str, bool] | None = None  # None → untouched (ProjectIn's {} would wipe)
+
+
 @router.patch("/orgs/{org_id}/projects/{project_id}")
-async def patch_project(org_id: uuid.UUID, project_id: uuid.UUID, body: ProjectIn, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("adviser"))):
+async def patch_project(org_id: uuid.UUID, project_id: uuid.UUID, body: ProjectPatch, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("adviser"))):
     p = await session.get(Project, project_id)
     if p is None or p.org_id != org_id:
         raise not_found("project")
     if body.owner_id and body.owner_id != p.owner_id:
         await require_user_in_org(session, org_id, str(body.owner_id))
     changed_lead = bool(body.owner_id) and body.owner_id != p.owner_id
-    for k, v in body.model_dump(exclude={"flags"}, exclude_none=True).items():
+    for k, v in body.model_dump(exclude_none=True).items():
         setattr(p, k, v)
     await audit(session, org_id=org_id, actor_id=member.user_id, action="project.updated",
                 entity_type="project", entity_id=p.id)
@@ -144,9 +156,55 @@ async def create_template(org_id: uuid.UUID, body: TemplateIn, session: Session,
     return {"data": t}
 
 
+class TemplatePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    track: str | None = Field(default=None, pattern="^(paper|logistics|both)$")
+    event_type: str | None = None          # explicit null clears the scope
+    items: list[TemplateItemIn] | None = None  # provided → wholesale replace
+
+
+@router.patch("/orgs/{org_id}/checklist-templates/{template_id}")
+async def patch_template(org_id: uuid.UUID, template_id: uuid.UUID, body: TemplatePatch, session: Session, member: Membership = Depends(authorize("owner"))):
+    t = await session.get(ChecklistTemplate, template_id)
+    if t is None or t.org_id != org_id:
+        raise not_found("checklist template")
+    if body.name is not None:
+        t.name = body.name
+    if body.track is not None:
+        t.track = body.track
+    if "event_type" in body.model_fields_set:
+        t.event_type = body.event_type
+    if body.items is not None:
+        await session.execute(delete(ChecklistTemplateItem).where(
+            ChecklistTemplateItem.template_id == t.id))
+        for it in body.items:
+            session.add(ChecklistTemplateItem(template_id=t.id, **it.model_dump()))
+    await audit(session, org_id=org_id, actor_id=member.user_id, action="template.updated",
+                entity_type="checklist_template", entity_id=t.id, metadata={"name": t.name})
+    await session.commit()
+    return {"data": t}
+
+
+@router.delete("/orgs/{org_id}/checklist-templates/{template_id}")
+async def delete_template(org_id: uuid.UUID, template_id: uuid.UUID, session: Session, member: Membership = Depends(authorize("owner"))):
+    t = await session.get(ChecklistTemplate, template_id)
+    if t is None or t.org_id != org_id:
+        raise not_found("checklist template")
+    # Generated checklists are snapshots; template_id clears via SET NULL FK.
+    instances = (await session.execute(select(func.count()).where(
+        ProjectChecklistItem.template_id == t.id))).scalar_one()
+    await audit(session, org_id=org_id, actor_id=member.user_id, action="template.deleted",
+                entity_type="checklist_template", entity_id=t.id,
+                metadata={"name": t.name, "instances": instances})
+    await session.delete(t)
+    await session.commit()
+    return {"ok": True}
+
+
 # ── Instantiation + checkoff ────────────────────────────────────────────
 class InstantiateBody(BaseModel):
     template_ids: list[uuid.UUID] | None = None  # None → auto-match by event_type+track
+    append: bool = False                          # skip the already-populated guard
 
 
 @router.post("/orgs/{org_id}/projects/{project_id}/instantiate", status_code=201)
@@ -154,6 +212,12 @@ async def instantiate_checklists(org_id: uuid.UUID, project_id: uuid.UUID, body:
     p = await session.get(Project, project_id)
     if p is None or p.org_id != org_id:
         raise not_found("project")
+
+    existing = (await session.execute(select(func.count()).where(
+        ProjectChecklistItem.project_id == project_id))).scalar_one()
+    if existing and not body.append:
+        raise APIError(409, "ALREADY_INSTANTIATED",
+                       f"Checklist already has {existing} item(s) — pass append=true to add duplicates on purpose")
 
     tq = select(ChecklistTemplate).where(ChecklistTemplate.org_id == org_id)
     if body.template_ids:
@@ -174,7 +238,8 @@ async def instantiate_checklists(org_id: uuid.UUID, project_id: uuid.UUID, body:
             ChecklistTemplateItem.template_id == t.id).order_by(ChecklistTemplateItem.ord))).scalars().all()
         for inst in instantiate.instantiate_checklist(
                 [i.model_dump() for i in raw_items],
-                event_type=p.event_type, target_date=p.target_date):
+                event_type=p.event_type, flags=p.flags or {},
+                target_date=p.target_date):
             session.add(ProjectChecklistItem(
                 org_id=org_id, project_id=p.id, template_id=t.id,
                 ord=inst["ord"], label=inst["label"], hint=inst.get("hint"),
