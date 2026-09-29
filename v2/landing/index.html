@@ -39,7 +39,7 @@
     <div class="cta-row" id="cta-row">
       <!-- filled by links.js render -->
       <a class="btn btn-primary" data-link="webUrl" href="#pick">Open the web app</a>
-      <span class="btn btn-ghost" data-link="androidUrl">Android app</span>
+      <a class="btn btn-ghost" data-link="androidUrl">Android app</a>
       <a class="btn btn-ghost" href="#iphone">On iPhone?</a>
     </div>
     <p class="fineprint">Same account, same org — browser and phone stay in sync.</p>
@@ -100,8 +100,13 @@
         <h3>On your phone</h3>
         <p>Duty check-ins and paper moves from the hallway.</p>
         <div class="cta-row">
-          <span class="btn btn-primary" data-link="androidUrl">Get the Android app</span>
+          <a class="btn btn-primary" data-link="androidUrl">Get the Android app</a>
         </div>
+        <p class="fineprint">
+          Downloads a <code>.apk</code> file. Android shows a standard warning
+          for any app shared outside the Play Store — tap <b>Download anyway</b>,
+          then open the file to install.
+        </p>
         <div class="qr-slot" data-slot="expoQr" hidden>
           <p class="fineprint">Developer preview — scan with Expo Go:</p>
           <img data-qr-img alt="Expo Go QR code for the CounciLog dev build" />
@@ -117,7 +122,6 @@
         account, same data.
       </p>
       <a class="btn btn-ghost" data-link="webUrl" href="#">Open the web app</a>
-    </div>
     </div>
   </section>
 </main>

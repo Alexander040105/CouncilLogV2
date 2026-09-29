@@ -39,6 +39,16 @@
     "scheme": "councilog",
     "runtimeVersion": {
       "policy": "appVersion"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "bfa0d506-b6ab-480b-99a2-822cd0e57afc"
+      }
+    },
+    "owner": "jonnnie",
+    "updates": {
+      "url": "https://u.expo.dev/bfa0d506-b6ab-480b-99a2-822cd0e57afc"
     }
   }
 }

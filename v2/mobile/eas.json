@@ -8,7 +8,8 @@
       "distribution": "internal",
       "android": {
         "withoutCredentials": true
-      }
+      },
+      "channel": "development"
     },
     "preview": {
       "distribution": "internal",
