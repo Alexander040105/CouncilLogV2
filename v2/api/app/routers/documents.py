@@ -14,6 +14,7 @@ from ..models import (Document, DocumentMovement, DocumentRevision,
 from ..pagination import envelope, org_today, page_params
 from ..services import instantiate, storage
 from ..services.audit import audit
+from ..services.idempotent import add_deduped, deduped_response
 
 router = APIRouter(tags=["documents"])
 
@@ -104,6 +105,7 @@ class DocIn(BaseModel):
     project_id: uuid.UUID | None = None
     chain_id: uuid.UUID | None = None  # override; else auto-match by doc_type
     flags: dict[str, bool] = {}
+    client_request_id: str | None = Field(default=None, max_length=64)
 
 
 @router.get("/orgs/{org_id}/documents")
@@ -133,9 +135,13 @@ async def create_document(org_id: uuid.UUID, body: DocIn, session: Session, memb
 
     doc = Document(org_id=org_id, project_id=body.project_id, title=body.title,
                    doc_type=body.doc_type, flags=flags,
-                   created_by=uuid.UUID(member.user_id))
-    session.add(doc)
-    await session.flush()
+                   created_by=uuid.UUID(member.user_id),
+                   client_request_id=body.client_request_id)
+    doc, deduped = await add_deduped(
+        session, doc, Document, org_id=org_id,
+        client_request_id=body.client_request_id)
+    if deduped:
+        return deduped_response(doc)
 
     # instantiate signatory steps from matching chain
     chain_id = body.chain_id
@@ -222,6 +228,8 @@ class MovementIn(BaseModel):
     location_text: str = Field(min_length=1, max_length=300)
     note: str | None = None
     photo_path: str | None = None
+    step_id: uuid.UUID | None = None   # which process card this evidence pins to
+    client_request_id: str | None = Field(default=None, max_length=64)
 
 
 @router.post("/orgs/{org_id}/documents/{doc_id}/movements", status_code=201)
@@ -231,14 +239,35 @@ async def add_movement(org_id: uuid.UUID, doc_id: uuid.UUID, body: MovementIn, s
         raise not_found("document")
     if body.photo_path and not body.photo_path.startswith(f"{org_id}/"):
         raise APIError(422, "BAD_PATH", "Photo path not scoped to org")
+    if body.step_id is not None:
+        step = await session.get(DocumentSignatoryStep, body.step_id)
+        if step is None or step.document_id != doc_id:
+            raise APIError(422, "STEP_MISMATCH",
+                           "step_id must be a signatory step of this document")
     mv = DocumentMovement(org_id=org_id, document_id=doc_id, moved_by=uuid.UUID(member.user_id),
                           **body.model_dump())
-    session.add(mv)
+    mv, deduped = await add_deduped(
+        session, mv, DocumentMovement, org_id=org_id,
+        client_request_id=body.client_request_id)
+    if deduped:
+        return deduped_response(mv)
     await audit(session, org_id=org_id, actor_id=member.user_id, action="document.moved",
                 entity_type="document", entity_id=doc.id,
                 metadata={"location": body.location_text})
     await session.commit()
     return {"data": mv}
+
+
+@router.get("/orgs/{org_id}/documents/{doc_id}/movements/{movement_id}/photo")
+async def movement_photo_url(org_id: uuid.UUID, doc_id: uuid.UUID, movement_id: uuid.UUID,
+                             session: Session, member: Membership = Depends(authorize())):
+    """Signed download URL for a movement's photo — the chain cards' evidence
+    thumbnails hit this (movement rows store private storage paths only)."""
+    mv = await _get_movement(org_id, doc_id, movement_id, session)
+    if not mv.photo_path:
+        raise not_found("movement photo")
+    return {"url": await storage.signed_download_url(mv.photo_path),
+            "expires_in": 900}
 
 
 class MovementPatch(BaseModel):

@@ -12,6 +12,7 @@ from ..models import (AttendanceDay, DutySchedule, JournalEntry, JournalPhoto,
                       OrgMember, Profile, Project, SchoolYear)
 from ..pagination import envelope, org_today, page_params
 from ..services.audit import audit
+from ..services.idempotent import add_deduped, deduped_response
 from ..services import storage
 from ..services.ratelimit import check_rate_limit
 
@@ -70,6 +71,7 @@ class EntryIn(BaseModel):
     description: str = Field(min_length=1, max_length=4000)
     project_id: uuid.UUID | None = None
     photos: list[dict] = []  # [{storage_path, mime, byte_size}]
+    client_request_id: str | None = Field(default=None, max_length=64)
 
 
 @router.post("/orgs/{org_id}/journal", status_code=201)
@@ -81,9 +83,13 @@ async def create_entry(org_id: uuid.UUID, body: EntryIn, session: Session, membe
         if proj is None or proj.org_id != org_id:
             raise not_found("project")
     entry = JournalEntry(org_id=org_id, member_id=uid, entry_date=day,
-                         description=body.description, project_id=body.project_id)
-    session.add(entry)
-    await session.flush()
+                         description=body.description, project_id=body.project_id,
+                         client_request_id=body.client_request_id)
+    entry, deduped = await add_deduped(
+        session, entry, JournalEntry, org_id=org_id,
+        client_request_id=body.client_request_id)
+    if deduped:
+        return deduped_response(entry)
     for p in body.photos:
         path = p.get("storage_path", "")
         if not path.startswith(f"{org_id}/"):

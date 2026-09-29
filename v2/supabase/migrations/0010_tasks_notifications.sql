@@ -26,6 +26,8 @@ create table tasks (
   project_id        uuid references projects(id) on delete set null,
   document_id       uuid references documents(id) on delete set null,
   journal_entry_id  uuid references journal_entries(id) on delete set null,
+  completed_by      uuid,
+  completed_at      timestamptz,
   client_request_id text,
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()

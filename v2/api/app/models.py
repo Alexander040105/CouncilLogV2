@@ -98,6 +98,9 @@ class AttendanceDay(SQLModel, table=True):
 
 class Project(SQLModel, table=True):
     __tablename__ = "projects"
+    # NULLs are distinct in unique indexes — constraint == migration's
+    # partial "where not null" index; declared here so test DDL enforces it.
+    __table_args__ = (UniqueConstraint("org_id", "client_request_id"),)
     id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
     org_id: uuid.UUID = Field(foreign_key="organizations.id")
     title: str
@@ -118,6 +121,7 @@ class Project(SQLModel, table=True):
 
 class JournalEntry(SQLModel, table=True):
     __tablename__ = "journal_entries"
+    __table_args__ = (UniqueConstraint("org_id", "client_request_id"),)
     id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
     org_id: uuid.UUID = Field(foreign_key="organizations.id")
     member_id: uuid.UUID
@@ -181,6 +185,7 @@ class ProjectChecklistItem(SQLModel, table=True):
 
 class Document(SQLModel, table=True):
     __tablename__ = "documents"
+    __table_args__ = (UniqueConstraint("org_id", "client_request_id"),)
     id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
     org_id: uuid.UUID = Field(foreign_key="organizations.id")
     project_id: uuid.UUID | None = Field(default=None, foreign_key="projects.id")
@@ -198,6 +203,7 @@ class Document(SQLModel, table=True):
 
 class DocumentMovement(SQLModel, table=True):
     __tablename__ = "document_movements"
+    __table_args__ = (UniqueConstraint("org_id", "client_request_id"),)
     id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
     org_id: uuid.UUID = Field(foreign_key="organizations.id")
     document_id: uuid.UUID = Field(foreign_key="documents.id")
@@ -313,6 +319,7 @@ class RateLimit(SQLModel, table=True):
 
 class Task(SQLModel, table=True):
     __tablename__ = "tasks"
+    __table_args__ = (UniqueConstraint("org_id", "client_request_id"),)  # see projects table
     id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
     org_id: uuid.UUID = Field(foreign_key="organizations.id")
     title: str
@@ -325,6 +332,8 @@ class Task(SQLModel, table=True):
     project_id: uuid.UUID | None = Field(default=None, foreign_key="projects.id")
     document_id: uuid.UUID | None = Field(default=None, foreign_key="documents.id")
     journal_entry_id: uuid.UUID | None = Field(default=None, foreign_key="journal_entries.id")
+    completed_by: uuid.UUID | None = None
+    completed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     client_request_id: str | None = None
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
     updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))

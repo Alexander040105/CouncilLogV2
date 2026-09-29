@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     mail_from: str = ""  # verified sender, e.g. "CounciLog <no-reply@yourdomain.com>"
     app_base_url: str = "http://localhost:5173"  # used for links inside emails
 
+    # POST /internal/reminders is org-less; this shared secret is its only
+    # guard. Vercel Cron (or any scheduler) sends it as x-cron-secret.
+    cron_secret: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

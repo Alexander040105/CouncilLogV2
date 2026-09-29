@@ -8,22 +8,13 @@ from sqlmodel import delete, select
 
 from ..deps import Membership, Session, authorize, require_user_in_org
 from ..errors import APIError, not_found
-from ..models import (ChecklistTemplate, ChecklistTemplateItem, Organization,
-                      Project, ProjectChecklistItem)
+from ..models import (ChecklistTemplate, ChecklistTemplateItem, Project,
+                      ProjectChecklistItem)
 from ..pagination import envelope, page_params
 from ..services import instantiate
 from ..services.audit import audit
-from ..services.notify import notify_assignment
-
-
-async def _maybe_notify_assignment(bg: BackgroundTasks, session: Session, org_id: uuid.UUID,
-                                   kind: str, title: str, assignee_id, actor_id: str) -> None:
-    """Queue an assignment email when the assignee isn't the actor."""
-    if not assignee_id or str(assignee_id) == actor_id:
-        return
-    org = await session.get(Organization, org_id)
-    bg.add_task(notify_assignment, org_name=org.name if org else "your org",
-                kind=kind, title=title, assignee_id=assignee_id)
+from ..services.idempotent import add_deduped, deduped_response
+from ..services.notify import fan_out_assignment
 
 router = APIRouter(tags=["projects"])
 
@@ -38,6 +29,7 @@ class ProjectIn(BaseModel):
     needs_paper_processing: bool = False
     needs_logistics: bool = False
     flags: dict[str, bool] = {}  # e.g. {"has_merch": true} for conditional steps/items
+    client_request_id: str | None = Field(default=None, max_length=64)
 
 
 @router.get("/orgs/{org_id}/projects")
@@ -60,11 +52,19 @@ async def create_project(org_id: uuid.UUID, body: ProjectIn, session: Session, b
         await require_user_in_org(session, org_id, str(body.owner_id))
     p = Project(org_id=org_id, owner_id=body.owner_id or uuid.UUID(member.user_id),
                 **body.model_dump(exclude={"owner_id"}))
-    session.add(p)
+    p, deduped = await add_deduped(
+        session, p, Project, org_id=org_id,
+        client_request_id=body.client_request_id)
+    if deduped:
+        return deduped_response(p)
     await audit(session, org_id=org_id, actor_id=member.user_id, action="project.created",
                 entity_type="project", entity_id=p.id, metadata={"title": p.title})
+    # inbox row must commit with the assign — fan-out runs before commit
+    await fan_out_assignment(bg=bg, session=session, org_id=org_id,
+                             actor_id=member.user_id, kind="project",
+                             title=p.title, assignee_id=p.owner_id,
+                             entity_type="project", entity_id=p.id)
     await session.commit()
-    await _maybe_notify_assignment(bg, session, org_id, "project", p.title, p.owner_id, member.user_id)
     return {"data": p}
 
 
@@ -105,9 +105,12 @@ async def patch_project(org_id: uuid.UUID, project_id: uuid.UUID, body: ProjectP
     if changed_lead:
         await audit(session, org_id=org_id, actor_id=member.user_id, action="project.assigned",
                     entity_type="project", entity_id=p.id, metadata={"assignee_id": str(body.owner_id)})
-    await session.commit()
     if changed_lead:
-        await _maybe_notify_assignment(bg, session, org_id, "project", p.title, body.owner_id, member.user_id)
+        await fan_out_assignment(bg=bg, session=session, org_id=org_id,
+                                 actor_id=member.user_id, kind="project",
+                                 title=p.title, assignee_id=body.owner_id,
+                                 entity_type="project", entity_id=p.id)
+    await session.commit()
     return {"data": p}
 
 
@@ -263,6 +266,26 @@ async def instantiate_checklists(org_id: uuid.UUID, project_id: uuid.UUID, body:
     return {"instantiated_items": created, "templates_used": len(templates), "reason": reason}
 
 
+@router.get("/orgs/{org_id}/checklist-items")
+async def list_checklist_items(org_id: uuid.UUID, session: Session,
+                               assignee_id: uuid.UUID | None = None,
+                               done: bool | None = None,
+                               member: Membership = Depends(authorize())):
+    """Flat list across projects — powers the 'what needs you' surfaces."""
+    q = (select(ProjectChecklistItem, Project.title)
+         .join(Project, Project.id == ProjectChecklistItem.project_id)
+         .where(ProjectChecklistItem.org_id == org_id))
+    if assignee_id:
+        q = q.where(ProjectChecklistItem.assignee_id == assignee_id)
+    if done is not None:
+        q = q.where(ProjectChecklistItem.done == done)
+    rows = (await session.execute(
+        q.order_by(ProjectChecklistItem.due_date.asc().nulls_last(),
+                   ProjectChecklistItem.created_at))).all()
+    return {"data": [{**item.model_dump(), "project_title": proj_title}
+                     for item, proj_title in rows]}
+
+
 class ChecklistItemPatch(BaseModel):
     done: bool | None = None
     assignee_id: uuid.UUID | None = None  # send explicit null to unassign
@@ -300,8 +323,10 @@ async def patch_item(org_id: uuid.UUID, item_id: uuid.UUID, body: ChecklistItemP
                     action="checklist_item.checked" if body.done else "checklist_item.unchecked",
                     entity_type="project_checklist_item", entity_id=it.id)
 
-    await session.commit()
     if assigned is not None:
-        await _maybe_notify_assignment(bg, session, org_id, "task", it.label,
-                                       assigned, member.user_id)
+        await fan_out_assignment(bg=bg, session=session, org_id=org_id,
+                                 actor_id=member.user_id, kind="checklist_item",
+                                 title=it.label, assignee_id=assigned,
+                                 entity_type="project", entity_id=it.project_id)
+    await session.commit()
     return {"data": it}
