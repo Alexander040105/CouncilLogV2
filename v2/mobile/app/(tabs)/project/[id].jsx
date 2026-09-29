@@ -5,7 +5,7 @@ import { Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, UserCheck } from 'lucide-react-native';
-import { get, patch, post } from '../../../src/lib/api';
+import { get, isQueued, patch, post, queuedMsg } from '../../../src/lib/api';
 import { atLeast, useOrgId } from '../../../src/lib/org';
 import { useAuth } from '../../../src/lib/auth';
 import { useToast } from '../../../src/lib/toast';
@@ -55,7 +55,9 @@ export default function ProjectDetail() {
         templateIds?.length ? { template_ids: templateIds, append } : {}),
     onSuccess: (r) => {
       setConfirmPick(false); setPickTemplate('');
-      if (r.instantiated_items > 0) {
+      if (isQueued(r)) {
+        toast.success(queuedMsg(r));
+      } else if (r.instantiated_items > 0) {
         toast.success(`Checklist generated — ${r.instantiated_items} item(s).`);
       } else {
         toast.error('Nothing generated — see the checklist card for why.');
@@ -79,7 +81,7 @@ export default function ProjectDetail() {
       patch(`/orgs/${org}/checklist-items/${itemId}`, { assignee_id }),
     onSuccess: (_r, v) => {
       setAssignItem(null);
-      toast.success(v.assignee_id ? "Task assigned — they'll be emailed." : 'Task unassigned.');
+      toast.success(queuedMsg(_r, v.assignee_id ? "Task assigned — they'll be emailed." : 'Task unassigned.'));
       qc.invalidateQueries({ queryKey: ['project', org, id] });
     },
     onError: (e) => toast.error(e.message),

@@ -5,7 +5,7 @@ import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, FileText, Plus, Route } from 'lucide-react-native';
-import { get, post } from '../../src/lib/api';
+import { get, post, queuedMsg } from '../../src/lib/api';
 import { atLeast, useOrgId } from '../../src/lib/org';
 import { useToast } from '../../src/lib/toast';
 import { useTheme } from '../../src/lib/theme';
@@ -138,8 +138,8 @@ export default function Documents() {
       title: form.title, doc_type: docType, chain_id: form.chain_id || null,
       project_id: form.project_id || null, flags: form.flags,
     }),
-    onSuccess: () => {
-      toast.success('Document registered — custody log started.');
+    onSuccess: (r) => {
+      toast.success(queuedMsg(r, 'Document registered — custody log started.'));
       setOpen(false); setForm({ title: '', chain_id: '', project_id: '', flags: {} }); setTypeSel(''); setCustomType('');
       qc.invalidateQueries({ queryKey: ['documents', org] });
     },

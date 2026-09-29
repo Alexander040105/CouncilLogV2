@@ -6,13 +6,14 @@ import { Image, Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NotebookPen, Pencil, Plus, Trash2 } from 'lucide-react-native';
-import { del, get, patch, post } from '../../src/lib/api';
+import { del, get, isQueued, patch, post, queuedMsg } from '../../src/lib/api';
+import { submitPhotoRecord } from '../../src/lib/offline';
 import { todayOrg, useOrgId } from '../../src/lib/org';
 import { useAuth } from '../../src/lib/auth';
 import { useMe, useActiveMembership } from '../../src/lib/me';
 import { useToast } from '../../src/lib/toast';
 import { useTheme } from '../../src/lib/theme';
-import { PhotoPicker, putToSignedUrl } from '../../src/components/PhotoPicker';
+import { PhotoPicker } from '../../src/components/PhotoPicker';
 import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Screen, Select, Sheet, Skeleton } from '../../src/components/ui';
 
 function PhotoThumb({ org, photo }) {
@@ -65,8 +66,8 @@ export default function Journal() {
 
   const noTasks = useMutation({
     mutationFn: () => post(`/orgs/${org}/attendance/no-tasks`, {}),
-    onSuccess: () => {
-      toast.success('Marked: no tasks today.');
+    onSuccess: (r) => {
+      toast.success(queuedMsg(r, 'Marked: no tasks today.'));
       qc.invalidateQueries({ queryKey: ['attendance'] });
       router.setParams({ notasks: undefined });
     },
@@ -107,18 +108,20 @@ export default function Journal() {
         });
         toast.success('Entry updated.');
       } else {
-        const uploaded = [];
-        for (const p of photos) {
-          const sign = await post(`/orgs/${org}/journal/photos/sign`, { mime: p.type, byte_size: p.size });
-          await putToSignedUrl(sign.upload_url, p);
-          uploaded.push({ storage_path: sign.path, mime: p.type, byte_size: p.size });
-        }
-        await post(`/orgs/${org}/journal`, {
-          description: desc,
-          project_id: projectId || null,
-          photos: uploaded,
+        const r = await submitPhotoRecord({
+          orgId: org,
+          signPath: `/orgs/${org}/journal/photos/sign`,
+          photos,
+          recordPath: `/orgs/${org}/journal`,
+          recordBody: {
+            description: desc,
+            project_id: projectId || null,
+            photos: '{{photos}}',
+          },
         });
-        toast.success('Entry posted — day documented.');
+        toast.success(isQueued(r)
+          ? 'Saved on this device — sends when you’re back online.'
+          : 'Entry posted — day documented.');
       }
       setComposeOpen(false); setEditing(null); setDesc(''); setPhotos([]); setProjectId('');
       qc.invalidateQueries({ queryKey: ['journal', org] });

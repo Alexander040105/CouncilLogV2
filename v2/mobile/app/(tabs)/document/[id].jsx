@@ -5,13 +5,14 @@ import { Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, Camera, PenLine, Pencil, Trash2, Undo2 } from 'lucide-react-native';
-import { del, get, patch, post } from '../../../src/lib/api';
+import { del, get, isQueued, patch, post, queuedMsg } from '../../../src/lib/api';
+import { submitPhotoRecord } from '../../../src/lib/offline';
 import { atLeast, todayOrg, useOrgId } from '../../../src/lib/org';
 import { useAuth } from '../../../src/lib/auth';
 import { useToast } from '../../../src/lib/toast';
 import { useTheme } from '../../../src/lib/theme';
 import { useMe, useActiveMembership } from '../../../src/lib/me';
-import { PhotoPicker, putToSignedUrl } from '../../../src/components/PhotoPicker';
+import { PhotoPicker } from '../../../src/components/PhotoPicker';
 import { Button, Card, CheckRow, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, Screen, Select, Sheet, Skeleton } from '../../../src/components/ui';
 
 export default function DocumentDetail() {
@@ -24,6 +25,7 @@ export default function DocumentDetail() {
   const [moveOpen, setMoveOpen] = useState(false);
   const [location, setLocation] = useState('');
   const [note, setNote] = useState('');
+  const [moveStep, setMoveStep] = useState('');   // step this move/photo belongs to
   const [photos, setPhotos] = useState([]);
   const [err, setErr] = useState(null);
   const [skipStep, setSkipStep] = useState(null);
@@ -68,8 +70,8 @@ export default function DocumentDetail() {
       note: revNote.trim(),
       resend_step_ids: [...resend],
     }),
-    onSuccess: () => {
-      toast.success('Sent back for revision — new round started.');
+    onSuccess: (r) => {
+      toast.success(queuedMsg(r, 'Sent back for revision — new round started.'));
       setRevStep(null); setRevNote(''); setResend(new Set());
       qc.invalidateQueries({ queryKey: ['document', org, id] });
     },
@@ -77,8 +79,8 @@ export default function DocumentDetail() {
   });
   const signAll = useMutation({
     mutationFn: () => post(`/orgs/${org}/documents/${id}/steps/sign-all`, {}),
-    onSuccess: () => {
-      toast.success('All pending steps signed.');
+    onSuccess: (r) => {
+      toast.success(queuedMsg(r, 'All pending steps signed.'));
       setSignAllOpen(false);
       qc.invalidateQueries({ queryKey: ['document', org, id] });
     },
@@ -86,27 +88,31 @@ export default function DocumentDetail() {
   });
   const attach = useMutation({
     mutationFn: () => post(`/orgs/${org}/documents/${id}/attach-chain`, { chain_id: pickChain }),
-    onSuccess: () => {
-      toast.success('Chain attached — this paper is now routing.');
+    onSuccess: (r) => {
+      toast.success(queuedMsg(r, 'Chain attached — this paper is now routing.'));
       setPickChain('');
       qc.invalidateQueries({ queryKey: ['document', org, id] });
     },
     onError: (e) => toast.error(e.message),
   });
   const move = useMutation({
-    mutationFn: async () => {
-      let photo_path = null;
-      const f = photos[0];
-      if (f) {
-        const sign = await post(`/orgs/${org}/journal/photos/sign`, { mime: f.type, byte_size: f.size });
-        await putToSignedUrl(sign.upload_url, f);
-        photo_path = sign.path;
-      }
-      return post(`/orgs/${org}/documents/${id}/movements`, { location_text: location, note: note || null, photo_path });
-    },
-    onSuccess: () => {
-      toast.success('Movement logged.');
-      setMoveOpen(false); setLocation(''); setNote(''); setPhotos([]);
+    mutationFn: async () => submitPhotoRecord({
+      orgId: org,
+      signPath: `/orgs/${org}/journal/photos/sign`,
+      photos,
+      recordPath: `/orgs/${org}/documents/${id}/movements`,
+      recordBody: {
+        location_text: location,
+        note: note || null,
+        step_id: moveStep || null,
+        photo_path: '{{photo_path}}',
+      },
+    }),
+    onSuccess: (r) => {
+      toast.success(isQueued(r)
+        ? 'Saved on this device — sends when you’re back online.'
+        : 'Movement logged.');
+      setMoveOpen(false); setLocation(''); setNote(''); setPhotos([]); setMoveStep('');
       qc.invalidateQueries({ queryKey: ['document', org, id] });
     },
     onError: (e) => { setErr(e.message); toast.error(e.message); },
@@ -114,8 +120,8 @@ export default function DocumentDetail() {
   const editMovement = useMutation({
     mutationFn: () => patch(`/orgs/${org}/documents/${id}/movements/${editMv.id}`, {
       location_text: location, note: note || null }),
-    onSuccess: () => {
-      toast.success('Movement updated.');
+    onSuccess: (r) => {
+      toast.success(queuedMsg(r, 'Movement updated.'));
       setEditMv(null); setLocation(''); setNote('');
       qc.invalidateQueries({ queryKey: ['document', org, id] });
     },
@@ -123,8 +129,8 @@ export default function DocumentDetail() {
   });
   const deleteMovement = useMutation({
     mutationFn: (m) => del(`/orgs/${org}/documents/${id}/movements/${m.id}`),
-    onSuccess: () => {
-      toast.success('Movement deleted.');
+    onSuccess: (r) => {
+      toast.success(queuedMsg(r, 'Movement deleted.'));
       setDelMv(null);
       qc.invalidateQueries({ queryKey: ['document', org, id] });
     },
@@ -133,8 +139,8 @@ export default function DocumentDetail() {
   const advance = useMutation({
     mutationFn: ({ stepId, status, note: n }) =>
       post(`/orgs/${org}/documents/${id}/steps/${stepId}`, { status, note: n }),
-    onSuccess: (_r, v) => {
-      toast.success(v.status === 'signed' ? 'Step signed.' : 'Step skipped.');
+    onSuccess: (r, v) => {
+      toast.success(queuedMsg(r, v.status === 'signed' ? 'Step signed.' : 'Step skipped.'));
       setSkipStep(null); setSkipNote('');
       qc.invalidateQueries({ queryKey: ['document', org, id] });
     },
@@ -197,7 +203,7 @@ export default function DocumentDetail() {
           <Text style={{ fontSize: 12, color: t.ink3 }}>Current location</Text>
           <Text style={{ fontSize: 16, fontWeight: '700', color: t.ink }}>{d.current_location ?? 'not recorded yet'}</Text>
         </View>
-        {canWrite ? <Button onPress={() => { setLocation(''); setNote(''); setPhotos([]); setMoveOpen(true); }}>Move paper</Button> : null}
+        {canWrite ? <Button onPress={() => { setLocation(''); setNote(''); setMoveStep(''); setPhotos([]); setMoveOpen(true); }}>Move paper</Button> : null}
       </Card>
 
       <Card style={{ gap: 10 }}>
@@ -347,6 +353,21 @@ export default function DocumentDetail() {
 
       <Sheet open={moveOpen} onClose={() => setMoveOpen(false)} title="Move paper">
         <Field label="Where is it now?"><Input value={location} onChangeText={setLocation} placeholder="SD office" /></Field>
+        {d.signatory_steps.length > 0 ? (
+          <Field label="Which step is this for? (optional)" hint="Pins the move and photo onto that step's card.">
+            <Select
+              value={moveStep}
+              onChange={setMoveStep}
+              placeholder="Not tied to a step"
+              accessibilityLabel="Step this move belongs to"
+              options={[
+                { value: '', label: 'Not tied to a step' },
+                ...steps.filter((s) => s.round_no === d.current_round)
+                  .map((s) => ({ value: s.id, label: `${s.ord}. ${s.label}` })),
+              ]}
+            />
+          </Field>
+        ) : null}
         <Field label="Note (optional)"><Input value={note} onChangeText={setNote} /></Field>
         <Text style={{ fontSize: 12, color: t.ink3 }}>Photo of the paper/location (optional)</Text>
         <PhotoPicker photos={photos} onChange={setPhotos} max={1} />

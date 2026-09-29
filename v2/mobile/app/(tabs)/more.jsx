@@ -3,8 +3,10 @@
 import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { BookOpen, ChevronRight, FileText, LogOut, Settings, ShieldCheck, Users } from 'lucide-react-native';
+import { BookOpen, ChevronRight, FileText, LogOut, RefreshCw, Settings, ShieldCheck, Users } from 'lucide-react-native';
 import { supabase } from '../../src/lib/supabase';
+import { queueCounts, subscribeOutbox } from '../../src/lib/offline';
+import { useEffect, useState } from 'react';
 import { atLeast, setCurrentOrg } from '../../src/lib/org';
 import { useMe, useActiveMembership } from '../../src/lib/me';
 import { useTheme } from '../../src/lib/theme';
@@ -13,6 +15,7 @@ import { Avatar, Card, ErrorState, Screen, Select, ThemePicker } from '../../src
 const ROWS = [
   { path: '/documents', label: 'Papers', Icon: FileText },
   { path: '/members', label: 'Members', Icon: Users },
+  { path: '/pending', label: 'Pending changes', Icon: RefreshCw },
   { path: '/guide', label: 'Guide', Icon: BookOpen },
   { path: '/settings', label: 'Settings', Icon: Settings, admin: true },
   { path: '/admin', label: 'Admin', Icon: ShieldCheck, platform: true },
@@ -27,6 +30,9 @@ export default function More() {
   const memberships = me.data?.memberships ?? [];
   const isAdmin = active ? atLeast(active.role, 'adviser') : false;
   const rows = ROWS.filter((r) => (!r.admin || isAdmin) && (!r.platform || me.data?.is_admin));
+  const [queued, setQueued] = useState(() => queueCounts());
+  useEffect(() => subscribeOutbox(() => setQueued({ ...queueCounts() })), []);
+  const pendingN = queued.pending + queued.sending + queued.dead;
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -67,6 +73,9 @@ export default function More() {
           >
             <Icon size={20} color={t.ink2} />
             <Text style={{ flex: 1, fontSize: 14, fontWeight: t.labelWeight, color: t.ink2, textTransform: t.labelTransform, letterSpacing: t.labelTracking }}>{label}</Text>
+            {path === '/pending' && pendingN > 0 ? (
+              <Text style={{ fontSize: 12, fontWeight: '700', color: t.pending }}>{pendingN}</Text>
+            ) : null}
             <ChevronRight size={14} color={t.ink3} />
           </Pressable>
         ))}

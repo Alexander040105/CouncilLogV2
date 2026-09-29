@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarCheck, Check, Minus } from 'lucide-react-native';
-import { del, get } from '../../src/lib/api';
+import { del, get, queuedMsg } from '../../src/lib/api';
 import { todayOrg, useOrgId } from '../../src/lib/org';
 import { useAuth } from '../../src/lib/auth';
 import { useMe, useActiveMembership } from '../../src/lib/me';
@@ -48,8 +48,8 @@ export default function Attendance() {
 
   const retract = useMutation({
     mutationFn: (r) => del(`/orgs/${org}/attendance/${r.day}?member_id=${r.member_id}`),
-    onSuccess: () => {
-      toast.success('Declaration retracted.');
+    onSuccess: (r) => {
+      toast.success(queuedMsg(r, 'Declaration retracted.'));
       setRetracting(null);
       qc.invalidateQueries({ queryKey: ['attendance'] });
     },

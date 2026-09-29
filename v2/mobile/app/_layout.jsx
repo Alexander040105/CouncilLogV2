@@ -18,6 +18,8 @@ import { setAuthFailureHandler } from '../src/lib/api';
 import { supabase } from '../src/lib/supabase';
 import { currentOrgId, hydrateOrg, orgHydrated, setCurrentOrg } from '../src/lib/org';
 import { useMe } from '../src/lib/me';
+import { startConnectivity } from '../src/lib/connectivity';
+import { hydrateQueryCache, persistQueryCache } from '../src/lib/qcache';
 import * as ReactNative from 'react-native';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -68,7 +70,12 @@ function Gate() {
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
-  useEffect(() => { hydrateOrg().finally(() => setReady(true)); }, []);
+  useEffect(() => {
+    hydrateQueryCache(qc);        // cached lists readable offline before first mount
+    persistQueryCache(qc);        // dehydrate-on-write (debounced) into SQLite
+    startConnectivity();          // NetInfo → onlineManager + outbox replay
+    hydrateOrg().finally(() => setReady(true));
+  }, []);
   if (!ready || !orgHydrated()) {
     return <ReactNative.View style={{ flex: 1, backgroundColor: '#ffffff' }} />;
   }

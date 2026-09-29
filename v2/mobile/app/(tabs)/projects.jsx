@@ -5,7 +5,7 @@ import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FolderKanban, Plus } from 'lucide-react-native';
-import { get, post } from '../../src/lib/api';
+import { get, post, queuedMsg } from '../../src/lib/api';
 import { atLeast, useOrgId } from '../../src/lib/org';
 import { collectFlagNames } from '../../src/lib/rules';
 import { useToast } from '../../src/lib/toast';
@@ -63,8 +63,8 @@ export default function Projects() {
       needs_paper_processing: form.paper, needs_logistics: form.logistics,
       flags: form.flags,
     }),
-    onSuccess: () => {
-      toast.success(form.assignee ? 'Project created — assignee will be emailed.' : 'Project created.');
+    onSuccess: (r) => {
+      toast.success(queuedMsg(r, form.assignee ? 'Project created — assignee will be emailed.' : 'Project created.'));
       setOpen(false);
       setForm({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false, assignee: '', flags: {} });
       qc.invalidateQueries({ queryKey: ['projects', org] });

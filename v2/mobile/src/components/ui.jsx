@@ -12,6 +12,7 @@ import { AlertTriangle, Check, ChevronDown, Info, X } from 'lucide-react-native'
 import { useTheme, shadowBox, THEME_CHOICES, THEME_LABELS } from '../lib/theme';
 import { supabase } from '../lib/supabase';
 import { setCurrentOrg } from '../lib/org';
+import { SyncBanner } from './SyncBanner';
 
 const WEB_BASE = process.env.EXPO_PUBLIC_WEB_URL ?? 'http://localhost:5173';
 
@@ -51,7 +52,12 @@ export function Screen({ children, refresh, pad = 16, scroll = true }) {
   ) : (
     <View style={{ flex: 1, padding: pad, gap: 14 }}>{children}</View>
   );
-  return <View style={{ flex: 1, backgroundColor: t.surface }}>{body}</View>;
+  return (
+    <View style={{ flex: 1, backgroundColor: t.surface }}>
+      <SyncBanner />
+      {body}
+    </View>
+  );
 }
 
 /* ── Button ─────────────────────────────────────────────────────────── */
