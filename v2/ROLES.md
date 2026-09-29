@@ -12,7 +12,7 @@ and a member in another.
 | **owner** | Everything: manage members & roles, mint invites, approve join requests, edit positions/duty/templates/chains/contacts, view audit log, plus everything below. Set at org creation; can't be granted later via the API. |
 | **adviser** | Oversight: read everything, view the audit log, create/edit projects, register documents. Cannot manage members or org structure. |
 | **officer** | Daily work: journal entries + photos, check off checklist items, register documents, log movements, sign/skip/send-back signatory steps, bulk-sign the current round, attach chains to unrouted docs. |
-| **member** | Journal entries and own attendance, read access to shared surfaces. |
+| **member** | Journal entries and own attendance, read access to shared surfaces, create/assign tasks, comment on tasks. Task editing: creator or owner only; assignee can only mark done/reopen. |
 
 Enforcement is server-side: every org-scoped endpoint checks membership
 (non-members get `404` — the org is invisible, not "forbidden") and the
@@ -68,5 +68,10 @@ Rules the API enforces (you'll get a clean error if you try):
 | Approve/reject (+ role) | `POST /orgs/{id}/join-requests/{rid}/decide` | owner |
 | Change role / remove | `PATCH /orgs/{id}/members/{user_id}` | owner |
 | List members | `GET /orgs/{id}/members` | member |
+| Create/assign task | `POST /orgs/{id}/tasks` | member |
+| Edit/delete task | `PATCH`/`DELETE /orgs/{id}/tasks/{id}` | creator or owner (assignee: status only) |
+| Comment on task | `POST /orgs/{id}/tasks/{id}/comments` | member |
+| Notifications inbox | `GET/POST /orgs/{id}/notifications*` | self only |
+| Push token register/unregister | `POST/DELETE /orgs/{id}/push-tokens` | self only |
 
 See `spec.md` §Security for the full RBAC matrix and threat model.

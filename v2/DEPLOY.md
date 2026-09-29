@@ -67,7 +67,8 @@ git push
 | `AVATARS_BUCKET` | default `avatars` — only set if you renamed the bucket | no |
 | `ORG_TIMEZONE` | default `Asia/Manila` | no |
 | `SIGNED_URL_TTL_SECONDS` | default `900` (15 min photo links) | no |
-| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASSWORD` `MAIL_FROM` | app-side *notification* emails (project assignments). Optional; the app warns and skips email if unset | no |
+| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASSWORD` `MAIL_FROM` | app-side *notification* emails (assignments, task deadlines). Optional; the app warns and skips email if unset | no |
+| `CRON_SECRET` | any long random string — guards `POST /internal/reminders` (the daily due-soon / unfilled-duty sweep). Needed only if you set up the cron in step 5 below | no |
 
 4. **Deploy**. When it finishes, open `https://<api>.vercel.app/api/v1/health`
    — you should see `{"ok":true}`. Also confirm
@@ -177,9 +178,32 @@ Open `https://<web>.vercel.app` and check off:
 - [ ] File attendance on a day with no tasks → "no tasks" entry appears
 - [ ] Sign out → visit `/documents` directly → bounced to `/login`
 - [ ] Open on your phone (or browser at 360px) → bottom nav, no sideways scroll
+- [ ] Assign a task to the second account → it lands in their **bell** inbox
+      (and email, if SMTP is set); the bell shows the unread dot
+- [ ] Mobile (dev build or Expo Go): enable airplane mode → log a journal
+      entry → the sync banner says it's queued → disable airplane mode → the
+      entry appears online and the banner clears
 
 If any email step fails → Part 4c. If everything fails with CORS errors →
 Part 3 (`WEB_ORIGIN` typo or missing redeploy).
+
+### 5a. Optional — daily reminders cron
+
+`POST /internal/reminders` pings assignees whose tasks are due tomorrow and
+roster members who haven't filed — once per user per kind per day. It needs
+`CRON_SECRET` set on the API (Part 1 env table), then schedule one daily call
+sending it as the `x-cron-secret` header — e.g. a Vercel Cron job on any of
+your projects, or `pg_cron`/Supabase scheduled function hitting the URL:
+
+```
+POST https://<api>.vercel.app/api/v1/internal/reminders
+x-cron-secret: <CRON_SECRET>
+```
+
+Suggested time: early evening Asia/Manila (e.g. 18:00 = `0 10 * * *` UTC), so
+"due tomorrow" lands while people can still act on it. Skipping this just
+means no proactive reminders — inbox/email notifications for assignments
+still work.
 
 ---
 

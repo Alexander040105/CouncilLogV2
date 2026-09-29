@@ -187,7 +187,9 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
   (`drafting|routing|revision|signed|filed`), optional `project_id`.
 - `document_movements` — custody logbook: each row = one record
   (`location_text` free-form e.g. "SD office", `note`, optional
-  `photo_path`, `moved_by`, `created_at`). Append-first by design, but
+  `photo_path`, `moved_by`, `created_at`, optional `step_id` pinning the
+  custody evidence to a specific signatory step on the card view).
+  Append-first by design, but
   correctable: the mover may edit/delete their own same-day record and
   owners may correct any (audit-logged; photos immutable — re-record to
   swap). Deleting the newest row reverts `current_location` to the
@@ -224,6 +226,51 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
   semantics); deleting a template keeps existing project checklists intact;
   position reassignment mid-year keeps `positions` row history via school-year
   scoping + `rank` ordering.
+
+### 3.7 Tasks, assignments & notifications
+
+- `tasks` — freeform assignments: `title`, `details`, `assignee_id` (org
+  member), `creator_id`, `due_date`, `priority` (`low|normal|high`),
+  `status` (`open|done|cancelled`), optional links to `project_id`,
+  `document_id`, `journal_entry_id` (FKs `set null` — deleting a linked
+  entity orphans the link, never the task).
+- `task_comments` — discussion on a task, org-scoped through the parent.
+- `notifications` — per-user inbox rows: `kind` (`assigned`,
+  `task_commented`, `task_due_soon`, `duty_reminder`), `payload` JSONB
+  (`entity_type`/`entity_id`/`title`/`by`/`ref`), `read_at`. Every
+  assignment path — tasks, project lead, checklist items — writes the inbox
+  row in the same transaction, then email + push fan out in the background.
+- `push_tokens` — Expo push tokens per user+device; re-registering the same
+  token transfers ownership (device handoff); sign-out and account deletion
+  unregister.
+- **Permissions:** creator or owner edits/deletes a task; the assignee may
+  only flip status (done/reopen). Comments are member-wide; commenters ping
+  the task's assignee + creator (never themselves).
+- **Reminders:** `POST /internal/reminders` (x-cron-secret) pings assignees
+  with tasks due tomorrow and duty-roster members who haven't filed — once
+  per user per kind per day via a `payload.ref` dedupe key compared against
+  the org-timezone day.
+- **Views:** Tasks page (filter by mine/assigned/open/done/all), bell +
+  inbox in the app shell, Agenda page grouping everything dated (tasks,
+  checklist items, project targets) by day, "Needs you" card on Today.
+
+### 3.8 Offline-first mobile
+
+- The mobile app queues **every mutation** through a SQLite-backed outbox
+  (`expo-sqlite`) when the network request fails for connectivity reasons —
+  server/API errors and 401s are NOT queued (they'd fail the same way on
+  replay).
+- Queued writes carry `client_request_id`; create endpoints dedupe on
+  `(org_id, client_request_id)` so a replayed POST returns the original row
+  instead of duplicating.
+- Photo-bearing composite writes (journal entries, custody movements) queue
+  as one operation — sign → upload → record — replayed in order, photos
+  staged on disk until sent.
+- Operations can depend on earlier ones (`op:<id>` tokens in path/body
+  substituted with the dependency's result id); a failed op parks as "dead"
+  for review/retry on the Pending screen rather than blocking the queue.
+- React Query cache is persisted across launches so the app opens with
+  last-known data; a sync banner shows offline/queued/syncing/failed state.
 
 ---
 
@@ -624,6 +671,19 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 43 | `DELETE /me` | self | anonymize + remove memberships + ban auth user (409 if sole owner) |
 | 44 | `GET /admin/orgs` | platform admin | every org incl. archived + member counts |
 | 45 | `POST /admin/orgs/{org}/restore` | platform admin | un-archive an org |
+| 46 | `GET/POST /orgs/{org}/tasks` | member | list (`?assignee=me&status=&pageSize=`) / create task |
+| 47 | `GET/PATCH/DELETE /orgs/{org}/tasks/{id}` | member read; creator/owner write; assignee: status only | task detail, edit, delete |
+| 48 | `POST /orgs/{org}/tasks/{id}/comments` | member | comment → pings assignee + creator |
+| 49 | `GET /orgs/{org}/checklist-items` | member | items `?assignee_id=&done=` (powers "needs you"/agenda) |
+| 50 | `GET /orgs/{org}/notifications` | self | inbox `{data, unread}` |
+| 51 | `POST /orgs/{org}/notifications/read` `/read-all` | self | mark read |
+| 52 | `POST/DELETE /orgs/{org}/push-tokens` | self | register/unregister Expo push token |
+| 53 | `POST /internal/reminders` | x-cron-secret | daily sweep: task due-soon + unfilled-duty pings |
+| 54 | `GET /orgs/{org}/documents/{id}/movements/{mid}/photo-url` | member | signed download URL for movement photos |
+
+`#32` also accepts `?held_by=me` — documents whose **latest** custody
+movement was made by the caller ("papers at my desk"). All create endpoints
+accept `client_request_id` for offline-replay dedupe.
 
 **Auth plumbing:** `GET /me` returns `memberships[]`; the client sends
 `X-Org-Id` per call or uses `/orgs/{org}/…` paths. OAuth: Supabase Google
@@ -644,13 +704,15 @@ search + sidebar Home/Projects/Members/Calendar/Files + Dailies).
 | `/journal` | Dailies | photo feed by day; compose = photo+description or "no tasks" toggle (≤3 taps) |
 | `/attendance` | Calendar | day/week/member views + compliance summary |
 | `/projects`, `/projects/{id}` | Projects | board by status; detail = dual checklists + docs + linked journals |
-| `/documents`, `/documents/{id}` | Files | logbook list; detail = movement+signature timeline, "move paper" action w/ camera |
+| `/documents`, `/documents/{id}` | Files | logbook list (list/status-board toggle); detail = signatory process cards + custody timeline, "move paper" action w/ camera |
+| `/tasks` | — | assignments: filters (mine/I-assigned/open/done/all), create/edit, comments, links to projects/documents/journal |
+| `/agenda` | Calendar | every dated item — task deadlines, checklist due dates, project targets — grouped by day |
 | `/members` | Members | roster; `/members/chart` = org chart per SY |
 | `/guide` | — | Read-mode page: how matching works + starter library (browsable by all, owner installs entries) |
 | `/settings` (owner/adviser) | — | positions, duty schedule, checklist templates, signatory chains, contacts, invites, audit; owners get a danger-zone "Archive org" |
 | `/account` | — | own profile (name/avatar), per-org capability summary, password/email change, theme, sign-out, delete account — reached via the shell avatar, not the nav |
 | `/admin` (platform admin) | — | every org incl. archived; expand → roster w/ member removal; archive/restore |
-| global navbar | search | org switcher, notifications slot (P5), profile/logout |
+| global navbar | search | org switcher, notifications bell + inbox, profile/logout |
 
 Every screen spec includes loading / empty / error / 403 states.
 
@@ -658,8 +720,11 @@ Every screen spec includes loading / empty / error / 403 states.
 
 `mobile/` (Expo SDK 57, expo-router, plain JSX) ports the same surface to
 iOS/Android via Expo Go or dev builds: 5 tabs (Today, Journal, Attendance,
-Projects, More) with Papers/Members/Guide/Settings pushed from More, plus
-`/account` + `/admin` outside the tabs. Same API contract — Bearer JWT +
+Projects, More) with Papers/Tasks/Agenda/Members/Guide/Settings pushed from
+More, plus `/account`, `/admin`, `/notifications`, `/agenda`, `/pending`
+outside the tabs. Writes queue through a SQLite outbox when offline (§3.8);
+Expo push tokens register per device and deep-link taps into the app.
+Same API contract — Bearer JWT +
 `x-org-id`; `src/lib/rules.js` + `starterPack.js` are verbatim copies of
 `web/src/lib/` so previews and the starter library behave identically.
 Auth: email/password (full parity) + Google via `AuthSession` (`councilog://`

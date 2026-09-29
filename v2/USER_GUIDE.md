@@ -268,8 +268,11 @@ app doesn't cover, the handbook is the source of truth:
 | **Attendance** | Weekly filing grid + per-officer filing rate for the school year | everyone (read) | A "filed" chip needs a journal entry; ∅ = declared no tasks (tap to retract, own-day/owner); extra = off-day filing |
 | **Projects** | Board by status (`draft/active/done/archived`); events + their paperwork | read: member+ · create/edit: adviser+ | `event_type` + needs-papers/logistics + flags decide which templates instantiate |
 | **Project detail** | The live checklist generated from templates | check-off: officer+ | Checklist is a snapshot — later template edits don't apply |
-| **Papers** | Registry of physical documents being routed for signature | read: member+ · register: officer+ | `doc_type` auto-picks the signatory chain |
-| **Paper detail** | Signatory steps + custody timeline | sign/skip & move: officer+ | Skip needs a reason; movements correctable by mover same-day or owner (audited) |
+| **Tasks** (`/tasks`) | Freeform assignments — assign work to anyone in the org, due dates, priorities, comments, links to projects/papers/journal entries | read: member+ · create/assign: member+ · edit/delete: creator or owner | Assignee can only mark done/reopen; assigning pings their inbox + email + push |
+| **Agenda** (`/agenda`) | Every dated thing in the org — task deadlines, checklist items, project targets — grouped by day | everyone | Overdue rows flag themselves; empty = nothing has a date |
+| **Papers** | Registry of physical documents being routed for signature — list or status **board** view | read: member+ · register: officer+ | `doc_type` auto-picks the signatory chain; board groups by where papers are in the chain |
+| **Paper detail** | Signatory **process cards** (sign → sign → sign, with sent-back loops) + custody timeline pinned to each step | sign/skip & move: officer+ | Skip needs a reason; movements correctable by mover same-day or owner (audited); attach a photo when logging a hand-off |
+| **Notifications** (bell) | Inbox: assignments, task comments, due-tomorrow pings, duty reminders | everyone | Tap a row to jump to the thing it points at; badge = unread count |
 | **Members** | Roster (roles, remove) + org chart | read: member+ · manage: owner | Can't change your own role; owner isn't reassignable here; the only owner can't be removed — archive the org instead |
 | **Guide** (`/guide`) | How chains/templates/flags work + the starter library | everyone (read) · install: owner | Library entries install as ordinary rows — nothing is locked |
 | **Settings** | members, positions, duty, templates, chains, contacts, invites, audit + danger zone | view: adviser+ · write: owner | Templates/chains have full editors (hints, offices, conditions, due rules, reorder, delete); audit tab is read-only; owners can archive the org (hidden for everyone, admin-restorable) |
@@ -293,6 +296,15 @@ app doesn't cover, the handbook is the source of truth:
 | §14 Duty roster | Settings → duty schedule |
 | §15 Quick reference | Settings → contacts |
 | §2 Pending handover items | Not seeded — create them as projects/tasks yourself |
+
+### Offline on the phone app
+
+The mobile app keeps working with no data connection: every save queues
+locally and syncs when you're back online. A banner at the top tells you the
+state — offline, queued items, syncing, or something that needs attention.
+Queued items are reviewable under **More → Pending changes** (retry or
+discard anything that couldn't sync). Entries and custody moves made
+offline land in the same order you made them.
 
 ## Known gaps (today)
 
