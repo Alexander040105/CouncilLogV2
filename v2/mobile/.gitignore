@@ -5,7 +5,7 @@ node_modules/
 
 # Expo
 .expo/
-dist/
+dist*/                   # dist, dist-check, dist-ci… export output dirs
 web-build/
 expo-env.d.ts
 
