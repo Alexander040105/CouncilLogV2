@@ -20,6 +20,7 @@ import { currentOrgId, hydrateOrg, orgHydrated, setCurrentOrg } from '../src/lib
 import { useMe } from '../src/lib/me';
 import { startConnectivity } from '../src/lib/connectivity';
 import { hydrateQueryCache, persistQueryCache } from '../src/lib/qcache';
+import { initNotificationDisplay, observeNotificationTaps, registerPushToken } from '../src/lib/push';
 import * as ReactNative from 'react-native';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -38,6 +39,15 @@ function Gate() {
   const router = useRouter();
   const me = useMe();
   const { t } = useTheme();
+
+  // Push: notification taps deep-link into tasks/papers/projects.
+  useEffect(() => observeNotificationTaps(router), [router]);
+
+  // Register this device once the session + org are known. Idempotent —
+  // server upserts on the token value, and we skip the POST when unchanged.
+  useEffect(() => {
+    if (session && me.isSuccess) registerPushToken(currentOrgId());
+  }, [session, me.isSuccess, me.data]);
 
   // Keep the selected org valid — same fallback rule as web's AppShell.
   useEffect(() => {
@@ -74,6 +84,7 @@ export default function RootLayout() {
     hydrateQueryCache(qc);        // cached lists readable offline before first mount
     persistQueryCache(qc);        // dehydrate-on-write (debounced) into SQLite
     startConnectivity();          // NetInfo → onlineManager + outbox replay
+    initNotificationDisplay();    // handler + android channel
     hydrateOrg().finally(() => setReady(true));
   }, []);
   if (!ready || !orgHydrated()) {

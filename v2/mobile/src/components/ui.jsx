@@ -12,6 +12,7 @@ import { AlertTriangle, Check, ChevronDown, Info, X } from 'lucide-react-native'
 import { useTheme, shadowBox, THEME_CHOICES, THEME_LABELS } from '../lib/theme';
 import { supabase } from '../lib/supabase';
 import { setCurrentOrg } from '../lib/org';
+import { unregisterPushToken } from '../lib/push';
 import { SyncBanner } from './SyncBanner';
 
 const WEB_BASE = process.env.EXPO_PUBLIC_WEB_URL ?? 'http://localhost:5173';
@@ -460,7 +461,7 @@ function ErrorBoundaryInner({ reset }) {
         <Pressable
           accessibilityRole="button"
           style={{ minHeight: 44, justifyContent: 'center' }}
-          onPress={async () => { await supabase.auth.signOut(); setCurrentOrg(null); reset(); }}
+          onPress={async () => { await unregisterPushToken(); await supabase.auth.signOut(); setCurrentOrg(null); reset(); }}
         >
           <Text style={{ fontSize: 14, color: t.ink3 }}>Sign out instead</Text>
         </Pressable>

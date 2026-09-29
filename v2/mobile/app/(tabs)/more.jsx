@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { BookOpen, ChevronRight, FileText, LogOut, RefreshCw, Settings, ShieldCheck, Users } from 'lucide-react-native';
 import { supabase } from '../../src/lib/supabase';
 import { queueCounts, subscribeOutbox } from '../../src/lib/offline';
+import { unregisterPushToken } from '../../src/lib/push';
 import { useEffect, useState } from 'react';
 import { atLeast, setCurrentOrg } from '../../src/lib/org';
 import { useMe, useActiveMembership } from '../../src/lib/me';
@@ -35,6 +36,7 @@ export default function More() {
   const pendingN = queued.pending + queued.sending + queued.dead;
 
   const signOut = async () => {
+    await unregisterPushToken();
     await supabase.auth.signOut();
     setCurrentOrg(null);
     qc.clear();

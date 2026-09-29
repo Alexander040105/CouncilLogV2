@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { BadgeCheck, CircleAlert, LogOut, ShieldCheck, Trash2 } from 'lucide-react-native';
 import { del, patch, post } from '../src/lib/api';
+import { unregisterPushToken } from '../src/lib/push';
 import { setCurrentOrg } from '../src/lib/org';
 import { supabase } from '../src/lib/supabase';
 import { useAuth } from '../src/lib/auth';
@@ -146,13 +147,14 @@ export default function Account() {
   };
 
   const signOut = async () => {
+    await unregisterPushToken();
     await supabase.auth.signOut();
     setCurrentOrg(null);
     nav.replace('/login');
   };
 
   const deleteAccount = useMutation({
-    mutationFn: () => del('/me'),
+    mutationFn: async () => { await unregisterPushToken(); return del('/me'); },
     onSuccess: async () => {
       toast.success('Account deleted.');
       await supabase.auth.signOut();
