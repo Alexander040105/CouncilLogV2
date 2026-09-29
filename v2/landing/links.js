@@ -2,9 +2,10 @@
  *
  *   webUrl      The live web app.
  *   androidUrl  The installable Android build. We're not on the Play Store —
- *               paste the EAS Build download link (from `eas build -p android
- *               --profile preview`, or the build page on expo.dev). Leave ""
- *               to show a "coming soon" chip until the first build exists.
+ *               hosted as a GitHub Release asset (Supabase free tier caps
+ *               files at 50 MB; the APK is ~94 MB). Upload new builds to the
+ *               release and update this URL. Leave "" to show a "coming soon"
+ *               chip until a build exists.
  *   iosUrl      Unused while iOS ships as the web app — iPhone members get an
  *               "Add to Home Screen" path instead of a store link.
  *   expoQr      Optional URL to a QR image for the Expo Go dev build —
@@ -13,7 +14,7 @@
  * A button with an empty URL renders as a "coming soon" chip, never a dead link. */
 window.COUNCILOG_LINKS = {
   webUrl: "https://council-log-v2.vercel.app",
-  androidUrl: "https://ijcjzllfusxpfqqonuyk.supabase.co/storage/v1/object/public/app-downloads/councilog.apk",
+  androidUrl: "https://github.com/Alexander040105/CouncilLogV2/releases/download/v1.0.0-android/councilog.apk",
   iosUrl: "",
   expoQr: "",
 };
