@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import {
-  BookOpen, CalendarCheck, FileText, FolderKanban, ListTodo, LogOut,
+  BookOpen, CalendarCheck, CalendarDays, FileText, FolderKanban, ListTodo, LogOut,
   MoreHorizontal, ChevronRight, NotebookPen, Settings, ShieldCheck, Sun, Users,
 } from 'lucide-react';
 import { get } from '../lib/api';
@@ -18,6 +18,7 @@ const NAV = [
   { to: '/attendance', label: 'Attendance', Icon: CalendarCheck },
   { to: '/projects', label: 'Projects', Icon: FolderKanban },
   { to: '/tasks', label: 'Tasks', Icon: ListTodo },
+  { to: '/agenda', label: 'Agenda', Icon: CalendarDays },
   { to: '/documents', label: 'Papers', Icon: FileText },
   { to: '/members', label: 'Members', Icon: Users },
   { to: '/guide', label: 'Guide', Icon: BookOpen },

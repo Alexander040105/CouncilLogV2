@@ -6,11 +6,11 @@ per user per kind per day (dedupe key in payload.ref); delivery is
 inbox + push + email, all best-effort.
 """
 
-from datetime import timedelta
+from datetime import datetime, time, timedelta, timezone
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Header
-from sqlalchemy import func
 from sqlmodel import select
 
 from ..config import get_settings
@@ -27,9 +27,18 @@ router = APIRouter(tags=["internal"])
 
 
 async def _already_sent(session, user_id, kind: str, ref: str, today) -> bool:
+    # "Already sent today" must mean today *in the org timezone* — comparing
+    # func.date(created_at) evaluates in UTC, which is a different date for
+    # half of every PHT morning (00:00–08:00) and silently broke dedupe.
+    # Bounds go in naive UTC to match how timestamps are stored/compared.
+    tz = ZoneInfo(get_settings().org_timezone)
+    day_start = (datetime.combine(today, time.min, tzinfo=tz)
+                 .astimezone(timezone.utc).replace(tzinfo=None))
+    day_end = day_start + timedelta(days=1)
     rows = (await session.execute(select(Notification).where(
         Notification.user_id == user_id, Notification.kind == kind,
-        func.date(Notification.created_at) == today))).scalars().all()
+        Notification.created_at >= day_start,
+        Notification.created_at < day_end))).scalars().all()
     return any((n.payload or {}).get("ref") == ref for n in rows)
 
 

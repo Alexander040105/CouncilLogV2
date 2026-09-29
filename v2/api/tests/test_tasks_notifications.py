@@ -7,7 +7,7 @@ and push never fire here (they're verified separately by their own no-op
 guards: placeholder service key / no tokens).
 """
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -33,7 +33,8 @@ from app.models import (AttendanceDay, AuditLog, ChecklistTemplate, Document,
                         TaskComment)
 from app.pagination import org_today
 from app.routers.daily import EntryIn, create_entry
-from app.routers.documents import DocIn, MovementIn, add_movement, create_document
+from app.routers.documents import (DocIn, MovementIn, add_movement,
+                                   create_document, list_documents)
 from app.routers.internal import reminders
 from app.routers.notifications import (MarkRead, TokenDelete, TokenIn,
                                        delete_push_token, list_notifications,
@@ -321,6 +322,53 @@ async def test_movement_step_id_must_belong_to_doc(session):
     r = await add_movement(org_id=org.id, doc_id=d2.id, session=session, member=m,
                            body=MovementIn(location_text="x", step_id=step.id))
     assert r["data"].step_id == step.id
+
+
+async def test_held_by_me_follows_latest_movement(session):
+    """held_by=me = papers whose NEWEST custody move was made by me."""
+    org = await _org(session)
+    me_uid, other = uuid.uuid4(), uuid.uuid4()
+    m = _member(org.id, me_uid)
+    om = _member(org.id, other)
+
+    d_mine = Document(org_id=org.id, title="with me", doc_type="memo",
+                      created_by=other)
+    d_theirs = Document(org_id=org.id, title="with them", doc_type="memo",
+                        created_by=other)
+    d_idle = Document(org_id=org.id, title="no moves yet", doc_type="memo",
+                      created_by=other)
+    session.add_all([d_mine, d_theirs, d_idle])
+    await session.flush()
+
+    # Explicit timestamps — sqlite's created_at has second precision, so
+    # rapid router calls tie and ordering becomes arbitrary.
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    session.add_all([
+        # d_mine: only move is mine
+        DocumentMovement(org_id=org.id, document_id=d_mine.id,
+                         location_text="my desk", moved_by=me_uid,
+                         created_at=t0),
+        # d_theirs: I moved it once, then they took it back — newest wins
+        DocumentMovement(org_id=org.id, document_id=d_theirs.id,
+                         location_text="my desk", moved_by=me_uid,
+                         created_at=t0),
+        DocumentMovement(org_id=org.id, document_id=d_theirs.id,
+                         location_text="their desk", moved_by=other,
+                         created_at=t0 + timedelta(hours=1)),
+    ])
+    await session.flush()
+
+    r = await list_documents(org_id=org.id, session=session, held_by="me", member=m)
+    ids = {d.id for d in r["data"]}
+    assert ids == {d_mine.id}  # d_theirs moved on; d_idle never moved
+
+    # from the other member's view, d_theirs is theirs
+    r = await list_documents(org_id=org.id, session=session, held_by="me", member=om)
+    assert {d.id for d in r["data"]} == {d_theirs.id}
+
+    # without the param the list is unchanged
+    r = await list_documents(org_id=org.id, session=session, member=m)
+    assert len(r["data"]) == 3
 
 
 # ── Notification inbox ───────────────────────────────────────────────────

@@ -3,7 +3,8 @@ from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import aliased
 from sqlmodel import delete, select
 
 from ..deps import Membership, Session, authorize
@@ -109,11 +110,30 @@ class DocIn(BaseModel):
 
 
 @router.get("/orgs/{org_id}/documents")
-async def list_documents(org_id: uuid.UUID, session: Session, status: str | None = None, page: int = 1, pageSize: int = 20, member: Membership = Depends(authorize())):
+async def list_documents(org_id: uuid.UUID, session: Session, status: str | None = None,
+                         held_by: str | None = None,
+                         page: int = 1, pageSize: int = 20, member: Membership = Depends(authorize())):
     page, page_size = page_params(page, pageSize)
     q = select(Document).where(Document.org_id == org_id)
     if status:
         q = q.where(Document.status == status)
+    if held_by == "me":
+        # papers physically with me = my movement is the newest on the doc.
+        # "Newest" = max(created_at), ties broken by id so equal timestamps
+        # resolve deterministically — an anti-join, so no doc row duplicates.
+        uid = uuid.UUID(member.user_id)
+        newer = aliased(DocumentMovement)
+        has_newer = (
+            select(newer.id)
+            .where(newer.document_id == DocumentMovement.document_id)
+            .where(or_(newer.created_at > DocumentMovement.created_at,
+                       and_(newer.created_at == DocumentMovement.created_at,
+                            newer.id > DocumentMovement.id)))
+            .exists()
+        )
+        latest_mine = (select(DocumentMovement.document_id)
+                       .where(DocumentMovement.moved_by == uid, ~has_newer))
+        q = q.where(Document.id.in_(latest_mine))
     total = (await session.execute(
         select(func.count()).select_from(q.subquery()))).scalar_one()
     rows = (await session.execute(

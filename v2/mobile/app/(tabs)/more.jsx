@@ -3,7 +3,7 @@
 import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { BookOpen, ChevronRight, FileText, ListTodo, LogOut, RefreshCw, Settings, ShieldCheck, Users } from 'lucide-react-native';
+import { BookOpen, CalendarDays, ChevronRight, FileText, ListTodo, LogOut, RefreshCw, Settings, ShieldCheck, Users } from 'lucide-react-native';
 import { supabase } from '../../src/lib/supabase';
 import { queueCounts, subscribeOutbox } from '../../src/lib/offline';
 import { unregisterPushToken } from '../../src/lib/push';
@@ -16,6 +16,7 @@ import { Avatar, Card, ErrorState, Screen, Select, ThemePicker } from '../../src
 const ROWS = [
   { path: '/documents', label: 'Papers', Icon: FileText },
   { path: '/tasks', label: 'Tasks', Icon: ListTodo },
+  { path: '/agenda', label: 'Agenda', Icon: CalendarDays },
   { path: '/members', label: 'Members', Icon: Users },
   { path: '/pending', label: 'Pending changes', Icon: RefreshCw },
   { path: '/guide', label: 'Guide', Icon: BookOpen },
