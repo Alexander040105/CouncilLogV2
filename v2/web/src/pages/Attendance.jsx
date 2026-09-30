@@ -117,14 +117,14 @@ export default function Attendance() {
                                 <Chip
                                   kind={r.duty_type === 'extra' ? 'extra' : cellKind(r)}
                                   icon={<Minus size={12} />}
-                                  label="none"
+                                  label="None"
                                 />
                               </button>
                             ) : (
                               <Chip
                                 kind={r.duty_type === 'extra' ? 'extra' : cellKind(r)}
                                 icon={r.status === 'documented' ? <Check size={12} /> : <Minus size={12} />}
-                                label={r.status === 'documented' ? 'filed' : 'none'}
+                                label={r.status === 'documented' ? 'Filed' : 'None'}
                               />
                             )
                           ) : <span className="text-[var(--color-ink-3)]">·</span>}

@@ -12,7 +12,8 @@ import { useAuth } from '../../../src/lib/auth';
 import { useToast } from '../../../src/lib/toast';
 import { useTheme } from '../../../src/lib/theme';
 import { useMe, useActiveMembership } from '../../../src/lib/me';
-import { PhotoPicker } from '../../../src/components/PhotoPicker';
+import { docStatusLabel, docTypeLabel } from '../../../src/lib/labels';
+import { PhotoPicker, putToSignedUrl } from '../../../src/components/PhotoPicker';
 import { ChainFlow } from '../../../src/components/ChainFlow';
 import { Button, Card, CheckRow, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, Screen, Select, Sheet, Skeleton } from '../../../src/components/ui';
 
@@ -32,12 +33,14 @@ export default function DocumentDetail() {
   const [skipStep, setSkipStep] = useState(null);
   const [skipNote, setSkipNote] = useState('');
   const [pickChain, setPickChain] = useState('');
-  const [revStep, setRevStep] = useState(null);   // pending step object, or 'late'
+  const [revStep, setRevStep] = useState(null);   // step object (pending or resolved), or 'late'
   const [revNote, setRevNote] = useState('');
-  const [resend, setResend] = useState(new Set());
+  const [resend, setResend] = useState(new Set());   // resolved ids to re-sign
+  const [carry, setCarry] = useState(new Set());     // pending ids to keep on the route
   const [signAllOpen, setSignAllOpen] = useState(false);
   const [editMv, setEditMv] = useState(null);   // movement being edited
   const [delMv, setDelMv] = useState(null);     // movement pending delete confirm
+  const [clearMvPhoto, setClearMvPhoto] = useState(false);
   const me = useMe();
   const { session } = useAuth();
   const active = useActiveMembership(me.data);
@@ -66,14 +69,18 @@ export default function DocumentDetail() {
     members.data?.data.find((m) => m.user_id === uid)?.display_name ?? null;
 
   const revise = useMutation({
-    mutationFn: () => post(`/orgs/${org}/documents/${id}/revisions`, {
-      at_step_id: revStep === 'late' ? null : revStep?.id,
-      note: revNote.trim(),
-      resend_step_ids: [...resend],
-    }),
+    mutationFn: () => {
+      const isReturn = revStep !== 'late' && revStep?.status !== 'pending';
+      return post(`/orgs/${org}/documents/${id}/revisions`, {
+        at_step_id: revStep === 'late' || isReturn ? null : revStep?.id,
+        return_to_step_id: isReturn ? revStep.id : null,
+        note: revNote.trim(),
+        resend_step_ids: [...resend, ...carry],
+      });
+    },
     onSuccess: (r) => {
       toast.success(queuedMsg(r, 'Sent back for revision — new round started.'));
-      setRevStep(null); setRevNote(''); setResend(new Set());
+      setRevStep(null); setRevNote(''); setResend(new Set()); setCarry(new Set());
       qc.invalidateQueries({ queryKey: ['document', org, id] });
     },
     onError: (e) => toast.error(e.message),
@@ -119,11 +126,22 @@ export default function DocumentDetail() {
     onError: (e) => { setErr(e.message); toast.error(e.message); },
   });
   const editMovement = useMutation({
-    mutationFn: () => patch(`/orgs/${org}/documents/${id}/movements/${editMv.id}`, {
-      location_text: location, note: note || null }),
+    mutationFn: async () => {
+      let photo_path;
+      const f = photos[0];
+      if (f) {
+        const sign = await post(`/orgs/${org}/journal/photos/sign`,
+          { mime: f.type ?? f.mime, byte_size: f.size ?? f.byte_size });
+        await putToSignedUrl(sign.upload_url, f);
+        photo_path = sign.path;
+      }
+      return patch(`/orgs/${org}/documents/${id}/movements/${editMv.id}`, {
+        location_text: location, note: note || null,
+        photo_path, clear_photo: !photo_path && clearMvPhoto ? true : undefined });
+    },
     onSuccess: (r) => {
       toast.success(queuedMsg(r, 'Movement updated.'));
-      setEditMv(null); setLocation(''); setNote('');
+      setEditMv(null); setLocation(''); setNote(''); setPhotos([]); setClearMvPhoto(false);
       qc.invalidateQueries({ queryKey: ['document', org, id] });
     },
     onError: (e) => toast.error(e.message),
@@ -158,10 +176,11 @@ export default function DocumentDetail() {
   const pendingNow = steps.filter((s) => s.status === 'pending' && s.round_no === d.current_round);
   const resolvedSteps = steps.filter((s) => RESOLVED.has(s.status));
 
-  const openRevision = (step) => {
+  const openRevision = (step) => {   // step = pending or resolved row; null = late revision
     setRevStep(step ?? 'late');
     setRevNote('');
-    setResend(new Set(resolvedSteps.map((s) => s.id)));
+    setResend(new Set(resolvedSteps.filter((s) => s.id !== step?.id).map((s) => s.id)));
+    setCarry(new Set(pendingNow.filter((s) => s.id !== step?.id).map((s) => s.id)));
   };
 
   const miniBtn = {
@@ -179,9 +198,9 @@ export default function DocumentDetail() {
       <View style={{ gap: 6 }}>
         <Text style={{ fontSize: 24, fontWeight: t.headingWeight, color: t.ink }}>{d.data.title}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-          <Chip kind="neutral" label={d.data.doc_type} />
+          <Chip kind="neutral" label={docTypeLabel(d.data.doc_type)} />
           <Chip kind={d.data.status === 'signed' ? 'done' : 'pending'}
-                label={d.data.status === 'revision' ? 'in revision' : d.data.status} />
+                label={docStatusLabel(d.data.status)} />
         </View>
         {canWrite && ['signed', 'filed'].includes(d.data.status) ? (
           <Pressable accessibilityRole="button" onPress={() => openRevision(null)}
@@ -194,16 +213,22 @@ export default function DocumentDetail() {
       <Card style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <View style={{ flexShrink: 1 }}>
           <Text style={{ fontSize: 12, color: t.ink3 }}>Current location</Text>
-          <Text style={{ fontSize: 16, fontWeight: '700', color: t.ink }}>{d.current_location ?? 'not recorded yet'}</Text>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: t.ink }}>{d.current_location ?? 'Not recorded yet'}</Text>
         </View>
-        {canWrite ? <Button onPress={() => { setLocation(''); setNote(''); setMoveStep(''); setPhotos([]); setMoveOpen(true); }}>Move paper</Button> : null}
+        {canWrite ? (
+          <Button onPress={() => {
+            setLocation(''); setNote(''); setPhotos([]);
+            setMoveStep(pendingNow[0]?.id ?? '');   // default: pin to the current desk
+            setMoveOpen(true);
+          }}>Move paper</Button>
+        ) : null}
       </Card>
 
       <Card style={{ gap: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
           <View>
             <Text style={{ fontSize: 13, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink2 }}>Signatory chain</Text>
-            <Text style={{ fontSize: 12, color: t.ink3 }}>who signs, in order</Text>
+            <Text style={{ fontSize: 12, color: t.ink3 }}>Who signs, in order</Text>
           </View>
           {canWrite && pendingNow.length >= 2 ? (
             <Pressable accessibilityRole="button" onPress={() => setSignAllOpen(true)}
@@ -220,7 +245,7 @@ export default function DocumentDetail() {
             }}>
               <AlertTriangle size={16} color={t.alert} style={{ marginTop: 2 }} />
               <Text style={{ flex: 1, fontSize: 13, color: t.ink2 }}>
-                No signatory chain matches {d.data.doc_type} — this paper isn’t routed for signatures.
+                No signatory chain matches {docTypeLabel(d.data.doc_type)} — this paper isn’t routed for signatures.
                 {isOwner ? ' Add a chain in Settings → chains, or attach one below.' : ' Ask an owner to configure one, or attach an existing chain below.'}
               </Text>
             </View>
@@ -229,9 +254,9 @@ export default function DocumentDetail() {
                 <Select
                   value={pickChain}
                   onChange={setPickChain}
-                  placeholder="attach a chain…"
+                  placeholder="Attach a chain…"
                   accessibilityLabel="Chain to attach"
-                  options={chains.data.data.map((c) => ({ value: c.id, label: `${c.name} (${c.doc_type})` }))}
+                  options={chains.data.data.map((c) => ({ value: c.id, label: `${c.name} (${docTypeLabel(c.doc_type)})` }))}
                 />
                 <Button variant="secondary" disabled={!pickChain || attach.isPending} onPress={() => attach.mutate()} busy={attach.isPending}>
                   Attach
@@ -257,6 +282,7 @@ export default function DocumentDetail() {
             onSign={(s) => advance.mutate({ stepId: s.id, status: 'signed' })}
             onSkip={(s) => { setSkipStep(s); setSkipNote(''); }}
             onSendBack={(s) => openRevision(s)}
+            onReturnTo={(s) => openRevision(s)}
           />
         ) : null}
       </Card>
@@ -337,17 +363,20 @@ export default function DocumentDetail() {
 
       <Sheet open={!!revStep} onClose={() => setRevStep(null)} title="Send back for revision">
         <Text style={{ fontSize: 14, color: t.ink2 }}>
-          The paper needs changes. Pick which offices must sign again — the new round
-          is appended to the log, nothing is overwritten.
+          {revStep === 'late'
+            ? 'The paper needs changes after signing. Pick which offices must sign again — the new round is appended to the log, nothing is overwritten.'
+            : revStep?.status === 'pending'
+              ? `Sending back from ${revStep?.label} — that desk keeps its place in the new round.`
+              : `Return to ${revStep?.label} — that office signs again in the new round, even though it already signed.`}
         </Text>
         <Field label="What needs changing? (required)"
                hint="This becomes the note in the log — be specific.">
           <Input value={revNote} onChangeText={setRevNote} placeholder="revise page 3 — budget table" />
         </Field>
-        {resolvedSteps.length > 0 ? (
-          <Field label="Re-sign needed from:">
+        {resolvedSteps.filter((s) => s.id !== revStep?.id).length > 0 ? (
+          <Field label="Offices that must sign again:">
             <View style={{ gap: 2 }}>
-              {resolvedSteps.map((s) => (
+              {resolvedSteps.filter((s) => s.id !== revStep?.id).map((s) => (
                 <CheckRow
                   key={s.id}
                   checked={resend.has(s.id)}
@@ -362,10 +391,33 @@ export default function DocumentDetail() {
             </View>
           </Field>
         ) : null}
+        {pendingNow.filter((s) => s.id !== revStep?.id).length > 0 ? (
+          <Field label="Still waiting to sign — keep them on the route?"
+                 hint="Unchecked desks fall off the route — the paper won't wait for them anymore.">
+            <View style={{ gap: 2 }}>
+              {pendingNow.filter((s) => s.id !== revStep?.id).map((s) => (
+                <CheckRow
+                  key={s.id}
+                  checked={carry.has(s.id)}
+                  onChange={(on) => {
+                    const next = new Set(carry);
+                    if (on) next.add(s.id); else next.delete(s.id);
+                    setCarry(next);
+                  }}
+                  label={`${s.label}${s.office ? ` — ${s.office}` : ''} (still pending)`}
+                />
+              ))}
+            </View>
+          </Field>
+        ) : null}
         <Text style={{ fontSize: 12, color: t.ink3 }}>
-          {revStep === 'late'
-            ? 'The paper re-routes through the checked offices as a new round.'
-            : `The paper re-routes through the checked offices, then returns to ${revStep?.label}.`}
+          New round signs: {[
+            ...(revStep !== 'late' && revStep ? [revStep.label] : []),
+            ...resolvedSteps.filter((s) => resend.has(s.id)).map((s) => s.label),
+            ...pendingNow.filter((s) => carry.has(s.id)).map((s) => s.label),
+          ].join(' → ') || 'nobody — pick at least one office'}.
+          {pendingNow.some((s) => s.id !== revStep?.id && !carry.has(s.id))
+            ? ' Anything left unchecked drops off the route.' : ''}
         </Text>
         <Button style={{ width: '100%' }} onPress={() => revise.mutate()}
                 disabled={!revNote.trim() || (revStep === 'late' && resend.size === 0) || revise.isPending} busy={revise.isPending}>
@@ -373,12 +425,40 @@ export default function DocumentDetail() {
         </Button>
       </Sheet>
 
-      <Sheet open={!!editMv} onClose={() => setEditMv(null)} title="Edit movement">
+      <Sheet open={!!editMv} onClose={() => { setEditMv(null); setPhotos([]); setClearMvPhoto(false); }} title="Edit movement">
         <Field label="Where is it now?"><Input value={location} onChangeText={setLocation} /></Field>
         <Field label="Note (optional)"><Input value={note} onChangeText={setNote} /></Field>
-        <Text style={{ fontSize: 12, color: t.ink3 }}>
-          Photos can’t be changed on a movement — delete and re-record to swap a photo.
-        </Text>
+        <View style={{ gap: 6 }}>
+          <Text style={{ fontSize: 13, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink2 }}>Photo</Text>
+          {editMv?.photo_path && !clearMvPhoto && photos.length === 0 ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: t.radiusInput, borderWidth: Math.max(t.boxWidth, 1), borderColor: t.boxColor, padding: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Camera size={13} color={t.ink2} />
+                <Text style={{ fontSize: 12, color: t.ink2 }}>A photo is attached</Text>
+              </View>
+              <Pressable accessibilityRole="button" onPress={() => setClearMvPhoto(true)}
+                         style={{ minHeight: 32, justifyContent: 'center' }}>
+                <Text style={{ fontSize: 12, color: t.alert }}>Remove</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {clearMvPhoto ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: t.radiusInput, borderWidth: Math.max(t.boxWidth, 1), borderColor: t.boxColor, padding: 8 }}>
+              <Text style={{ fontSize: 12, color: t.ink2 }}>Photo will be removed on save</Text>
+              <Pressable accessibilityRole="button" onPress={() => setClearMvPhoto(false)}
+                         style={{ minHeight: 32, justifyContent: 'center' }}>
+                <Text style={{ fontSize: 12, color: t.brand }}>Keep it</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {!clearMvPhoto ? (
+            <PhotoPicker photos={photos} max={1}
+                         onChange={(p) => { setPhotos(p); if (p.length) setClearMvPhoto(false); }} />
+          ) : null}
+          <Text style={{ fontSize: 12, color: t.ink3 }}>
+            Picking a new photo replaces the old one when you save.
+          </Text>
+        </View>
         <Button style={{ width: '100%' }} onPress={() => editMovement.mutate()}
                 disabled={!location || editMovement.isPending} busy={editMovement.isPending}>
           Save changes

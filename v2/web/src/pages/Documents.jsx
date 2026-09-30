@@ -5,6 +5,7 @@ import { AlertTriangle, FileText, LayoutGrid, List, Plus, Route } from 'lucide-r
 import { get, post } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
 import { useToast } from '../lib/toast';
+import { docStatusLabel, docTypeLabel } from '../lib/labels';
 import { autoMatchedChain, collectFlagNames, visibleChainSteps } from '../lib/rules';
 import { Button, Card, Chip, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
 import { FlagCheckboxes } from '../components/RuleFields';
@@ -171,9 +172,9 @@ export default function Documents() {
               <Card className="flex items-center justify-between hover:border-[var(--color-accent)]">
                 <div>
                   <div className="text-sm font-medium">{d.title}</div>
-                  <div className="text-xs text-[var(--color-ink-3)]">{d.doc_type}</div>
+                  <div className="text-xs text-[var(--color-ink-3)]">{docTypeLabel(d.doc_type)}</div>
                 </div>
-                <Chip kind={statusKind(d.status)} label={d.status === 'revision' ? 'in revision' : d.status} />
+                <Chip kind={statusKind(d.status)} label={docStatusLabel(d.status)} />
               </Card>
             </Link>
           ))}
@@ -195,8 +196,8 @@ export default function Documents() {
                     <Link key={d.id} to={`/documents/${d.id}`}>
                       <Card className="space-y-1 p-3 hover:border-[var(--color-accent)]">
                         <div className="text-sm font-medium">{d.title}</div>
-                        <div className="text-xs text-[var(--color-ink-3)]">{d.doc_type}</div>
-                        {d.project_id && <Chip kind="neutral" label="project" />}
+                        <div className="text-xs text-[var(--color-ink-3)]">{docTypeLabel(d.doc_type)}</div>
+                        {d.project_id && <Chip kind="neutral" label="Project" />}
                       </Card>
                     </Link>
                   ))}

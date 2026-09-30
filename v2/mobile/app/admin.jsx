@@ -9,6 +9,7 @@ import { useAuth } from '../src/lib/auth';
 import { useToast } from '../src/lib/toast';
 import { useTheme } from '../src/lib/theme';
 import { useMe } from '../src/lib/me';
+import { humanize } from '../src/lib/labels';
 import {
   Avatar, Card, Chip, ConfirmDialog, Empty, ErrorState, PageHeader, Screen, Skeleton,
 } from '../src/components/ui';
@@ -113,7 +114,7 @@ function OrgRow({ org, qc }) {
           </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Chip kind={archived ? 'alert' : 'done'} label={archived ? 'archived' : 'active'} />
+          <Chip kind={archived ? 'alert' : 'done'} label={archived ? 'Archived' : 'Active'} />
           <Pressable
             accessibilityRole="button"
             disabled={busy}
@@ -156,7 +157,7 @@ function OrgRow({ org, qc }) {
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 12, color: t.ink3 }}>{m.role}</Text>
+                  <Text style={{ fontSize: 12, color: t.ink3 }}>{humanize(m.role)}</Text>
                   {!self ? (
                     <Pressable
                       accessibilityLabel={`Remove ${m.display_name} from ${org.name}`}

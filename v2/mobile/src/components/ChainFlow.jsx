@@ -39,9 +39,12 @@ function MovementThumb({ docId, movement }) {
   );
 }
 
-function StepCard({ s, isCurrent, pinned, nameOf, canWrite, onSign, onSkip, onSendBack, docId, t }) {
+function StepCard({ s, isCurrent, live, pinned, nameOf, canWrite, onSign, onSkip, onSendBack, onReturnTo, docId, t }) {
   const meta = STATUS[s.status] ?? STATUS.pending;
   const done = ['signed', 'skipped', 'revision_requested', 'superseded'].includes(s.status);
+  // a signed/skipped desk in the live round can be sent back to — the office
+  // re-signs in a new round; history rows (superseded) stay read-only
+  const canReturn = live && ['signed', 'skipped'].includes(s.status);
   const miniBtn = {
     minHeight: 36, paddingHorizontal: 10, justifyContent: 'center',
     borderRadius: t.radiusInput, borderWidth: Math.max(t.elWidth, 1), borderColor: t.elColor,
@@ -64,7 +67,7 @@ function StepCard({ s, isCurrent, pinned, nameOf, canWrite, onSign, onSkip, onSe
 
       {isCurrent ? (
         <Text style={{ fontSize: 11, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.brand }}>
-          current desk
+          Current desk
         </Text>
       ) : null}
 
@@ -74,7 +77,7 @@ function StepCard({ s, isCurrent, pinned, nameOf, canWrite, onSign, onSkip, onSe
             {nameOf(s.noted_by) ? `${nameOf(s.noted_by)} · ` : ''}{new Date(s.signed_at).toLocaleString()}
           </Text>
         ) : null}
-        {s.note ? <Text style={{ fontSize: 12, color: t.ink3 }}>note: {s.note}</Text> : null}
+        {s.note ? <Text style={{ fontSize: 12, color: t.ink3 }}>Note: {s.note}</Text> : null}
       </View>
 
       {pinned.length > 0 ? (
@@ -95,7 +98,7 @@ function StepCard({ s, isCurrent, pinned, nameOf, canWrite, onSign, onSkip, onSe
         </View>
       ) : null}
 
-      {s.status === 'pending' && canWrite ? (
+      {s.status === 'pending' && isCurrent && canWrite ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
           <Pressable accessibilityRole="button" style={miniBtn} onPress={() => onSign(s)}>
             <Text style={{ fontSize: 12, color: t.ink2, fontWeight: '700' }}>Sign</Text>
@@ -111,12 +114,21 @@ function StepCard({ s, isCurrent, pinned, nameOf, canWrite, onSign, onSkip, onSe
           </Pressable>
         </View>
       ) : null}
+      {canReturn && canWrite ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Return to ${s.label} — they sign again`}
+                     style={[miniBtn, { backgroundColor: 'transparent', borderWidth: 0 }]}
+                     onPress={() => onReturnTo(s)}>
+            <Undo2 size={12} color={t.ink2} /><Text style={{ fontSize: 12, color: t.ink2 }}>Sign again</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 export function ChainFlow({ steps, revisions, movements, currentRound,
-                            nameOf, canWrite, onSign, onSkip, onSendBack, docId }) {
+                            nameOf, canWrite, onSign, onSkip, onSendBack, onReturnTo, docId }) {
   const { t } = useTheme();
   const rounds = [...new Set(steps.map((s) => s.round_no))].sort((a, b) => a - b);
   const byStep = new Map();
@@ -163,10 +175,12 @@ export function ChainFlow({ steps, revisions, movements, currentRound,
                 <StepCard
                   s={s}
                   isCurrent={s.status === 'pending' && rn === currentRound}
+                  live={rn === currentRound}
                   pinned={byStep.get(s.id) ?? []}
                   nameOf={nameOf}
                   canWrite={canWrite}
                   onSign={onSign} onSkip={onSkip} onSendBack={onSendBack}
+                  onReturnTo={onReturnTo}
                   docId={docId}
                   t={t}
                 />

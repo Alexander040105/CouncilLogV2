@@ -8,11 +8,11 @@ import { currentOrgId } from '../lib/org';
 import { Button, Chip } from './ui';
 
 const STATUS = {
-  pending:            { chip: 'pending', label: 'awaiting signature', Icon: Clock },
-  signed:             { chip: 'done',    label: 'signed',             Icon: CheckCircle2 },
-  skipped:            { chip: 'skip',    label: 'skipped',            Icon: SkipForward },
-  revision_requested: { chip: 'alert',   label: 'sent back',          Icon: Undo2 },
-  superseded:         { chip: 'neutral', label: 'superseded',         Icon: Ban },
+  pending:            { chip: 'pending', label: 'Awaiting signature', Icon: Clock },
+  signed:             { chip: 'done',    label: 'Signed',             Icon: CheckCircle2 },
+  skipped:            { chip: 'skip',    label: 'Skipped',            Icon: SkipForward },
+  revision_requested: { chip: 'alert',   label: 'Sent back',          Icon: Undo2 },
+  superseded:         { chip: 'neutral', label: 'Superseded',         Icon: Ban },
 };
 
 /** Signed-URL thumbnail for a movement's attached photo — lazy per photo. */
@@ -33,9 +33,12 @@ function MovementThumb({ docId, movement }) {
   );
 }
 
-function StepCard({ s, isCurrent, pinned, nameOf, canWrite, onSign, onSkip, onSendBack }) {
+function StepCard({ s, isCurrent, live, pinned, nameOf, canWrite, onSign, onSkip, onSendBack, onReturnTo }) {
   const meta = STATUS[s.status] ?? STATUS.pending;
   const done = ['signed', 'skipped', 'revision_requested', 'superseded'].includes(s.status);
+  // a signed/skipped desk in the live round can be sent back to — the office
+  // re-signs in a new round; history rows (superseded) stay read-only
+  const canReturn = live && ['signed', 'skipped'].includes(s.status);
   return (
     <div className={`min-w-0 flex-1 rounded-[var(--radius-card)] bg-[var(--color-surface-2)] p-3 ${isCurrent ? 'border-2 border-[var(--color-accent)] [box-shadow:var(--shadow-1)]' : '[border:var(--border-box)]'} ${done && !isCurrent ? 'opacity-75' : ''}`}>
       <div className="flex items-start justify-between gap-2">
@@ -50,13 +53,13 @@ function StepCard({ s, isCurrent, pinned, nameOf, canWrite, onSign, onSkip, onSe
 
       {isCurrent && (
         <div className="label-strong mt-1 text-[11px] text-[var(--color-accent)]">
-          current desk
+          Current desk
         </div>
       )}
 
       <div className="mt-1 space-y-0.5 text-xs text-[var(--color-ink-3)]">
         {s.signed_at && <div>{nameOf(s.noted_by) ? `${nameOf(s.noted_by)} · ` : ''}{new Date(s.signed_at).toLocaleString()}</div>}
-        {s.note && <div>note: {s.note}</div>}
+        {s.note && <div>Note: {s.note}</div>}
       </div>
 
       {pinned.length > 0 && (
@@ -75,7 +78,7 @@ function StepCard({ s, isCurrent, pinned, nameOf, canWrite, onSign, onSkip, onSe
         </div>
       )}
 
-      {s.status === 'pending' && canWrite && (
+      {isCurrent && canWrite && (
         <div className="mt-2 flex flex-wrap gap-1">
           <Button variant="secondary" className="min-h-[36px] px-2 text-xs"
                   onClick={() => onSign(s)}>Sign</Button>
@@ -85,6 +88,15 @@ function StepCard({ s, isCurrent, pinned, nameOf, canWrite, onSign, onSkip, onSe
                   aria-label={`Send back for revision at ${s.label}`}
                   onClick={() => onSendBack(s)}>
             <Undo2 size={12} /> Send back
+          </Button>
+        </div>
+      )}
+      {canReturn && canWrite && (
+        <div className="mt-2">
+          <Button variant="ghost" className="min-h-[36px] px-2 text-xs"
+                  aria-label={`Return to ${s.label} — they sign again`}
+                  onClick={() => onReturnTo(s)}>
+            <Undo2 size={12} /> Sign again
           </Button>
         </div>
       )}
@@ -98,7 +110,7 @@ function StepCard({ s, isCurrent, pinned, nameOf, canWrite, onSign, onSkip, onSe
  *  Replaces the flat list visually; the custody timeline below stays the
  *  append-only record. */
 export function ChainFlow({ steps, revisions, movements, currentRound,
-                           nameOf, canWrite, onSign, onSkip, onSendBack }) {
+                           nameOf, canWrite, onSign, onSkip, onSendBack, onReturnTo }) {
   const rounds = [...new Set(steps.map((s) => s.round_no))].sort((a, b) => a - b);
   const byStep = new Map();
   for (const m of movements ?? []) {
@@ -143,10 +155,12 @@ export function ChainFlow({ steps, revisions, movements, currentRound,
                   <StepCard
                     s={s}
                     isCurrent={s.status === 'pending' && rn === currentRound}
+                    live={rn === currentRound}
                     pinned={byStep.get(s.id) ?? []}
                     nameOf={nameOf}
                     canWrite={canWrite}
                     onSign={onSign} onSkip={onSkip} onSendBack={onSendBack}
+                    onReturnTo={onReturnTo}
                   />
                 </div>
               ))}

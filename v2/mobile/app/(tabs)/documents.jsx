@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, FileText, Plus, Route } from 'lucide-react-native';
 import { get, post, queuedMsg } from '../../src/lib/api';
+import { docStatusLabel, docTypeLabel } from '../../src/lib/labels';
 import { atLeast, useOrgId } from '../../src/lib/org';
 import { useToast } from '../../src/lib/toast';
 import { useTheme } from '../../src/lib/theme';
@@ -213,9 +214,9 @@ export default function Documents() {
             <Card style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <View style={{ flexShrink: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>{d.title}</Text>
-                <Text style={{ fontSize: 12, color: t.ink3 }}>{d.doc_type}</Text>
+                <Text style={{ fontSize: 12, color: t.ink3 }}>{docTypeLabel(d.doc_type)}</Text>
               </View>
-              <Chip kind={statusKind(d.status)} label={d.status === 'revision' ? 'in revision' : d.status} />
+              <Chip kind={statusKind(d.status)} label={docStatusLabel(d.status)} />
             </Card>
           </Pressable>
         ))}
@@ -229,7 +230,7 @@ export default function Documents() {
             onChange={setTypeSel}
             placeholder="choose…"
             accessibilityLabel="Document type"
-            options={[...knownTypes.map((x) => ({ value: x, label: x })), { value: '__custom', label: 'custom…' }]}
+            options={[...knownTypes.map((x) => ({ value: x, label: docTypeLabel(x) })), { value: '__custom', label: 'Custom…' }]}
           />
         </Field>
         {typeSel === '__custom' ? (

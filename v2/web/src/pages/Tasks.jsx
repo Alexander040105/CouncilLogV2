@@ -9,6 +9,7 @@ import { del, get, patch, post } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
+import { assigneeLabel, taskStatusLabel } from '../lib/labels';
 import {
   Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input,
   PageHeader, Sheet, Skeleton,
@@ -39,18 +40,18 @@ function LinkChips({ t, projects }) {
         <Link to={`/projects/${t.project_id}`} className={link}
               onClick={(e) => e.stopPropagation()}>
           <Chip kind="neutral" icon={<FolderKanban size={11} />}
-                label={proj ? proj.title : 'project'} />
+                label={proj ? proj.title : 'Project'} />
         </Link>
       )}
       {t.document_id && (
         <Link to={`/documents/${t.document_id}`} className={link}
               onClick={(e) => e.stopPropagation()}>
-          <Chip kind="neutral" icon={<FileText size={11} />} label="document" />
+          <Chip kind="neutral" icon={<FileText size={11} />} label="Document" />
         </Link>
       )}
       {t.journal_entry_id && (
         <Link to="/journal" className={link} onClick={(e) => e.stopPropagation()}>
-          <Chip kind="neutral" icon={<NotebookPen size={11} />} label="journal" />
+          <Chip kind="neutral" icon={<NotebookPen size={11} />} label="Journal" />
         </Link>
       )}
     </span>
@@ -71,7 +72,7 @@ function TaskForm({ form, setForm, members, projects, documents, journals }) {
       <Field label="Assign to" hint="They get an in-app notification, an email, and a push ping.">
         <select className={sel} value={form.assignee_id}
                 onChange={(e) => setForm({ ...form, assignee_id: e.target.value || null })}>
-          <option value="">unassigned</option>
+          <option value="">Unassigned</option>
           {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
         </select>
       </Field>
@@ -79,9 +80,9 @@ function TaskForm({ form, setForm, members, projects, documents, journals }) {
         <Field label="Due (optional)"><Input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} /></Field>
         <Field label="Priority">
           <select className={sel} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-            <option value="low">low</option>
-            <option value="normal">normal</option>
-            <option value="high">high</option>
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
           </select>
         </Field>
       </div>
@@ -89,17 +90,17 @@ function TaskForm({ form, setForm, members, projects, documents, journals }) {
         <div className="space-y-2">
           <select className={sel} value={form.project_id}
                   onChange={(e) => setForm({ ...form, project_id: e.target.value || null })}>
-            <option value="">no project</option>
+            <option value="">No project</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
           </select>
           <select className={sel} value={form.document_id}
                   onChange={(e) => setForm({ ...form, document_id: e.target.value || null })}>
-            <option value="">no document</option>
+            <option value="">No document</option>
             {documents.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
           </select>
           <select className={sel} value={form.journal_entry_id}
                   onChange={(e) => setForm({ ...form, journal_entry_id: e.target.value || null })}>
-            <option value="">no journal entry</option>
+            <option value="">No journal entry</option>
             {journals.map((j) => (
               <option key={j.id} value={j.id}>
                 {j.entry_date} — {j.description.slice(0, 40)}{j.description.length > 40 ? '…' : ''}
@@ -166,9 +167,8 @@ export default function Tasks() {
     () => members.data?.data.filter((m) => m.status === 'active') ?? [],
     [members.data]);
   const nameOf = (id) =>
-    !id ? 'unassigned'
-      : id === myId ? 'you'
-      : members.data?.data.find((m) => m.user_id === id)?.display_name ?? 'someone';
+    assigneeLabel(id, myId,
+      (x) => members.data?.data.find((m) => m.user_id === x)?.display_name);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['tasks', org] });
@@ -284,15 +284,15 @@ export default function Tasks() {
                   <span>→ {nameOf(x.assignee_id)}</span>
                   {x.due_date && (
                     <span className={overdue(x) ? 'font-semibold text-[var(--color-status-alert)]' : ''}>
-                      due {x.due_date}{overdue(x) ? ' — overdue' : ''}
+                      Due {x.due_date}{overdue(x) ? ' — overdue' : ''}
                     </span>
                   )}
                   <LinkChips t={x} projects={projects.data?.data} />
                 </div>
               </div>
               <span className="flex shrink-0 flex-col items-end gap-1">
-                <Chip kind={STATUS_CHIP[x.status]} label={x.status} />
-                {x.priority === 'high' && <Chip kind={PRIORITY_CHIP.high} label="high" />}
+                <Chip kind={STATUS_CHIP[x.status]} label={taskStatusLabel(x.status)} />
+                {x.priority === 'high' && <Chip kind={PRIORITY_CHIP.high} label="High" />}
               </span>
             </Card>
           </button>
@@ -328,7 +328,7 @@ export default function Tasks() {
                 <p className="text-sm">{t.description || t.title}</p>
                 <div className="text-xs text-[var(--color-ink-3)]">
                   {nameOf(t.creator_id)} → {nameOf(t.assignee_id)}
-                  {t.due_date && <> · due {t.due_date}{overdue(t) ? ' (overdue)' : ''}</>}
+                  {t.due_date && <> · Due {t.due_date}{overdue(t) ? ' (overdue)' : ''}</>}
                 </div>
               </div>
             )}

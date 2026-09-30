@@ -157,6 +157,9 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
   3. `POST /journal/entries` references the uploaded path; API verifies the
      object exists, checks magic bytes + size, strips EXIF server-side or via
      client pre-strip (see §10/OQ).
+- Photos are editable after posting: `PATCH /journal/{id}` accepts
+  `add_photos` (uploaded via the same sign flow) and `remove_photo_ids` —
+  the author swaps evidence without deleting the entry.
 - Photos are viewable only via `GET /journal/photos/{id}/url` → API authz →
   short-lived signed **download** URL (TTL ≤ 15 min). No public bucket.
 - Journal satisfies that day's attendance (`documented`).
@@ -171,14 +174,23 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
 - **Checklists instantiate from templates:** on project creation (or on
   demand) the server copies matching `checklist_template_items` into
   `project_checklist_items` — a **snapshot**, so later template edits never
-  rewrite a running project's checklist.
+  rewrite a running project's checklist. The paper/logistics toggles only
+  *suggest* which templates apply — the create screen shows the merged list
+  editable before save (`checklist_items` on `POST /projects` overrides the
+  auto-match), and advisers/owners or the project lead may add, rename,
+  delete, reorder, and re-date items afterwards. Only ticking items off and
+  assigning them is officer-scoped.
 - Deadline rules live in template config (`rule_json`), e.g. CHED outside-event
   items carry `due_days_before_event: 15`; financial report template carries
   `due_days_after_event: 7`. API computes `due_date` at instantiation from
   `target_date`.
+- The **project lead** (`owner_id`) may move `status` freely — draft → active
+  → done → archived and back — via a status-only PATCH; any other field still
+  needs adviser+.
 - **Views:** project board grouped by status; per-project detail showing
   paper-processing checklist, logistics checklist, linked documents, linked
-  journal entries.
+  journal entries; checklist filters All / Not done / Done / Assigned /
+  Unassigned / Mine.
 
 ### 3.5 Paper logbook (document tracking)
 
@@ -191,9 +203,9 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
   custody evidence to a specific signatory step on the card view).
   Append-first by design, but
   correctable: the mover may edit/delete their own same-day record and
-  owners may correct any (audit-logged; photos immutable — re-record to
-  swap). Deleting the newest row reverts `current_location` to the
-  previous movement. Client-side access stays select-only via RLS — the
+  owners may correct any (audit-logged; `PATCH` takes `photo_path` to
+  replace the photo or `clear_photo` to drop it). Deleting the newest row
+  reverts `current_location` to the previous movement. Client-side access stays select-only via RLS — the
   0001 revoke was relaxed for the API role in `0009`.
 - `document_signatory_steps` — instantiated snapshot of a `signatory_chain`;
   each step `pending|signed|skipped|revision_requested|superseded`, advanced
@@ -205,7 +217,12 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
   `requested_at_step_id` (null when the whole resolved doc is sent back),
   `round_no`, required `note`, `created_by`. A revision supersedes stale
   pendings and appends fresh `pending` copies of the chosen resolved steps —
-  history is never overwritten. Late revisions are allowed on `signed` and
+  history is never overwritten. `return_to_step_id` sends the paper back to
+  an already-resolved desk (it signs again in the new round — the fix for
+  "the president signed but the paper needs changes"); pending steps listed
+  in `resend_step_ids` are **carried** into the new round instead of
+  superseded, and the UI previews the resulting route + warns which pending
+  desks drop off. Late revisions are allowed on `signed` and
   `filed` docs.
 - Logbook view = vertical timeline: signature steps interleaved with
   movement records — "where is the paper" is always the latest movement row.
@@ -640,25 +657,28 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 20 | `POST /orgs/{org}/attendance/no-tasks` | self | declare "no tasks today" |
 | 21 | `GET /orgs/{org}/journal` | member | feed `?day=`/`?member=`/`?project=` |
 | 22 | `POST /orgs/{org}/journal` | member+ | create entry (photo paths) |
-| 23 | `PATCH /orgs/{org}/journal/{id}` | self-day / owner | edit entry (`project_id` tri-state: absent=keep, null=clear) |
+| 23 | `PATCH /orgs/{org}/journal/{id}` | self-day / owner | edit entry (`project_id` tri-state: absent=keep, null=clear; `add_photos`/`remove_photo_ids` swap evidence) |
 | 23a | `DELETE /orgs/{org}/journal/{id}` | self-day / owner | delete entry + photos; last-entry delete un-documents the day |
 | 23b | `DELETE /orgs/{org}/attendance/{day}` | self-day / owner | retract `declared_no_tasks` (`?member_id=` for owner); `409` on `documented` |
 | 24 | `POST /orgs/{org}/journal/photos/sign` | member+ | mint signed upload URL |
 | 25 | `GET /orgs/{org}/photos/{id}/url` | member | mint signed download URL |
-| 26 | `GET/POST /orgs/{org}/projects` | member / owner+adviser | list / create |
-| 27 | `GET/PATCH /orgs/{org}/projects/{id}` | member / owner+adviser | detail / update |
+| 26 | `GET/POST /orgs/{org}/projects` | member / owner+adviser | list / create (`checklist_items` overrides the auto-matched snapshot) |
+| 27 | `GET/PATCH /orgs/{org}/projects/{id}` | member / owner+adviser; lead: `status` only | detail / update |
 | 28 | `POST /orgs/{org}/projects/{id}/instantiate` | owner, adviser | build checklists from templates; `append:true` bypasses the populated guard, else `409 ALREADY_INSTANTIATED` |
 | 29 | `GET /orgs/{org}/projects/{id}/checklist` | member | items w/ done state |
-| 30 | `PATCH /orgs/{org}/checklist-items/{id}` | officer+ | check/uncheck item |
+| 30 | `PATCH /orgs/{org}/checklist-items/{id}` | officer+ for done/assignee; adviser+ or project lead for structure | check/assign/edit item |
+| 30a | `POST /orgs/{org}/projects/{id}/checklist-items` | adviser+ or project lead | append item |
+| 30b | `POST /orgs/{org}/projects/{id}/checklist-items/reorder` | adviser+ or project lead | set item order (exact id set required) |
+| 30c | `DELETE /orgs/{org}/checklist-items/{id}` | adviser+ or project lead | remove item |
 | 31 | `GET/POST /orgs/{org}/checklist-templates` | member / owner | template list/create (+items) |
 | 31a | `PATCH/DELETE /orgs/{org}/checklist-templates/{id}` | owner | template update (items wholesale-replace) / delete (instances keep snapshot via SET NULL) |
 | 32 | `GET/POST /orgs/{org}/documents` | member / officer+ | list / create document |
 | 33 | `GET /orgs/{org}/documents/{id}` | member | detail = timeline |
 | 34 | `POST /orgs/{org}/documents/{id}/movements` | officer+ | append movement (where/who/photo) |
-| 34a | `PATCH/DELETE /orgs/{org}/documents/{id}/movements/{mid}` | mover same-day / owner | correct/remove a custody record (delete of newest falls back to previous location) |
+| 34a | `PATCH/DELETE /orgs/{org}/documents/{id}/movements/{mid}` | mover same-day / owner | correct/remove a custody record (`photo_path`/`clear_photo` swap evidence; delete of newest falls back to previous location) |
 | 35 | `POST /orgs/{org}/documents/{id}/steps/{sid}` | officer+ | mark step signed/skipped |
 | 35a | `POST /orgs/{org}/documents/{id}/attach-chain` | officer+ | route an unrouted doc to a chosen chain |
-| 35b | `POST /orgs/{org}/documents/{id}/revisions` | officer+ | send back for revision → new round of re-sign steps |
+| 35b | `POST /orgs/{org}/documents/{id}/revisions` | officer+ | send back for revision → new round (`at_step_id` = pending desk sends back, `return_to_step_id` = resolved desk re-signs; pending ids in `resend_step_ids` carry into the new round) |
 | 35c | `POST /orgs/{org}/documents/{id}/steps/sign-all` | officer+ | bulk-sign current-round pending steps |
 | 36 | `GET/POST /orgs/{org}/signatory-chains` | member / owner | chain list/create (+steps) |
 | 36a | `PATCH/DELETE /orgs/{org}/signatory-chains/{id}` | owner | chain update (steps wholesale-replace) / delete (routed docs keep snapshots) |

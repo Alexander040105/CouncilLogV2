@@ -126,14 +126,14 @@ export default function Attendance() {
                               <Chip
                                 kind={r.duty_type === 'extra' ? 'extra' : cellKind(r)}
                                 icon={<Minus size={12} color={t.chips[cellKind(r)].fg} />}
-                                label="none"
+                                label="None"
                               />
                             </Pressable>
                           ) : (
                             <Chip
                               kind={r.duty_type === 'extra' ? 'extra' : cellKind(r)}
                               icon={r.status === 'documented' ? <Check size={12} color={t.chips[r.duty_type === 'extra' ? 'extra' : cellKind(r)].fg} /> : <Minus size={12} color={t.chips[cellKind(r)].fg} />}
-                              label={r.status === 'documented' ? 'filed' : 'none'}
+                              label={r.status === 'documented' ? 'Filed' : 'None'}
                             />
                           )
                         ) : <Text style={{ color: t.ink3 }}>·</Text>}

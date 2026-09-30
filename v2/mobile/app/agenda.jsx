@@ -84,7 +84,7 @@ export default function Agenda() {
                 <meta.Icon size={15} color={t.ink3} />
                 <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, color: t.ink }}>{e.label}</Text>
                 <Text style={{ fontSize: 12, color: t.ink3 }}>{e.sub}</Text>
-                {late ? <Chip kind="alert" label="overdue" /> : null}
+                {late ? <Chip kind="alert" label="Overdue" /> : null}
               </Pressable>
             );
           })}

@@ -19,6 +19,13 @@ from ..services.notify import fan_out_assignment
 router = APIRouter(tags=["projects"])
 
 
+class ItemSeed(BaseModel):
+    label: str = Field(min_length=1, max_length=300)
+    hint: str | None = None
+    required: bool = True
+    due_date: date | None = None
+
+
 class ProjectIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     details: str | None = None
@@ -29,6 +36,9 @@ class ProjectIn(BaseModel):
     needs_paper_processing: bool = False
     needs_logistics: bool = False
     flags: dict[str, bool] = {}  # e.g. {"has_merch": true} for conditional steps/items
+    # provided → write these items verbatim at create (ord = array index);
+    # absent → checklist stays empty until instantiate runs
+    checklist_items: list[ItemSeed] | None = Field(default=None, max_length=100)
     client_request_id: str | None = Field(default=None, max_length=64)
 
 
@@ -51,12 +61,18 @@ async def create_project(org_id: uuid.UUID, body: ProjectIn, session: Session, b
     if body.owner_id:
         await require_user_in_org(session, org_id, str(body.owner_id))
     p = Project(org_id=org_id, owner_id=body.owner_id or uuid.UUID(member.user_id),
-                **body.model_dump(exclude={"owner_id"}))
+                **body.model_dump(exclude={"owner_id", "checklist_items"}))
     p, deduped = await add_deduped(
         session, p, Project, org_id=org_id,
         client_request_id=body.client_request_id)
     if deduped:
         return deduped_response(p)
+    if body.checklist_items is not None:
+        for idx, it in enumerate(body.checklist_items):
+            session.add(ProjectChecklistItem(
+                org_id=org_id, project_id=p.id, ord=idx,
+                label=it.label, hint=it.hint, required=it.required,
+                due_date=it.due_date))
     await audit(session, org_id=org_id, actor_id=member.user_id, action="project.created",
                 entity_type="project", entity_id=p.id, metadata={"title": p.title})
     # inbox row must commit with the assign — fan-out runs before commit
@@ -91,10 +107,17 @@ class ProjectPatch(BaseModel):
 
 
 @router.patch("/orgs/{org_id}/projects/{project_id}")
-async def patch_project(org_id: uuid.UUID, project_id: uuid.UUID, body: ProjectPatch, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("adviser"))):
+async def patch_project(org_id: uuid.UUID, project_id: uuid.UUID, body: ProjectPatch, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize())):
     p = await session.get(Project, project_id)
     if p is None or p.org_id != org_id:
         raise not_found("project")
+    if not member.at_least("adviser"):
+        # the project's lead may move its status — and nothing else
+        if str(p.owner_id) != member.user_id or set(body.model_fields_set) != {"status"}:
+            raise APIError(403, "FORBIDDEN",
+                           "Only adviser+ can edit projects — the lead can move status")
+        if body.status is None:
+            raise APIError(422, "NOTHING_TO_DO", "No status supplied")
     if body.owner_id and body.owner_id != p.owner_id:
         await require_user_in_org(session, org_id, str(body.owner_id))
     changed_lead = bool(body.owner_id) and body.owner_id != p.owner_id
@@ -289,13 +312,49 @@ async def list_checklist_items(org_id: uuid.UUID, session: Session,
 class ChecklistItemPatch(BaseModel):
     done: bool | None = None
     assignee_id: uuid.UUID | None = None  # send explicit null to unassign
+    label: str | None = Field(default=None, min_length=1, max_length=300)
+    hint: str | None = None            # tri-state: absent → leave, null → clear
+    required: bool | None = None
+    due_date: date | None = None       # tri-state: absent → leave, null → clear
+    ord: int | None = None
+
+
+STRUCTURAL_FIELDS = {"label", "hint", "required", "due_date", "ord"}
 
 
 @router.patch("/orgs/{org_id}/checklist-items/{item_id}")
-async def patch_item(org_id: uuid.UUID, item_id: uuid.UUID, body: ChecklistItemPatch, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("officer"))):
+async def patch_item(org_id: uuid.UUID, item_id: uuid.UUID, body: ChecklistItemPatch, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize())):
     it = await session.get(ProjectChecklistItem, item_id)
     if it is None or it.org_id != org_id:
         raise not_found("checklist item")
+
+    structural = set(body.model_fields_set) & STRUCTURAL_FIELDS
+    if structural:
+        # editing the item itself is adviser+ / project-lead territory
+        p = await session.get(Project, it.project_id)
+        if p is None or p.org_id != org_id:
+            raise not_found("project")
+        if not _structural_ok(p, member):
+            raise APIError(403, "FORBIDDEN",
+                           "Only adviser+ or the project lead can change checklist items")
+        if "label" in body.model_fields_set:
+            it.label = body.label
+        if "hint" in body.model_fields_set:
+            it.hint = body.hint
+        if body.required is not None:
+            it.required = body.required
+        if "due_date" in body.model_fields_set:
+            it.due_date = body.due_date
+        if body.ord is not None:
+            it.ord = body.ord
+        await audit(session, org_id=org_id, actor_id=member.user_id,
+                    action="checklist_item.edited",
+                    entity_type="project_checklist_item", entity_id=it.id,
+                    metadata={"fields": sorted(structural)})
+    if not structural or ({"done", "assignee_id"} & set(body.model_fields_set)):
+        if not member.at_least("officer"):
+            raise APIError(403, "FORBIDDEN",
+                           "Only officers can tick or assign checklist items")
 
     assigned = None
     if "assignee_id" in body.model_fields_set:
@@ -330,3 +389,78 @@ async def patch_item(org_id: uuid.UUID, item_id: uuid.UUID, body: ChecklistItemP
                                  entity_type="project", entity_id=it.project_id)
     await session.commit()
     return {"data": it}
+
+
+# ── Checklist item structure: add / edit fields / reorder / delete ──────
+def _structural_ok(project: Project, member: Membership) -> bool:
+    """Adviser+ or the project's own lead may shape the checklist."""
+    return member.at_least("adviser") or str(project.owner_id) == member.user_id
+
+
+async def _require_structural(session, org_id: uuid.UUID, project_id: uuid.UUID,
+                              member: Membership) -> Project:
+    p = await session.get(Project, project_id)
+    if p is None or p.org_id != org_id:
+        raise not_found("project")
+    if not _structural_ok(p, member):
+        raise APIError(403, "FORBIDDEN",
+                       "Only adviser+ or the project lead can change checklist items")
+    return p
+
+
+@router.post("/orgs/{org_id}/projects/{project_id}/checklist-items", status_code=201)
+async def add_checklist_item(org_id: uuid.UUID, project_id: uuid.UUID, body: ItemSeed,
+                             session: Session, member: Membership = Depends(authorize())):
+    p = await _require_structural(session, org_id, project_id, member)
+    top = (await session.execute(select(func.max(ProjectChecklistItem.ord)).where(
+        ProjectChecklistItem.project_id == p.id))).scalar_one() or -1
+    it = ProjectChecklistItem(org_id=org_id, project_id=p.id, ord=top + 1,
+                              label=body.label, hint=body.hint,
+                              required=body.required, due_date=body.due_date)
+    session.add(it)
+    await audit(session, org_id=org_id, actor_id=member.user_id,
+                action="checklist_item.added",
+                entity_type="project_checklist_item", entity_id=it.id,
+                metadata={"label": it.label})
+    await session.commit()
+    return {"data": it}
+
+
+class ReorderIn(BaseModel):
+    item_ids: list[uuid.UUID]
+
+
+@router.post("/orgs/{org_id}/projects/{project_id}/checklist-items/reorder")
+async def reorder_checklist_items(org_id: uuid.UUID, project_id: uuid.UUID, body: ReorderIn,
+                                  session: Session, member: Membership = Depends(authorize())):
+    p = await _require_structural(session, org_id, project_id, member)
+    items = (await session.execute(select(ProjectChecklistItem).where(
+        ProjectChecklistItem.project_id == p.id))).scalars().all()
+    if {s.id for s in items} != set(body.item_ids):
+        raise APIError(422, "ITEM_SET_MISMATCH",
+                       "item_ids must be exactly this project's items")
+    order = {iid: i for i, iid in enumerate(body.item_ids)}
+    for it in items:
+        it.ord = order[it.id]
+    await audit(session, org_id=org_id, actor_id=member.user_id,
+                action="checklist.reordered",
+                entity_type="project", entity_id=p.id)
+    await session.commit()
+    return {"data": {"reordered": len(items)}}
+
+
+@router.delete("/orgs/{org_id}/checklist-items/{item_id}")
+async def delete_checklist_item(org_id: uuid.UUID, item_id: uuid.UUID,
+                                session: Session, member: Membership = Depends(authorize())):
+    it = await session.get(ProjectChecklistItem, item_id)
+    if it is None or it.org_id != org_id:
+        raise not_found("checklist item")
+    await _require_structural(session, org_id, it.project_id, member)
+    await session.delete(it)
+    await audit(session, org_id=org_id, actor_id=member.user_id,
+                action="checklist_item.deleted",
+                entity_type="project_checklist_item", entity_id=it.id,
+                metadata={"label": it.label, "done": it.done,
+                          "assignee_id": str(it.assignee_id) if it.assignee_id else None})
+    await session.commit()
+    return {"ok": True}

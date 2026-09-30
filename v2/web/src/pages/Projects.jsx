@@ -5,8 +5,9 @@ import { FolderKanban, Plus } from 'lucide-react';
 import { get, post } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
 import { collectFlagNames } from '../lib/rules';
+import { projectStatusLabel } from '../lib/labels';
 import { useToast } from '../lib/toast';
-import { ChecklistPreview } from '../components/ChecklistPreview';
+import { ChecklistEditor } from '../components/ChecklistEditor';
 import { FlagCheckboxes } from '../components/RuleFields';
 import { Button, Card, Chip, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
 
@@ -20,6 +21,7 @@ export default function Projects() {
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false, assignee: '', flags: {} });
+  const [items, setItems] = useState([]);   // editable checklist snapshot
   const [err, setErr] = useState(null);
 
   const list = useQuery({
@@ -54,17 +56,21 @@ export default function Projects() {
       owner_id: form.assignee || null,
       needs_paper_processing: form.paper, needs_logistics: form.logistics,
       flags: form.flags,
+      checklist_items: items
+        .filter((i) => i.label.trim())
+        .map((i) => ({ label: i.label.trim(), hint: i.hint, required: i.required, due_date: i.due_date })),
     }),
     onSuccess: () => {
       toast.success(form.assignee ? 'Project created — assignee will be emailed.' : 'Project created.');
       setOpen(false);
       setForm({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false, assignee: '', flags: {} });
+      setItems([]);
       qc.invalidateQueries({ queryKey: ['projects', org] });
     },
     onError: (e) => { setErr(e.message); toast.error(e.message); },
   });
 
-  const groups = STATUS.map((s) => ({ s, items: (list.data?.data ?? []).filter((p) => p.status === s) }));
+  const groups = STATUS.map((s) => ({ s, rows: (list.data?.data ?? []).filter((p) => p.status === s) }));
 
   return (
     <div className="space-y-4">
@@ -87,18 +93,18 @@ export default function Projects() {
                action={canCreate ? <Button onClick={() => setOpen(true)}>New project</Button> : null} />
       )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {groups.map(({ s, items }) => (
+        {groups.map(({ s, rows }) => (
           <div key={s} className="space-y-2">
-            <div className="text-xs font-semibold uppercase text-[var(--color-ink-3)]">{s} · {items.length}</div>
-            {items.map((p) => (
+            <div className="text-xs font-semibold uppercase text-[var(--color-ink-3)]">{projectStatusLabel(s)} · {rows.length}</div>
+            {rows.map((p) => (
               <Link key={p.id} to={`/projects/${p.id}`}>
                 <Card className="space-y-1 hover:border-[var(--color-accent)]">
                   <div className="text-sm font-medium">{p.title}</div>
-                  {p.target_date && <div className="text-xs text-[var(--color-ink-3)]">target {p.target_date}</div>}
-                  {nameOf(p.owner_id) && <div className="text-xs text-[var(--color-ink-3)]">lead: {nameOf(p.owner_id)}</div>}
+                  {p.target_date && <div className="text-xs text-[var(--color-ink-3)]">Target {p.target_date}</div>}
+                  {nameOf(p.owner_id) && <div className="text-xs text-[var(--color-ink-3)]">Lead: {nameOf(p.owner_id)}</div>}
                   <div className="flex gap-1">
-                    {p.needs_paper_processing && <Chip kind="pending" label="papers" />}
-                    {p.needs_logistics && <Chip kind="extra" label="logistics" />}
+                    {p.needs_paper_processing && <Chip kind="pending" label="Papers" />}
+                    {p.needs_logistics && <Chip kind="extra" label="Logistics" />}
                   </div>
                 </Card>
               </Link>
@@ -133,11 +139,12 @@ export default function Projects() {
           </div>
           <FlagCheckboxes flagNames={flagNames} value={form.flags}
                           onChange={(flags) => setForm({ ...form, flags })} />
-          <ChecklistPreview
+          <ChecklistEditor
             templates={templates.data?.data}
             paper={form.paper} logistics={form.logistics}
             eventType={form.event_type || null} flags={form.flags}
-            targetDate={form.target_date || null} />
+            targetDate={form.target_date || null}
+            items={items} onItems={setItems} />
           {err && <p className="text-sm text-[var(--color-status-alert)]">{err}</p>}
           <Button className="w-full" onClick={() => create.mutate()} disabled={!form.title || create.isPending}>Create</Button>
         </div>

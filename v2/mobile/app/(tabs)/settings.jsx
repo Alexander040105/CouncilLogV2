@@ -9,6 +9,7 @@ import { Check, Copy, Plus } from 'lucide-react-native';
 import { get, post, put, del as delApi } from '../../src/lib/api';
 import { atLeast, setCurrentOrg, useOrgId } from '../../src/lib/org';
 import { collectFlagNames, describeCondition, describeItemRule } from '../../src/lib/rules';
+import { docTypeLabel, humanize } from '../../src/lib/labels';
 import { useToast } from '../../src/lib/toast';
 import { useTheme } from '../../src/lib/theme';
 import { useMe, useActiveMembership } from '../../src/lib/me';
@@ -74,20 +75,22 @@ export default function Settings() {
         </Text>
       </Card>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={{ flexDirection: 'row', gap: 2, borderRadius: t.radiusInput, borderWidth: t.boxWidth, borderColor: t.boxColor, padding: 2 }}>
-          {TABS.filter((x) => x !== 'invites' || canWrite).map((x) => (
-            <Pressable key={x} accessibilityRole="button"
-                       onPress={() => router.setParams({ tab: x })}
-                       style={{
-                         minHeight: 36, justifyContent: 'center', paddingHorizontal: 12, borderRadius: t.radiusInput,
-                         backgroundColor: tab === x ? t.navActiveBg : 'transparent',
-                       }}>
-              <Text style={{ fontSize: 12, fontWeight: t.labelWeight, textTransform: 'capitalize', color: tab === x ? t.navActiveFg : t.ink3 }}>{x}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </ScrollView>
+      <View style={{
+        flexDirection: 'row', flexWrap: 'wrap', gap: 2,
+        borderRadius: t.radiusInput, borderWidth: t.boxWidth, borderColor: t.boxColor, padding: 2,
+      }}>
+        {TABS.filter((x) => x !== 'invites' || canWrite).map((x) => (
+          <Pressable key={x} accessibilityRole="button"
+                     accessibilityState={{ selected: tab === x }}
+                     onPress={() => router.setParams({ tab: x })}
+                     style={{
+                       minHeight: 36, justifyContent: 'center', paddingHorizontal: 12, borderRadius: t.radiusInput,
+                       backgroundColor: tab === x ? t.navActiveBg : 'transparent',
+                     }}>
+            <Text style={{ fontSize: 12, fontWeight: t.labelWeight, textTransform: 'capitalize', color: tab === x ? t.navActiveFg : t.ink3 }}>{x}</Text>
+          </Pressable>
+        ))}
+      </View>
 
       {tab === 'members' ? (
         <Card style={{ gap: 8 }}>
@@ -187,16 +190,16 @@ function Positions({ canWrite }) {
         <Empty title="No positions yet" hint="Add your first office — e.g. President, Secretary." />
       ) : null}
       {pos.data?.data.map((p, i) => (
-        <View key={p.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: i > 0 ? Math.max(t.boxWidth, 1) : 0, borderTopColor: t.line }}>
-          <Text style={{ fontSize: 14, color: t.ink }}>{p.title}</Text>
-          <Text style={{ fontSize: 13, color: t.ink3 }}>{nameOf(p.holder)}</Text>
+        <View key={p.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingVertical: 8, borderTopWidth: i > 0 ? Math.max(t.boxWidth, 1) : 0, borderTopColor: t.line }}>
+          <Text style={{ fontSize: 14, color: t.ink, flexShrink: 1, minWidth: 0 }} numberOfLines={2}>{p.title}</Text>
+          <Text style={{ fontSize: 13, color: t.ink3, flexShrink: 0, maxWidth: '55%', textAlign: 'right' }} numberOfLines={1} ellipsizeMode="tail">{nameOf(p.holder)}</Text>
         </View>
       ))}
       <View style={{ gap: 8 }}>
         <Input placeholder="Position title" value={title} onChangeText={setTitle} />
         <Select
-          value={holder} onChange={setHolder} accessibilityLabel="Holder" placeholder="holder…"
-          options={[{ value: '', label: 'holder…' }, ...(members.data?.data ?? []).map((m) => ({ value: m.user_id, label: m.display_name }))]}
+          value={holder} onChange={setHolder} accessibilityLabel="Holder" placeholder="Holder…"
+          options={[{ value: '', label: 'Holder…' }, ...(members.data?.data ?? []).map((m) => ({ value: m.user_id, label: m.display_name }))]}
         />
         <Button onPress={() => add.mutate()} disabled={!canWrite || !title || add.isPending} busy={add.isPending}>Add</Button>
       </View>
@@ -462,7 +465,7 @@ function Chains({ canWrite }) {
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>
-                    {x.name} <Text style={{ fontSize: 12, fontWeight: '400', color: t.ink3 }}>· {x.doc_type}</Text>
+                    {x.name} <Text style={{ fontSize: 12, fontWeight: '400', color: t.ink3 }}>· {docTypeLabel(x.doc_type)}</Text>
                   </Text>
                   <Text style={{ fontSize: 12, color: n === 0 ? t.alert : t.ink3 }}>
                     {n === 0
@@ -626,7 +629,7 @@ function Invites() {
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <View style={{ flex: 1 }}>
             <Select value={role} onChange={setRole} accessibilityLabel="Role"
-                    options={['officer', 'adviser', 'member'].map((x) => ({ value: x, label: x }))} />
+                    options={['officer', 'adviser', 'member'].map((x) => ({ value: x, label: humanize(x) }))} />
           </View>
           <Button onPress={() => mint.mutate()} disabled={mint.isPending} busy={mint.isPending}>Mint invite</Button>
         </View>
@@ -635,7 +638,7 @@ function Invites() {
                      onPress={() => shareCode(i.code)}
                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 36 }}>
             <Text style={{ fontSize: 12, fontFamily: 'monospace', backgroundColor: t.surface3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: t.radiusInput, color: t.ink }}>{i.code}</Text>
-            <Text style={{ fontSize: 12, color: t.ink3 }}>{i.role} · {i.uses}/{i.max_uses} uses</Text>
+            <Text style={{ fontSize: 12, color: t.ink3 }}>{humanize(i.role)} · {i.uses}/{i.max_uses} uses</Text>
           </Pressable>
         ))}
       </View>

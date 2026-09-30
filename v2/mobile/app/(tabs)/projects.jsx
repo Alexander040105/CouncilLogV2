@@ -8,10 +8,11 @@ import { FolderKanban, Plus } from 'lucide-react-native';
 import { get, post, queuedMsg } from '../../src/lib/api';
 import { atLeast, useOrgId } from '../../src/lib/org';
 import { collectFlagNames } from '../../src/lib/rules';
+import { humanize, projectStatusLabel } from '../../src/lib/labels';
 import { useToast } from '../../src/lib/toast';
 import { useTheme } from '../../src/lib/theme';
 import { useMe, useActiveMembership } from '../../src/lib/me';
-import { ChecklistPreview } from '../../src/components/ChecklistPreview';
+import { ChecklistEditor } from '../../src/components/ChecklistEditor';
 import { FlagCheckboxes } from '../../src/components/RuleFields';
 import { Button, Card, CheckRow, Chip, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Screen, Select, Sheet, Skeleton } from '../../src/components/ui';
 
@@ -28,6 +29,7 @@ export default function Projects() {
   const { t } = useTheme();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false, assignee: '', flags: {} });
+  const [checklist, setChecklist] = useState([]);
   const [err, setErr] = useState(null);
 
   const list = useQuery({
@@ -62,11 +64,18 @@ export default function Projects() {
       owner_id: form.assignee || null,
       needs_paper_processing: form.paper, needs_logistics: form.logistics,
       flags: form.flags,
+      checklist_items: checklist
+        .filter((i) => i.label.trim())
+        .map((i, n) => ({
+          label: i.label.trim(), hint: i.hint || null,
+          required: !!i.required, due_date: i.due_date || null, ord: n,
+        })),
     }),
     onSuccess: (r) => {
       toast.success(queuedMsg(r, form.assignee ? 'Project created — assignee will be emailed.' : 'Project created.'));
       setOpen(false);
       setForm({ title: '', details: '', event_type: '', target_date: '', paper: false, logistics: false, assignee: '', flags: {} });
+      setChecklist([]);
       qc.invalidateQueries({ queryKey: ['projects', org] });
     },
     onError: (e) => { setErr(e.message); toast.error(e.message); },
@@ -100,16 +109,16 @@ export default function Projects() {
       ) : null}
       {groups.map(({ s, items }) => items.length > 0 && (
         <View key={s} style={{ gap: 8 }}>
-          <Text style={{ fontSize: 12, fontWeight: '700', textTransform: 'uppercase', color: t.ink3 }}>{s} · {items.length}</Text>
+          <Text style={{ fontSize: 12, fontWeight: '700', textTransform: 'uppercase', color: t.ink3 }}>{projectStatusLabel(s)} · {items.length}</Text>
           {items.map((p) => (
             <Pressable key={p.id} accessibilityRole="button" onPress={() => router.push(`/project/${p.id}`)}>
               <Card style={{ gap: 4 }}>
                 <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>{p.title}</Text>
-                {p.target_date ? <Text style={{ fontSize: 12, color: t.ink3 }}>target {p.target_date}</Text> : null}
-                {nameOf(p.owner_id) ? <Text style={{ fontSize: 12, color: t.ink3 }}>lead: {nameOf(p.owner_id)}</Text> : null}
+                {p.target_date ? <Text style={{ fontSize: 12, color: t.ink3 }}>Target {p.target_date}</Text> : null}
+                {nameOf(p.owner_id) ? <Text style={{ fontSize: 12, color: t.ink3 }}>Lead: {nameOf(p.owner_id)}</Text> : null}
                 <View style={{ flexDirection: 'row', gap: 4 }}>
-                  {p.needs_paper_processing ? <Chip kind="pending" label="papers" /> : null}
-                  {p.needs_logistics ? <Chip kind="extra" label="logistics" /> : null}
+                  {p.needs_paper_processing ? <Chip kind="pending" label="Papers" /> : null}
+                  {p.needs_logistics ? <Chip kind="extra" label="Logistics" /> : null}
                 </View>
               </Card>
             </Pressable>
@@ -128,7 +137,7 @@ export default function Projects() {
               {knownEventTypes.map((et) => (
                 <Pressable key={et} accessibilityRole="button" onPress={() => setForm({ ...form, event_type: et })}
                            style={{ minHeight: 32, justifyContent: 'center', paddingHorizontal: 10, borderRadius: t.chipRadius, borderWidth: Math.max(t.boxWidth, 1), borderColor: t.boxColor, backgroundColor: t.surface2 }}>
-                  <Text style={{ fontSize: 12, color: t.ink2 }}>{et}</Text>
+                  <Text style={{ fontSize: 12, color: t.ink2 }}>{humanize(et)}</Text>
                 </Pressable>
               ))}
             </View>
@@ -149,11 +158,12 @@ export default function Projects() {
         <CheckRow checked={form.logistics} onChange={(v) => setForm({ ...form, logistics: v })} label="Needs logistics" />
         <FlagCheckboxes flagNames={flagNames} value={form.flags}
                         onChange={(flags) => setForm({ ...form, flags })} />
-        <ChecklistPreview
+        <ChecklistEditor
           templates={templates.data?.data}
           paper={form.paper} logistics={form.logistics}
           eventType={form.event_type || null} flags={form.flags}
-          targetDate={form.target_date || null} />
+          targetDate={form.target_date || null}
+          items={checklist} onItems={setChecklist} />
         {err ? <Text style={{ fontSize: 13, color: t.alert }}>{err}</Text> : null}
         <Button style={{ width: '100%' }} onPress={() => create.mutate()} disabled={!form.title || create.isPending} busy={create.isPending}>Create</Button>
       </Sheet>

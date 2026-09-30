@@ -40,17 +40,17 @@ export default function Dashboard() {
   const needs = [
     ...(myTasks.data?.data ?? []).map((x) => ({
       id: `t-${x.id}`, label: x.title, to: `/tasks?task=${x.id}`,
-      sub: x.due_date ? `task · due ${x.due_date}` : 'task',
+      sub: x.due_date ? `Task · due ${x.due_date}` : 'Task',
       hot: x.due_date && x.due_date < today,
     })),
     ...(myItems.data?.data ?? []).map((x) => ({
       id: `i-${x.id}`, label: x.label, to: `/projects/${x.project_id}`,
-      sub: x.due_date ? `${x.project_title} · due ${x.due_date}` : `checklist · ${x.project_title}`,
+      sub: x.due_date ? `${x.project_title} · due ${x.due_date}` : `Checklist · ${x.project_title}`,
       hot: x.due_date && x.due_date < today,
     })),
     ...(myPapers.data?.data ?? []).map((x) => ({
       id: `d-${x.id}`, label: x.title, to: `/documents/${x.id}`,
-      sub: 'paper in your custody', hot: x.status === 'revision',
+      sub: 'Paper in your custody', hot: x.status === 'revision',
     })),
   ];
 
@@ -82,7 +82,7 @@ export default function Dashboard() {
           {myRow && (
             <Chip
               kind={myRow.status === 'documented' ? 'done' : 'neutral'}
-              label={myRow.duty_type === 'extra' ? 'extra duty' : 'on duty'}
+              label={myRow.duty_type === 'extra' ? 'Extra duty' : 'On duty'}
               icon={<Check size={12} />}
             />
           )}

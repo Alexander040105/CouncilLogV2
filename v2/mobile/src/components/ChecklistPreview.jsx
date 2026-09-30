@@ -34,7 +34,7 @@ export function ChecklistPreview({ templates, paper, logistics, eventType, flags
             <Text key={k} style={{ fontSize: 12, color: t.ink2 }}>
               • {i.label}
               <Text style={{ color: t.ink3 }}> — {i.template_name}</Text>
-              {i.due ? <Text style={{ color: t.ink3 }}> · due {i.due}</Text> : null}
+              {i.due ? <Text style={{ color: t.ink3 }}> · Due {i.due}</Text> : null}
             </Text>
           ))}
         </View>

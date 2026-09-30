@@ -44,7 +44,7 @@ export function Screen({ children, refresh, pad = 16, scroll = true }) {
   const body = scroll ? (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: pad, paddingBottom: pad + insets.bottom + 24, gap: 14 }}
+      contentContainerStyle={{ padding: pad, paddingBottom: pad + insets.bottom + 72, gap: 14 }}
       keyboardShouldPersistTaps="handled"
       refreshControl={refresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.ink3} /> : undefined}
     >

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { NotebookPen, Pencil, Plus, Trash2 } from 'lucide-react-native';
+import { NotebookPen, Pencil, Plus, Trash2, X } from 'lucide-react-native';
 import { del, get, isQueued, patch, post, queuedMsg } from '../../src/lib/api';
 import { submitPhotoRecord } from '../../src/lib/offline';
 import { todayOrg, useOrgId } from '../../src/lib/org';
@@ -13,7 +13,7 @@ import { useAuth } from '../../src/lib/auth';
 import { useMe, useActiveMembership } from '../../src/lib/me';
 import { useToast } from '../../src/lib/toast';
 import { useTheme } from '../../src/lib/theme';
-import { PhotoPicker } from '../../src/components/PhotoPicker';
+import { PhotoPicker, putToSignedUrl } from '../../src/components/PhotoPicker';
 import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Screen, Select, Sheet, Skeleton } from '../../src/components/ui';
 
 function PhotoThumb({ org, photo }) {
@@ -34,6 +34,35 @@ function PhotoThumb({ org, photo }) {
   );
 }
 
+/** Small thumbnail with a remove badge — edit-sheet only. */
+function EditPhotoThumb({ org, photo, onRemove }) {
+  const { t } = useTheme();
+  const q = useQuery({
+    queryKey: ['photourl', photo.id],
+    queryFn: () => get(`/orgs/${org}/photos/${photo.id}/url`),
+    staleTime: 10 * 60 * 1000,
+  });
+  return (
+    <View style={{ width: 88, height: 88 }}>
+      {q.data
+        ? <Image source={{ uri: q.data.url }} accessibilityLabel="work photo"
+                 style={{ width: 88, height: 88, borderRadius: t.radiusInput }} resizeMode="cover" />
+        : <Skeleton style={{ height: 88, width: 88 }} />}
+      <Pressable
+        accessibilityRole="button" accessibilityLabel="Remove photo" hitSlop={4}
+        onPress={onRemove}
+        style={{
+          position: 'absolute', top: 2, right: 2, width: 24, height: 24,
+          borderRadius: 12, backgroundColor: t.alert,
+          alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <X size={13} color="#fff" />
+      </Pressable>
+    </View>
+  );
+}
+
 export default function Journal() {
   const org = useOrgId();
   const qc = useQueryClient();
@@ -49,6 +78,7 @@ export default function Journal() {
   const [desc, setDesc] = useState('');
   const [projectId, setProjectId] = useState('');
   const [photos, setPhotos] = useState([]);
+  const [removedIds, setRemovedIds] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const { t } = useTheme();
@@ -89,22 +119,32 @@ export default function Journal() {
     active?.role === 'owner';
 
   const openCompose = () => {
-    setEditing(null); setDesc(''); setPhotos([]); setProjectId(''); setErr(null);
+    setEditing(null); setDesc(''); setPhotos([]); setProjectId('');
+    setRemovedIds(new Set()); setErr(null);
     setComposeOpen(true);
   };
 
   const openEdit = (e) => {
     setEditing(e); setDesc(e.description); setProjectId(e.project_id ?? '');
-    setPhotos([]); setErr(null); setComposeOpen(true);
+    setPhotos([]); setRemovedIds(new Set()); setErr(null); setComposeOpen(true);
   };
 
   const submit = async () => {
     setBusy(true); setErr(null);
     try {
       if (editing) {
+        const uploaded = [];
+        for (const f of photos) {
+          const sign = await post(`/orgs/${org}/journal/photos/sign`,
+            { mime: f.type ?? f.mime, byte_size: f.size ?? f.byte_size });
+          await putToSignedUrl(sign.upload_url, f);
+          uploaded.push({ storage_path: sign.path, mime: f.type ?? f.mime, byte_size: f.size ?? f.byte_size });
+        }
         await patch(`/orgs/${org}/journal/${editing.id}`, {
           description: desc,
           project_id: projectId || null,
+          add_photos: uploaded.length ? uploaded : null,
+          remove_photo_ids: removedIds.size ? [...removedIds] : null,
         });
         toast.success('Entry updated.');
       } else {
@@ -124,6 +164,7 @@ export default function Journal() {
           : 'Entry posted — day documented.');
       }
       setComposeOpen(false); setEditing(null); setDesc(''); setPhotos([]); setProjectId('');
+      setRemovedIds(new Set());
       qc.invalidateQueries({ queryKey: ['journal', org] });
       qc.invalidateQueries({ queryKey: ['attendance'] });
     } catch (e) {
@@ -177,7 +218,7 @@ export default function Journal() {
               {e.photos.map((p) => <PhotoThumb key={p.id} org={org} photo={p} />)}
               <Text style={{ fontSize: 14, color: t.ink }}>{e.description}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <View>{e.project_id ? <Chip kind="neutral" label="project" /> : null}</View>
+                <View>{e.project_id ? <Chip kind="neutral" label="Project" /> : null}</View>
                 {canModify(e) ? (
                   <View style={{ flexDirection: 'row', gap: 4 }}>
                     <Pressable accessibilityRole="button" accessibilityLabel="Edit entry"
@@ -200,13 +241,25 @@ export default function Journal() {
 
       <Sheet open={composeOpen} onClose={() => { setComposeOpen(false); setEditing(null); }}
              title={editing ? 'Edit entry' : 'Log today’s work'}>
-        {editing ? (
-          <Text style={{ fontSize: 12, color: t.ink3 }}>
-            Photos can’t be changed on an existing entry — delete and re-file to swap photos.
-          </Text>
-        ) : (
-          <PhotoPicker photos={photos} onChange={setPhotos} />
-        )}
+        {editing && (editing.photos ?? []).filter((p) => !removedIds.has(p.id)).length > 0 ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {editing.photos.filter((p) => !removedIds.has(p.id)).map((p) => (
+              <EditPhotoThumb key={p.id} org={org} photo={p}
+                              onRemove={() => setRemovedIds((prev) => new Set([...prev, p.id]))} />
+            ))}
+          </View>
+        ) : null}
+        {editing
+          ? <Field label="Add photos"><PhotoPicker photos={photos} onChange={setPhotos} /></Field>
+          : <PhotoPicker photos={photos} onChange={setPhotos} />}
+        {editing && removedIds.size > 0 ? (
+          <Pressable accessibilityRole="button" onPress={() => setRemovedIds(new Set())}
+                     style={{ minHeight: 32, alignSelf: 'flex-start', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 12, color: t.brand }}>
+              Undo photo removal ({removedIds.size} marked)
+            </Text>
+          </Pressable>
+        ) : null}
         <Field label="What did you do?">
           <Input value={desc} onChangeText={setDesc} multiline
                  placeholder="Delivered concept paper to SD office" />

@@ -12,6 +12,7 @@ import { useAuth } from '../../src/lib/auth';
 import { useMe, useActiveMembership } from '../../src/lib/me';
 import { useToast } from '../../src/lib/toast';
 import { useTheme } from '../../src/lib/theme';
+import { taskStatusLabel } from '../../src/lib/labels';
 import {
   Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input,
   PageHeader, Screen, Select, Sheet, Skeleton,
@@ -38,17 +39,17 @@ function LinkChips({ t: task, projects, router }) {
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
       {task.project_id ? (
         <Pressable onPress={() => router.push(`/project/${task.project_id}`)}>
-          <Chip kind="neutral" icon={<FolderKanban size={11} color="#565656" />} label={proj ? proj.title : 'project'} />
+          <Chip kind="neutral" icon={<FolderKanban size={11} color="#565656" />} label={proj ? proj.title : 'Project'} />
         </Pressable>
       ) : null}
       {task.document_id ? (
         <Pressable onPress={() => router.push(`/document/${task.document_id}`)}>
-          <Chip kind="neutral" icon={<FileText size={11} color="#565656" />} label="document" />
+          <Chip kind="neutral" icon={<FileText size={11} color="#565656" />} label="Document" />
         </Pressable>
       ) : null}
       {task.journal_entry_id ? (
         <Pressable onPress={() => router.push('/journal')}>
-          <Chip kind="neutral" icon={<NotebookPen size={11} color="#565656" />} label="journal" />
+          <Chip kind="neutral" icon={<NotebookPen size={11} color="#565656" />} label="Journal" />
         </Pressable>
       ) : null}
     </View>
@@ -82,9 +83,9 @@ function TaskForm({ form, setForm, members, projects, documents, journals, t }) 
         <Select
           value={form.assignee_id}
           onChange={(v) => setForm({ ...form, assignee_id: v })}
-          placeholder="unassigned"
+          placeholder="Unassigned"
           accessibilityLabel="Assign to"
-          options={[{ value: '', label: 'unassigned' },
+          options={[{ value: '', label: 'Unassigned' },
                     ...members.map((m) => ({ value: m.user_id, label: m.display_name }))]}
         />
       </Field>
@@ -100,7 +101,7 @@ function TaskForm({ form, setForm, members, projects, documents, journals, t }) 
               value={form.priority}
               onChange={(v) => setForm({ ...form, priority: v })}
               accessibilityLabel="Priority"
-              options={[{ value: 'low', label: 'low' }, { value: 'normal', label: 'normal' }, { value: 'high', label: 'high' }]}
+              options={[{ value: 'low', label: 'Low' }, { value: 'normal', label: 'Normal' }, { value: 'high', label: 'High' }]}
             />
           </Field>
         </View>
@@ -110,25 +111,25 @@ function TaskForm({ form, setForm, members, projects, documents, journals, t }) 
           <Select
             value={form.project_id}
             onChange={(v) => setForm({ ...form, project_id: v })}
-            placeholder="no project"
+            placeholder="No project"
             accessibilityLabel="Linked project"
-            options={[{ value: '', label: 'no project' },
+            options={[{ value: '', label: 'No project' },
                       ...projects.map((p) => ({ value: p.id, label: p.title }))]}
           />
           <Select
             value={form.document_id}
             onChange={(v) => setForm({ ...form, document_id: v })}
-            placeholder="no document"
+            placeholder="No document"
             accessibilityLabel="Linked document"
-            options={[{ value: '', label: 'no document' },
+            options={[{ value: '', label: 'No document' },
                       ...documents.map((d) => ({ value: d.id, label: d.title }))]}
           />
           <Select
             value={form.journal_entry_id}
             onChange={(v) => setForm({ ...form, journal_entry_id: v })}
-            placeholder="no journal entry"
+            placeholder="No journal entry"
             accessibilityLabel="Linked journal entry"
-            options={[{ value: '', label: 'no journal entry' },
+            options={[{ value: '', label: 'No journal entry' },
                       ...journals.map((j) => ({
                         value: j.id,
                         label: `${j.entry_date} — ${j.description.slice(0, 40)}${j.description.length > 40 ? '…' : ''}`,
@@ -195,9 +196,9 @@ export default function Tasks() {
     () => members.data?.data.filter((m) => m.status === 'active') ?? [],
     [members.data]);
   const nameOf = (id) =>
-    !id ? 'unassigned'
-      : id === myId ? 'you'
-      : members.data?.data.find((m) => m.user_id === id)?.display_name ?? 'someone';
+    !id ? 'Unassigned'
+      : id === myId ? 'You'
+      : members.data?.data.find((m) => m.user_id === id)?.display_name ?? 'Someone';
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['tasks', org] });
@@ -322,13 +323,13 @@ export default function Tasks() {
                 </View>
                 <Text style={{ fontSize: 12, color: t.ink3 }}>
                   → {nameOf(x.assignee_id)}
-                  {x.due_date ? `  ·  due ${x.due_date}${overdue(x) ? ' — overdue' : ''}` : ''}
+                  {x.due_date ? `  ·  Due ${x.due_date}${overdue(x) ? ' — overdue' : ''}` : ''}
                 </Text>
                 <LinkChips t={x} projects={projects.data?.data} router={router} />
               </View>
               <View style={{ gap: 4, alignItems: 'flex-end' }}>
-                <Chip kind={STATUS_CHIP[x.status]} label={x.status} />
-                {x.priority === 'high' ? <Chip kind="alert" label="high" /> : null}
+                <Chip kind={STATUS_CHIP[x.status]} label={taskStatusLabel(x.status)} />
+                {x.priority === 'high' ? <Chip kind="alert" label="High" /> : null}
               </View>
             </Card>
           </Pressable>
@@ -360,7 +361,7 @@ export default function Tasks() {
                 <Text style={{ fontSize: 14, color: t.ink }}>{task.description || task.title}</Text>
                 <Text style={{ fontSize: 12, color: t.ink3 }}>
                   {nameOf(task.creator_id)} → {nameOf(task.assignee_id)}
-                  {task.due_date ? ` · due ${task.due_date}${overdue(task) ? ' (overdue)' : ''}` : ''}
+                  {task.due_date ? ` · Due ${task.due_date}${overdue(task) ? ' (overdue)' : ''}` : ''}
                 </Text>
                 <LinkChips t={task} projects={projects.data?.data} router={router} />
               </View>

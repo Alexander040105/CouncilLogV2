@@ -13,6 +13,7 @@ import { useAuth } from '../src/lib/auth';
 import { useToast } from '../src/lib/toast';
 import { useTheme } from '../src/lib/theme';
 import { useMe } from '../src/lib/me';
+import { humanize } from '../src/lib/labels';
 import { PhotoPicker, putToSignedUrl } from '../src/components/PhotoPicker';
 import {
   Avatar, Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input,
@@ -248,7 +249,7 @@ export default function Account() {
             <View key={m.org_id} style={{ borderRadius: t.radiusCard, borderWidth: t.boxWidth, borderColor: t.boxColor, padding: 12, gap: 6 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>{m.org_name}</Text>
-                <Chip kind="extra" label={m.role} />
+                <Chip kind="extra" label={humanize(m.role)} />
               </View>
               <View style={{ paddingLeft: 12, gap: 2 }}>
                 {(ROLE_CAPS[m.role] ?? ROLE_CAPS.member).map((c) => (
