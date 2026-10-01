@@ -1,8 +1,9 @@
 /** Port of web/pages/DocumentDetail.jsx — custody + signatory rounds:
  *  move w/ photo, sign/skip/send-back, attach chain, sign-all, revisions. */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, Camera, PenLine, Pencil, Trash2, Undo2 } from 'lucide-react-native';
 import { del, get, isQueued, patch, post, queuedMsg } from '../../../src/lib/api';
@@ -15,6 +16,7 @@ import { useMe, useActiveMembership } from '../../../src/lib/me';
 import { docStatusLabel, docTypeLabel } from '../../../src/lib/labels';
 import { PhotoPicker, putToSignedUrl } from '../../../src/components/PhotoPicker';
 import { ChainFlow } from '../../../src/components/ChainFlow';
+import { ChainList } from '../../../src/components/ChainList';
 import { Button, Card, CheckRow, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, Screen, Select, Sheet, Skeleton } from '../../../src/components/ui';
 
 export default function DocumentDetail() {
@@ -41,6 +43,17 @@ export default function DocumentDetail() {
   const [editMv, setEditMv] = useState(null);   // movement being edited
   const [delMv, setDelMv] = useState(null);     // movement pending delete confirm
   const [clearMvPhoto, setClearMvPhoto] = useState(false);
+  // signatory chain view: 'cards' (process flow) | 'list' (flat rows) — device pref
+  const [view, setViewState] = useState('cards');
+  useEffect(() => {
+    AsyncStorage.getItem('councilog.chainView')
+      .then((v) => { if (v === 'list' || v === 'cards') setViewState(v); })
+      .catch(() => {});
+  }, []);
+  const setView = (v) => {
+    setViewState(v);
+    AsyncStorage.setItem('councilog.chainView', v).catch(() => {});
+  };
   const me = useMe();
   const { session } = useAuth();
   const active = useActiveMembership(me.data);
@@ -225,17 +238,38 @@ export default function DocumentDetail() {
       </Card>
 
       <Card style={{ gap: 10 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
           <View>
             <Text style={{ fontSize: 13, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink2 }}>Signatory chain</Text>
             <Text style={{ fontSize: 12, color: t.ink3 }}>Who signs, in order</Text>
           </View>
-          {canWrite && pendingNow.length >= 2 ? (
-            <Pressable accessibilityRole="button" onPress={() => setSignAllOpen(true)}
-                       style={[miniBtn, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-              <PenLine size={13} color={t.ink2} /><Text style={{ fontSize: 12, color: t.ink2 }}>Sign all pending ({pendingNow.length})</Text>
-            </Pressable>
-          ) : null}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+            {d.signatory_steps.length > 0 ? (
+              <View style={{
+                flexDirection: 'row', gap: 2, borderRadius: t.radiusInput,
+                borderWidth: t.boxWidth, borderColor: t.boxColor, padding: 2,
+              }}>
+                {[['cards', 'Cards'], ['list', 'List']].map(([v, label]) => (
+                  <Pressable key={v} accessibilityRole="button" onPress={() => setView(v)}
+                             style={{
+                               minHeight: 36, justifyContent: 'center', paddingHorizontal: 12, borderRadius: t.radiusInput,
+                               backgroundColor: view === v ? t.navActiveBg : 'transparent',
+                             }}>
+                    <Text style={{
+                      fontSize: 12, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking,
+                      color: view === v ? t.navActiveFg : t.ink3,
+                    }}>{label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            {canWrite && pendingNow.length >= 2 ? (
+              <Pressable accessibilityRole="button" onPress={() => setSignAllOpen(true)}
+                         style={[miniBtn, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                <PenLine size={13} color={t.ink2} /><Text style={{ fontSize: 12, color: t.ink2 }}>Sign all pending ({pendingNow.length})</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
         {d.signatory_steps.length === 0 ? (
           <View style={{ gap: 12 }}>
@@ -270,21 +304,22 @@ export default function DocumentDetail() {
             ) : null}
           </View>
         ) : null}
-        {d.signatory_steps.length > 0 ? (
-          <ChainFlow
-            steps={steps}
-            revisions={d.revisions}
-            movements={d.movements}
-            currentRound={d.current_round}
-            nameOf={nameOf}
-            canWrite={canWrite}
-            docId={id}
-            onSign={(s) => advance.mutate({ stepId: s.id, status: 'signed' })}
-            onSkip={(s) => { setSkipStep(s); setSkipNote(''); }}
-            onSendBack={(s) => openRevision(s)}
-            onReturnTo={(s) => openRevision(s)}
-          />
-        ) : null}
+        {d.signatory_steps.length > 0 ? (() => {
+          const chainProps = {
+            steps,
+            revisions: d.revisions,
+            movements: d.movements,
+            currentRound: d.current_round,
+            nameOf,
+            canWrite,
+            docId: id,
+            onSign: (s) => advance.mutate({ stepId: s.id, status: 'signed' }),
+            onSkip: (s) => { setSkipStep(s); setSkipNote(''); },
+            onSendBack: (s) => openRevision(s),
+            onReturnTo: (s) => openRevision(s),
+          };
+          return view === 'list' ? <ChainList {...chainProps} /> : <ChainFlow {...chainProps} />;
+        })() : null}
       </Card>
 
       <Card style={{ gap: 10 }}>

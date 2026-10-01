@@ -94,6 +94,7 @@ git push
 | `VITE_SUPABASE_URL` | same Supabase Project URL |
 | `VITE_SUPABASE_ANON_KEY` | same anon key (it's public by design — safe in the browser) |
 | `VITE_API_URL` | `https://<api>.vercel.app/api/v1` — the API URL from Part 1, **with `/api/v1` at the end** |
+| `VITE_GOOGLE_CLIENT_ID` | Google Cloud → Credentials → your Web OAuth client → **Client ID** (ends in `.apps.googleusercontent.com`). Needed for the embedded Google sign-in button — without it the site falls back to the old redirect flow |
 
 4. **Deploy**. Note the URL — e.g. `https://councilog.vercel.app`.
 
@@ -151,12 +152,34 @@ are for login/signup/reset emails).
 
 ### 4d. Google sign-in (optional)
 
-Authentication → Providers → **Google** → enable → paste a Google OAuth
-client id/secret from Google Cloud Console. Add
-`https://<web>.vercel.app/auth/callback` to the Google client's redirect
-URIs, and add Supabase's callback URL
-(`https://<project>.supabase.co/auth/v1/callback`) there too. Skip this
-and email/password still works.
+The login page uses Google's embedded sign-in button — users pick their
+account in a popup on your page and never see the `*.supabase.co` address
+(an invisible background call still talks to Supabase; that's normal and
+safe — the anon key + database rules are what protect your data).
+
+To make it work:
+
+1. Google Cloud → APIs & Services → Credentials → your **Web application**
+   OAuth client → **Authorized JavaScript origins**: add
+   `https://<web>.vercel.app` (and `http://localhost:5173` for local dev).
+   Keep `https://<project>.supabase.co/auth/v1/callback` in the redirect
+   URIs — the fallback button still uses it.
+2. Supabase → Authentication → Providers → **Google** → enabled, with the
+   same web Client ID/secret as before (the button's ID token is checked
+   against that client ID — a mismatch shows *"Unacceptable audience"*).
+3. Set `VITE_GOOGLE_CLIENT_ID` on the web project (Part 2 table) and
+   redeploy.
+4. Nothing else needed — `web/vercel.json` already allows
+   `accounts.google.com` in its CSP.
+
+Skip this and email/password still works. If the Google script is blocked
+(ad-blocker, school firewall), the login page automatically shows a
+"Continue with Google" fallback button that uses the old redirect flow.
+
+**Mobile note:** the app still signs in via an in-app browser hop through
+`*.supabase.co` — migrating it to native Google Sign-In (which avoids that)
+is a separate, larger change (new native module + Android OAuth client +
+a fresh EAS build).
 
 ### 4e. Storage check
 
@@ -170,6 +193,7 @@ intentional).
 
 Open `https://<web>.vercel.app` and check off:
 
+- [ ] Google sign-in → **account chooser pops up on the page** (no jump to a `supabase.co` address) → you land signed in
 - [ ] Sign up a new account → **confirmation email arrives** → confirm → sign in
 - [ ] Sign out → *Forgot password* → **reset email arrives** → new password works
 - [ ] Create an organization → copy the invite code → a second account (incognito) redeems it → both see the roster

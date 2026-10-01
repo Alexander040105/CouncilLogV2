@@ -7,7 +7,7 @@ import { get } from '../lib/api';
 import { currentOrgId } from '../lib/org';
 import { Button, Chip } from './ui';
 
-const STATUS = {
+export const STATUS = {
   pending:            { chip: 'pending', label: 'Awaiting signature', Icon: Clock },
   signed:             { chip: 'done',    label: 'Signed',             Icon: CheckCircle2 },
   skipped:            { chip: 'skip',    label: 'Skipped',            Icon: SkipForward },
@@ -15,8 +15,11 @@ const STATUS = {
   superseded:         { chip: 'neutral', label: 'Superseded',         Icon: Ban },
 };
 
+export const fmtTime = (iso) =>
+  new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+
 /** Signed-URL thumbnail for a movement's attached photo — lazy per photo. */
-function MovementThumb({ docId, movement }) {
+export function MovementThumb({ docId, movement }) {
   const org = currentOrgId();
   const q = useQuery({
     queryKey: ['mv-photo', org, movement.id],
@@ -40,7 +43,7 @@ function StepCard({ s, isCurrent, live, pinned, nameOf, canWrite, onSign, onSkip
   // re-signs in a new round; history rows (superseded) stay read-only
   const canReturn = live && ['signed', 'skipped'].includes(s.status);
   return (
-    <div className={`min-w-0 flex-1 rounded-[var(--radius-card)] bg-[var(--color-surface-2)] p-3 ${isCurrent ? 'border-2 border-[var(--color-accent)] [box-shadow:var(--shadow-1)]' : '[border:var(--border-box)]'} ${done && !isCurrent ? 'opacity-75' : ''}`}>
+    <div className={`min-w-0 flex-1 rounded-[var(--radius-card)] bg-[var(--color-surface-2)] p-3 md:min-w-[13rem] ${isCurrent ? 'border-2 border-[var(--color-accent)] [box-shadow:var(--shadow-1)]' : '[border:var(--border-box)]'} ${done && !isCurrent ? 'opacity-75' : ''}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-sm font-medium">
@@ -57,8 +60,8 @@ function StepCard({ s, isCurrent, live, pinned, nameOf, canWrite, onSign, onSkip
         </div>
       )}
 
-      <div className="mt-1 space-y-0.5 text-xs text-[var(--color-ink-3)]">
-        {s.signed_at && <div>{nameOf(s.noted_by) ? `${nameOf(s.noted_by)} · ` : ''}{new Date(s.signed_at).toLocaleString()}</div>}
+      <div className="mt-1 space-y-0.5 break-words text-xs text-[var(--color-ink-3)]">
+        {s.signed_at && <div>{nameOf(s.noted_by) ? `${nameOf(s.noted_by)} · ` : ''}{fmtTime(s.signed_at)}</div>}
         {s.note && <div>Note: {s.note}</div>}
       </div>
 
@@ -66,9 +69,9 @@ function StepCard({ s, isCurrent, live, pinned, nameOf, canWrite, onSign, onSkip
         <div className="mt-2 space-y-1.5 [border-top:var(--border-box)] pt-2">
           {pinned.map((m) => (
             <div key={m.id}>
-              <div className="text-xs text-[var(--color-ink-3)]">
+              <div className="break-words text-xs text-[var(--color-ink-3)]">
                 <Camera size={11} className="mr-1 inline" />
-                {m.location_text} · {new Date(m.created_at).toLocaleString()}
+                {m.location_text} · {fmtTime(m.created_at)}
                 {nameOf(m.moved_by) ? ` · ${nameOf(m.moved_by)}` : ''}
               </div>
               {m.note && <div className="text-xs text-[var(--color-ink-2)]">{m.note}</div>}
@@ -133,7 +136,7 @@ export function ChainFlow({ steps, revisions, movements, currentRound,
                   <span className="font-medium">Returned for revision</span> — {rev.note}
                   <span className="text-[var(--color-ink-3)]">
                     {nameOf(rev.created_by) ? ` · ${nameOf(rev.created_by)}` : ''}
-                    {' · '}{new Date(rev.created_at).toLocaleString()}
+                    {' · '}{fmtTime(rev.created_at)}
                   </span>
                 </span>
               </div>
@@ -143,7 +146,7 @@ export function ChainFlow({ steps, revisions, movements, currentRound,
                 Round {rn}{rn > 1 ? ' — revision' : ''}
               </div>
             )}
-            <div className="flex flex-col md:flex-row md:items-stretch">
+            <div className="flex flex-col md:flex-row md:items-stretch md:overflow-x-auto md:pb-1">
               {rSteps.map((s, i) => (
                 <div key={s.id} className="contents">
                   {i > 0 && (

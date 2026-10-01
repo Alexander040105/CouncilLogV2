@@ -9,6 +9,7 @@ import { useToast } from '../lib/toast';
 import { docStatusLabel, docTypeLabel } from '../lib/labels';
 import { PhotoPicker } from '../components/PhotoPicker';
 import { ChainFlow } from '../components/ChainFlow';
+import { ChainList } from '../components/ChainList';
 import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, Sheet, Skeleton } from '../components/ui';
 
 export default function DocumentDetail() {
@@ -33,6 +34,9 @@ export default function DocumentDetail() {
   const [editMv, setEditMv] = useState(null);   // movement being edited
   const [delMv, setDelMv] = useState(null);     // movement pending delete confirm
   const [clearMvPhoto, setClearMvPhoto] = useState(false);
+  // signatory chain view: 'cards' (process flow) | 'list' (flat rows) — device pref
+  const [view, setViewState] = useState(() => localStorage.getItem('councilog.chainView') ?? 'cards');
+  const setView = (v) => { setViewState(v); localStorage.setItem('councilog.chainView', v); };
   const { active } = useOutletContext() ?? {};
   const { session } = useAuth();
   const canWrite = active ? atLeast(active.role, 'officer') : false;
@@ -216,17 +220,29 @@ export default function DocumentDetail() {
       </Card>
 
       <Card>
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="label-strong text-sm text-[var(--color-ink-2)]">Signatory chain</div>
             <div className="text-xs text-[var(--color-ink-3)]">Who signs, in order</div>
           </div>
-          {canWrite && pendingNow.length >= 2 && (
-            <Button variant="secondary" className="min-h-[36px] px-3 text-xs"
-                    onClick={() => setSignAllOpen(true)}>
-              <PenLine size={14} /> Sign all pending ({pendingNow.length})
-            </Button>
-          )}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {steps.length > 0 && (
+              <div className="flex gap-1 rounded-[var(--radius-input)] [border:var(--border-box)] p-0.5 text-sm">
+                {[['cards', 'Cards'], ['list', 'List']].map(([v, label]) => (
+                  <button key={v} onClick={() => setView(v)}
+                          className={`label-strong rounded-[var(--radius-input)] px-3 py-1 ${view === v ? 'bg-[var(--nav-active-bg)] text-[var(--nav-active-fg)]' : 'text-[var(--color-ink-3)]'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {canWrite && pendingNow.length >= 2 && (
+              <Button variant="secondary" className="min-h-[36px] px-3 text-xs"
+                      onClick={() => setSignAllOpen(true)}>
+                <PenLine size={14} /> Sign all pending ({pendingNow.length})
+              </Button>
+            )}
+          </div>
         </div>
         {d.signatory_steps.length === 0 && (
           <div className="space-y-3">
@@ -267,17 +283,21 @@ export default function DocumentDetail() {
             )}
           </div>
         )}
-        <ChainFlow
-          steps={steps}
-          revisions={d.revisions}
-          movements={d.movements}
-          currentRound={d.current_round}
-          nameOf={nameOf}
-          canWrite={canWrite}
-          onSign={(s) => advance.mutate({ stepId: s.id, status: 'signed' })}
-          onSkip={(s) => { setSkipStep(s); setSkipNote(''); }}
-          onSendBack={(s) => openRevision(s)}
-        />
+        {(() => {
+          const chainProps = {
+            steps,
+            revisions: d.revisions,
+            movements: d.movements,
+            currentRound: d.current_round,
+            nameOf,
+            canWrite,
+            onSign: (s) => advance.mutate({ stepId: s.id, status: 'signed' }),
+            onSkip: (s) => { setSkipStep(s); setSkipNote(''); },
+            onSendBack: (s) => openRevision(s),
+            onReturnTo: (s) => openRevision(s),
+          };
+          return view === 'list' ? <ChainList {...chainProps} /> : <ChainFlow {...chainProps} />;
+        })()}
       </Card>
 
       <Card>

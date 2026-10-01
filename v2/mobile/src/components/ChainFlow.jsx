@@ -10,7 +10,7 @@ import { useOrgId } from '../lib/org';
 import { useTheme } from '../lib/theme';
 import { Chip } from './ui';
 
-const STATUS = {
+export const STATUS = {
   pending:            { chip: 'pending', label: 'awaiting signature', Icon: Clock },
   signed:             { chip: 'done',    label: 'signed',             Icon: CheckCircle2 },
   skipped:            { chip: 'skip',    label: 'skipped',            Icon: SkipForward },
@@ -18,8 +18,11 @@ const STATUS = {
   superseded:         { chip: 'neutral', label: 'superseded',         Icon: Ban },
 };
 
+export const fmtTime = (iso) =>
+  new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+
 /** Signed-URL thumbnail for a movement's attached photo — lazy per photo. */
-function MovementThumb({ docId, movement }) {
+export function MovementThumb({ docId, movement }) {
   const org = useOrgId();
   const { t } = useTheme();
   const q = useQuery({
@@ -74,7 +77,7 @@ function StepCard({ s, isCurrent, live, pinned, nameOf, canWrite, onSign, onSkip
       <View style={{ gap: 2 }}>
         {s.signed_at ? (
           <Text style={{ fontSize: 12, color: t.ink3 }}>
-            {nameOf(s.noted_by) ? `${nameOf(s.noted_by)} · ` : ''}{new Date(s.signed_at).toLocaleString()}
+            {nameOf(s.noted_by) ? `${nameOf(s.noted_by)} · ` : ''}{fmtTime(s.signed_at)}
           </Text>
         ) : null}
         {s.note ? <Text style={{ fontSize: 12, color: t.ink3 }}>Note: {s.note}</Text> : null}
@@ -87,7 +90,7 @@ function StepCard({ s, isCurrent, live, pinned, nameOf, canWrite, onSign, onSkip
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Camera size={11} color={t.ink3} />
                 <Text style={{ fontSize: 12, color: t.ink3, flexShrink: 1 }}>
-                  {m.location_text} · {new Date(m.created_at).toLocaleString()}
+                  {m.location_text} · {fmtTime(m.created_at)}
                   {nameOf(m.moved_by) ? ` · ${nameOf(m.moved_by)}` : ''}
                 </Text>
               </View>
@@ -155,7 +158,7 @@ export function ChainFlow({ steps, revisions, movements, currentRound,
                   <Text style={{ fontWeight: '700' }}>Returned for revision</Text> — {rev.note}
                   <Text style={{ color: t.ink3 }}>
                     {nameOf(rev.created_by) ? ` · ${nameOf(rev.created_by)}` : ''}
-                    {' · '}{new Date(rev.created_at).toLocaleString()}
+                    {' · '}{fmtTime(rev.created_at)}
                   </Text>
                 </Text>
               </View>
