@@ -6,9 +6,13 @@ corrections: journal edit/delete, no-tasks retract, movement edit/delete —
 all same-day/owner permissioned, identical rules to the web app.
 
 ```
-app/            routes (expo-router): (tabs)/* + login, onboarding, account, admin
-src/lib/        supabase, api (Bearer JWT + x-org-id), org, auth, me, theme,
-                toast, rules + starterPack (copied verbatim from web — see below)
+app/            routes (expo-router): (tabs)/* + login, onboarding, account,
+                admin, notifications, pending, agenda
+src/lib/        supabase, api (Bearer JWT + x-org-id + offline write-queue),
+                org, auth, me, theme, toast, connectivity, qcache, push,
+                rules + starterPack (copied verbatim from web — see below)
+src/lib/offline/  outbox.js (pure queue engine — node --test runnable),
+                store.js (expo-sqlite persistence), index.js (wiring/replay)
 src/components/ ui.jsx primitives, editors, pickers — RN ports of web components
 ```
 
@@ -95,14 +99,42 @@ the council an installable app:
    Native changes (new native deps, app.json plugin changes) need a fresh
    `eas build` and members reinstall the new APK.
 
+## Offline support
+
+Every write goes through a durable outbox — if the request fails because the
+phone has no data, the change is stored locally and replayed in order when
+connectivity returns:
+
+- `src/lib/offline/outbox.js` is the pure queue engine (ordering,
+  `op:<id>` dependency tokens, idempotency keys) — no Expo imports, so it
+  runs under `node --test src/lib/offline/outbox.test.js`.
+- `store.js` persists ops + staged photos in `expo-sqlite`; `index.js` wires
+  the API sender, replay guard, and UI subscription surface.
+- `api.js` intercepts writes on network failure only — server errors and
+  401s are never queued (a replayed failure is still a failure).
+- Queued POSTs carry `client_request_id`; the API dedupes on
+  `(org_id, client_request_id)` so replays can't double-create.
+- Photo-bearing writes (journal entries, custody moves) queue as one
+  composite op — sign → upload → record replays atomically.
+- The sync banner sits on every screen; **More → Pending changes** lists
+  queued/failed ops for review or retry; the React Query cache persists
+  across launches so the app opens with last-known data.
+
+## Push notifications
+
+`expo-notifications` registers the device's Expo push token after sign-in
+(`src/lib/push.js`); the API fans out assignments/comments/reminders to
+inbox + push + email. Tapping a push deep-links into the app via the
+`councilog://` scheme. Sign-out and account deletion unregister the token.
+Push needs a **development/production build** — Expo Go can't register for
+remote push; `eas credentials` manages the APNs/FCM keys at ship time.
+
 ## Other known limitations
 
 - **Password reset** sends an email whose link targets the web app — the user
   sets a new password in the browser, then signs in on mobile.
 - **Photo uploads** go through signed-URL PUT (same as web) — a large photo
-  on a slow connection can take a few seconds.
-- No offline queue, no push notifications (out of scope — see
-  `../SWE2_MOBILE_LANDING_PROMPT.md`).
+  on a slow connection can take a few seconds (queued retries cover drops).
 
 ## Keeping parity
 
@@ -123,5 +155,6 @@ npx expo export --platform android  # bundle sanity check (catches syntax errors
 npx expo install <pkg>            # ALWAYS — picks the SDK-57-compatible version
 npx expo lint                     # eslint (eslint-config-expo)
 npx expo-doctor                   # dependency/config health check
+node --test src/lib/offline/outbox.test.js   # outbox engine tests (pure node)
 node scripts/gen-icons.js         # regenerate the icon set (brand document mark)
 ```

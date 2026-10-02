@@ -1,11 +1,12 @@
 /** Port of web/pages/Documents.jsx — custody list + register sheet with
  *  doc-type picker, project pre-tick flags, live ChainPreview, override chain. */
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, FileText, Plus, Route } from 'lucide-react-native';
-import { get, post } from '../../src/lib/api';
+import { get, post, queuedMsg } from '../../src/lib/api';
+import { docStatusLabel, docTypeLabel } from '../../src/lib/labels';
 import { atLeast, useOrgId } from '../../src/lib/org';
 import { useToast } from '../../src/lib/toast';
 import { useTheme } from '../../src/lib/theme';
@@ -88,6 +89,15 @@ function ChainPreview({ chains, docType, overrideId, eventType = null, flags = {
   );
 }
 
+const STATUS_FILTERS = [
+  { id: '', label: 'All' },
+  { id: 'open', label: 'Registered' },
+  { id: 'routing', label: 'Out for signatures' },
+  { id: 'revision', label: 'Sent back' },
+  { id: 'signed', label: 'Signed' },
+  { id: 'filed', label: 'Filed' },
+];
+
 export default function Documents() {
   const org = useOrgId();
   const router = useRouter();
@@ -102,6 +112,7 @@ export default function Documents() {
   const [typeSel, setTypeSel] = useState('');
   const [customType, setCustomType] = useState('');
   const [err, setErr] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('');
 
   const docs = useQuery({
     queryKey: ['documents', org],
@@ -138,8 +149,8 @@ export default function Documents() {
       title: form.title, doc_type: docType, chain_id: form.chain_id || null,
       project_id: form.project_id || null, flags: form.flags,
     }),
-    onSuccess: () => {
-      toast.success('Document registered — custody log started.');
+    onSuccess: (r) => {
+      toast.success(queuedMsg(r, 'Document registered — custody log started.'));
       setOpen(false); setForm({ title: '', chain_id: '', project_id: '', flags: {} }); setTypeSel(''); setCustomType('');
       qc.invalidateQueries({ queryKey: ['documents', org] });
     },
@@ -173,15 +184,39 @@ export default function Documents() {
                  : 'Papers are registered by officers — ask one to log a document.'}
                action={canWrite ? <Button onPress={() => setOpen(true)}>New document</Button> : null} />
       ) : null}
+      {(docs.data?.data.length ?? 0) > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          {STATUS_FILTERS.map((f) => {
+            const on = statusFilter === f.id;
+            const n = f.id ? (docs.data?.data ?? []).filter((d) => d.status === f.id).length : docs.data?.data.length;
+            return (
+              <Pressable
+                key={f.id}
+                accessibilityRole="button"
+                onPress={() => setStatusFilter(f.id)}
+                style={{
+                  minHeight: 36, justifyContent: 'center', paddingHorizontal: 12,
+                  borderRadius: t.radiusInput, borderWidth: t.boxWidth, borderColor: t.boxColor,
+                  backgroundColor: on ? t.navActiveBg : t.surface2,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, color: on ? t.navActiveFg : t.ink2 }}>
+                  {f.label} · {n}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
       <View style={{ gap: 8 }}>
-        {docs.data?.data.map((d) => (
+        {(docs.data?.data ?? []).filter((d) => !statusFilter || d.status === statusFilter).map((d) => (
           <Pressable key={d.id} accessibilityRole="button" onPress={() => router.push(`/document/${d.id}`)}>
             <Card style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <View style={{ flexShrink: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>{d.title}</Text>
-                <Text style={{ fontSize: 12, color: t.ink3 }}>{d.doc_type}</Text>
+                <Text style={{ fontSize: 12, color: t.ink3 }}>{docTypeLabel(d.doc_type)}</Text>
               </View>
-              <Chip kind={statusKind(d.status)} label={d.status === 'revision' ? 'in revision' : d.status} />
+              <Chip kind={statusKind(d.status)} label={docStatusLabel(d.status)} />
             </Card>
           </Pressable>
         ))}
@@ -195,7 +230,7 @@ export default function Documents() {
             onChange={setTypeSel}
             placeholder="choose…"
             accessibilityLabel="Document type"
-            options={[...knownTypes.map((x) => ({ value: x, label: x })), { value: '__custom', label: 'custom…' }]}
+            options={[...knownTypes.map((x) => ({ value: x, label: docTypeLabel(x) })), { value: '__custom', label: 'Custom…' }]}
           />
         </Field>
         {typeSel === '__custom' ? (

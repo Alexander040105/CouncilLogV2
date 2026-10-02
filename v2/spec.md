@@ -157,6 +157,9 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
   3. `POST /journal/entries` references the uploaded path; API verifies the
      object exists, checks magic bytes + size, strips EXIF server-side or via
      client pre-strip (see §10/OQ).
+- Photos are editable after posting: `PATCH /journal/{id}` accepts
+  `add_photos` (uploaded via the same sign flow) and `remove_photo_ids` —
+  the author swaps evidence without deleting the entry.
 - Photos are viewable only via `GET /journal/photos/{id}/url` → API authz →
   short-lived signed **download** URL (TTL ≤ 15 min). No public bucket.
 - Journal satisfies that day's attendance (`documented`).
@@ -171,14 +174,23 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
 - **Checklists instantiate from templates:** on project creation (or on
   demand) the server copies matching `checklist_template_items` into
   `project_checklist_items` — a **snapshot**, so later template edits never
-  rewrite a running project's checklist.
+  rewrite a running project's checklist. The paper/logistics toggles only
+  *suggest* which templates apply — the create screen shows the merged list
+  editable before save (`checklist_items` on `POST /projects` overrides the
+  auto-match), and advisers/owners or the project lead may add, rename,
+  delete, reorder, and re-date items afterwards. Only ticking items off and
+  assigning them is officer-scoped.
 - Deadline rules live in template config (`rule_json`), e.g. CHED outside-event
   items carry `due_days_before_event: 15`; financial report template carries
   `due_days_after_event: 7`. API computes `due_date` at instantiation from
   `target_date`.
+- The **project lead** (`owner_id`) may move `status` freely — draft → active
+  → done → archived and back — via a status-only PATCH; any other field still
+  needs adviser+.
 - **Views:** project board grouped by status; per-project detail showing
   paper-processing checklist, logistics checklist, linked documents, linked
-  journal entries.
+  journal entries; checklist filters All / Not done / Done / Assigned /
+  Unassigned / Mine.
 
 ### 3.5 Paper logbook (document tracking)
 
@@ -187,11 +199,13 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
   (`drafting|routing|revision|signed|filed`), optional `project_id`.
 - `document_movements` — custody logbook: each row = one record
   (`location_text` free-form e.g. "SD office", `note`, optional
-  `photo_path`, `moved_by`, `created_at`). Append-first by design, but
+  `photo_path`, `moved_by`, `created_at`, optional `step_id` pinning the
+  custody evidence to a specific signatory step on the card view).
+  Append-first by design, but
   correctable: the mover may edit/delete their own same-day record and
-  owners may correct any (audit-logged; photos immutable — re-record to
-  swap). Deleting the newest row reverts `current_location` to the
-  previous movement. Client-side access stays select-only via RLS — the
+  owners may correct any (audit-logged; `PATCH` takes `photo_path` to
+  replace the photo or `clear_photo` to drop it). Deleting the newest row
+  reverts `current_location` to the previous movement. Client-side access stays select-only via RLS — the
   0001 revoke was relaxed for the API role in `0009`.
 - `document_signatory_steps` — instantiated snapshot of a `signatory_chain`;
   each step `pending|signed|skipped|revision_requested|superseded`, advanced
@@ -203,7 +217,12 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
   `requested_at_step_id` (null when the whole resolved doc is sent back),
   `round_no`, required `note`, `created_by`. A revision supersedes stale
   pendings and appends fresh `pending` copies of the chosen resolved steps —
-  history is never overwritten. Late revisions are allowed on `signed` and
+  history is never overwritten. `return_to_step_id` sends the paper back to
+  an already-resolved desk (it signs again in the new round — the fix for
+  "the president signed but the paper needs changes"); pending steps listed
+  in `resend_step_ids` are **carried** into the new round instead of
+  superseded, and the UI previews the resulting route + warns which pending
+  desks drop off. Late revisions are allowed on `signed` and
   `filed` docs.
 - Logbook view = vertical timeline: signature steps interleaved with
   movement records — "where is the paper" is always the latest movement row.
@@ -224,6 +243,51 @@ admin only. Platform admins hold owner-equivalent powers in **every** org.
   semantics); deleting a template keeps existing project checklists intact;
   position reassignment mid-year keeps `positions` row history via school-year
   scoping + `rank` ordering.
+
+### 3.7 Tasks, assignments & notifications
+
+- `tasks` — freeform assignments: `title`, `details`, `assignee_id` (org
+  member), `creator_id`, `due_date`, `priority` (`low|normal|high`),
+  `status` (`open|done|cancelled`), optional links to `project_id`,
+  `document_id`, `journal_entry_id` (FKs `set null` — deleting a linked
+  entity orphans the link, never the task).
+- `task_comments` — discussion on a task, org-scoped through the parent.
+- `notifications` — per-user inbox rows: `kind` (`assigned`,
+  `task_commented`, `task_due_soon`, `duty_reminder`), `payload` JSONB
+  (`entity_type`/`entity_id`/`title`/`by`/`ref`), `read_at`. Every
+  assignment path — tasks, project lead, checklist items — writes the inbox
+  row in the same transaction, then email + push fan out in the background.
+- `push_tokens` — Expo push tokens per user+device; re-registering the same
+  token transfers ownership (device handoff); sign-out and account deletion
+  unregister.
+- **Permissions:** creator or owner edits/deletes a task; the assignee may
+  only flip status (done/reopen). Comments are member-wide; commenters ping
+  the task's assignee + creator (never themselves).
+- **Reminders:** `POST /internal/reminders` (x-cron-secret) pings assignees
+  with tasks due tomorrow and duty-roster members who haven't filed — once
+  per user per kind per day via a `payload.ref` dedupe key compared against
+  the org-timezone day.
+- **Views:** Tasks page (filter by mine/assigned/open/done/all), bell +
+  inbox in the app shell, Agenda page grouping everything dated (tasks,
+  checklist items, project targets) by day, "Needs you" card on Today.
+
+### 3.8 Offline-first mobile
+
+- The mobile app queues **every mutation** through a SQLite-backed outbox
+  (`expo-sqlite`) when the network request fails for connectivity reasons —
+  server/API errors and 401s are NOT queued (they'd fail the same way on
+  replay).
+- Queued writes carry `client_request_id`; create endpoints dedupe on
+  `(org_id, client_request_id)` so a replayed POST returns the original row
+  instead of duplicating.
+- Photo-bearing composite writes (journal entries, custody movements) queue
+  as one operation — sign → upload → record — replayed in order, photos
+  staged on disk until sent.
+- Operations can depend on earlier ones (`op:<id>` tokens in path/body
+  substituted with the dependency's result id); a failed op parks as "dead"
+  for review/retry on the Pending screen rather than blocking the queue.
+- React Query cache is persisted across launches so the app opens with
+  last-known data; a sync banner shows offline/queued/syncing/failed state.
 
 ---
 
@@ -593,25 +657,28 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 20 | `POST /orgs/{org}/attendance/no-tasks` | self | declare "no tasks today" |
 | 21 | `GET /orgs/{org}/journal` | member | feed `?day=`/`?member=`/`?project=` |
 | 22 | `POST /orgs/{org}/journal` | member+ | create entry (photo paths) |
-| 23 | `PATCH /orgs/{org}/journal/{id}` | self-day / owner | edit entry (`project_id` tri-state: absent=keep, null=clear) |
+| 23 | `PATCH /orgs/{org}/journal/{id}` | self-day / owner | edit entry (`project_id` tri-state: absent=keep, null=clear; `add_photos`/`remove_photo_ids` swap evidence) |
 | 23a | `DELETE /orgs/{org}/journal/{id}` | self-day / owner | delete entry + photos; last-entry delete un-documents the day |
 | 23b | `DELETE /orgs/{org}/attendance/{day}` | self-day / owner | retract `declared_no_tasks` (`?member_id=` for owner); `409` on `documented` |
 | 24 | `POST /orgs/{org}/journal/photos/sign` | member+ | mint signed upload URL |
 | 25 | `GET /orgs/{org}/photos/{id}/url` | member | mint signed download URL |
-| 26 | `GET/POST /orgs/{org}/projects` | member / owner+adviser | list / create |
-| 27 | `GET/PATCH /orgs/{org}/projects/{id}` | member / owner+adviser | detail / update |
+| 26 | `GET/POST /orgs/{org}/projects` | member / owner+adviser | list / create (`checklist_items` overrides the auto-matched snapshot) |
+| 27 | `GET/PATCH /orgs/{org}/projects/{id}` | member / owner+adviser; lead: `status` only | detail / update |
 | 28 | `POST /orgs/{org}/projects/{id}/instantiate` | owner, adviser | build checklists from templates; `append:true` bypasses the populated guard, else `409 ALREADY_INSTANTIATED` |
 | 29 | `GET /orgs/{org}/projects/{id}/checklist` | member | items w/ done state |
-| 30 | `PATCH /orgs/{org}/checklist-items/{id}` | officer+ | check/uncheck item |
+| 30 | `PATCH /orgs/{org}/checklist-items/{id}` | officer+ for done/assignee; adviser+ or project lead for structure | check/assign/edit item |
+| 30a | `POST /orgs/{org}/projects/{id}/checklist-items` | adviser+ or project lead | append item |
+| 30b | `POST /orgs/{org}/projects/{id}/checklist-items/reorder` | adviser+ or project lead | set item order (exact id set required) |
+| 30c | `DELETE /orgs/{org}/checklist-items/{id}` | adviser+ or project lead | remove item |
 | 31 | `GET/POST /orgs/{org}/checklist-templates` | member / owner | template list/create (+items) |
 | 31a | `PATCH/DELETE /orgs/{org}/checklist-templates/{id}` | owner | template update (items wholesale-replace) / delete (instances keep snapshot via SET NULL) |
 | 32 | `GET/POST /orgs/{org}/documents` | member / officer+ | list / create document |
 | 33 | `GET /orgs/{org}/documents/{id}` | member | detail = timeline |
 | 34 | `POST /orgs/{org}/documents/{id}/movements` | officer+ | append movement (where/who/photo) |
-| 34a | `PATCH/DELETE /orgs/{org}/documents/{id}/movements/{mid}` | mover same-day / owner | correct/remove a custody record (delete of newest falls back to previous location) |
+| 34a | `PATCH/DELETE /orgs/{org}/documents/{id}/movements/{mid}` | mover same-day / owner | correct/remove a custody record (`photo_path`/`clear_photo` swap evidence; delete of newest falls back to previous location) |
 | 35 | `POST /orgs/{org}/documents/{id}/steps/{sid}` | officer+ | mark step signed/skipped |
 | 35a | `POST /orgs/{org}/documents/{id}/attach-chain` | officer+ | route an unrouted doc to a chosen chain |
-| 35b | `POST /orgs/{org}/documents/{id}/revisions` | officer+ | send back for revision → new round of re-sign steps |
+| 35b | `POST /orgs/{org}/documents/{id}/revisions` | officer+ | send back for revision → new round (`at_step_id` = pending desk sends back, `return_to_step_id` = resolved desk re-signs; pending ids in `resend_step_ids` carry into the new round) |
 | 35c | `POST /orgs/{org}/documents/{id}/steps/sign-all` | officer+ | bulk-sign current-round pending steps |
 | 36 | `GET/POST /orgs/{org}/signatory-chains` | member / owner | chain list/create (+steps) |
 | 36a | `PATCH/DELETE /orgs/{org}/signatory-chains/{id}` | owner | chain update (steps wholesale-replace) / delete (routed docs keep snapshots) |
@@ -624,6 +691,19 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 43 | `DELETE /me` | self | anonymize + remove memberships + ban auth user (409 if sole owner) |
 | 44 | `GET /admin/orgs` | platform admin | every org incl. archived + member counts |
 | 45 | `POST /admin/orgs/{org}/restore` | platform admin | un-archive an org |
+| 46 | `GET/POST /orgs/{org}/tasks` | member | list (`?assignee=me&status=&pageSize=`) / create task |
+| 47 | `GET/PATCH/DELETE /orgs/{org}/tasks/{id}` | member read; creator/owner write; assignee: status only | task detail, edit, delete |
+| 48 | `POST /orgs/{org}/tasks/{id}/comments` | member | comment → pings assignee + creator |
+| 49 | `GET /orgs/{org}/checklist-items` | member | items `?assignee_id=&done=` (powers "needs you"/agenda) |
+| 50 | `GET /orgs/{org}/notifications` | self | inbox `{data, unread}` |
+| 51 | `POST /orgs/{org}/notifications/read` `/read-all` | self | mark read |
+| 52 | `POST/DELETE /orgs/{org}/push-tokens` | self | register/unregister Expo push token |
+| 53 | `POST /internal/reminders` | x-cron-secret | daily sweep: task due-soon + unfilled-duty pings |
+| 54 | `GET /orgs/{org}/documents/{id}/movements/{mid}/photo-url` | member | signed download URL for movement photos |
+
+`#32` also accepts `?held_by=me` — documents whose **latest** custody
+movement was made by the caller ("papers at my desk"). All create endpoints
+accept `client_request_id` for offline-replay dedupe.
 
 **Auth plumbing:** `GET /me` returns `memberships[]`; the client sends
 `X-Org-Id` per call or uses `/orgs/{org}/…` paths. OAuth: Supabase Google
@@ -644,13 +724,15 @@ search + sidebar Home/Projects/Members/Calendar/Files + Dailies).
 | `/journal` | Dailies | photo feed by day; compose = photo+description or "no tasks" toggle (≤3 taps) |
 | `/attendance` | Calendar | day/week/member views + compliance summary |
 | `/projects`, `/projects/{id}` | Projects | board by status; detail = dual checklists + docs + linked journals |
-| `/documents`, `/documents/{id}` | Files | logbook list; detail = movement+signature timeline, "move paper" action w/ camera |
+| `/documents`, `/documents/{id}` | Files | logbook list (list/status-board toggle); detail = signatory process cards + custody timeline, "move paper" action w/ camera |
+| `/tasks` | — | assignments: filters (mine/I-assigned/open/done/all), create/edit, comments, links to projects/documents/journal |
+| `/agenda` | Calendar | every dated item — task deadlines, checklist due dates, project targets — grouped by day |
 | `/members` | Members | roster; `/members/chart` = org chart per SY |
 | `/guide` | — | Read-mode page: how matching works + starter library (browsable by all, owner installs entries) |
 | `/settings` (owner/adviser) | — | positions, duty schedule, checklist templates, signatory chains, contacts, invites, audit; owners get a danger-zone "Archive org" |
 | `/account` | — | own profile (name/avatar), per-org capability summary, password/email change, theme, sign-out, delete account — reached via the shell avatar, not the nav |
 | `/admin` (platform admin) | — | every org incl. archived; expand → roster w/ member removal; archive/restore |
-| global navbar | search | org switcher, notifications slot (P5), profile/logout |
+| global navbar | search | org switcher, notifications bell + inbox, profile/logout |
 
 Every screen spec includes loading / empty / error / 403 states.
 
@@ -658,8 +740,11 @@ Every screen spec includes loading / empty / error / 403 states.
 
 `mobile/` (Expo SDK 57, expo-router, plain JSX) ports the same surface to
 iOS/Android via Expo Go or dev builds: 5 tabs (Today, Journal, Attendance,
-Projects, More) with Papers/Members/Guide/Settings pushed from More, plus
-`/account` + `/admin` outside the tabs. Same API contract — Bearer JWT +
+Projects, More) with Papers/Tasks/Agenda/Members/Guide/Settings pushed from
+More, plus `/account`, `/admin`, `/notifications`, `/agenda`, `/pending`
+outside the tabs. Writes queue through a SQLite outbox when offline (§3.8);
+Expo push tokens register per device and deep-link taps into the app.
+Same API contract — Bearer JWT +
 `x-org-id`; `src/lib/rules.js` + `starterPack.js` are verbatim copies of
 `web/src/lib/` so previews and the starter library behave identically.
 Auth: email/password (full parity) + Google via `AuthSession` (`councilog://`

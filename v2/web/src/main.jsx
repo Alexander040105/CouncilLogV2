@@ -19,6 +19,8 @@ import Journal from './pages/Journal';
 import Attendance from './pages/Attendance';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
+import Tasks from './pages/Tasks';
+import Agenda from './pages/Agenda';
 import Documents from './pages/Documents';
 import DocumentDetail from './pages/DocumentDetail';
 import Members from './pages/Members';
@@ -57,6 +59,8 @@ createRoot(document.getElementById('root')).render(
               <Route path="attendance" element={<Attendance />} />
               <Route path="projects" element={<Projects />} />
               <Route path="projects/:id" element={<ProjectDetail />} />
+              <Route path="tasks" element={<Tasks />} />
+              <Route path="agenda" element={<Agenda />} />
               <Route path="documents" element={<Documents />} />
               <Route path="documents/:id" element={<DocumentDetail />} />
               <Route path="members" element={<Members />} />

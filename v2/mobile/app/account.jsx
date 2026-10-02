@@ -6,12 +6,14 @@ import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { BadgeCheck, CircleAlert, LogOut, ShieldCheck, Trash2 } from 'lucide-react-native';
 import { del, patch, post } from '../src/lib/api';
+import { unregisterPushToken } from '../src/lib/push';
 import { setCurrentOrg } from '../src/lib/org';
 import { supabase } from '../src/lib/supabase';
 import { useAuth } from '../src/lib/auth';
 import { useToast } from '../src/lib/toast';
 import { useTheme } from '../src/lib/theme';
 import { useMe } from '../src/lib/me';
+import { humanize } from '../src/lib/labels';
 import { PhotoPicker, putToSignedUrl } from '../src/components/PhotoPicker';
 import {
   Avatar, Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input,
@@ -146,13 +148,14 @@ export default function Account() {
   };
 
   const signOut = async () => {
+    await unregisterPushToken();
     await supabase.auth.signOut();
     setCurrentOrg(null);
     nav.replace('/login');
   };
 
   const deleteAccount = useMutation({
-    mutationFn: () => del('/me'),
+    mutationFn: async () => { await unregisterPushToken(); return del('/me'); },
     onSuccess: async () => {
       toast.success('Account deleted.');
       await supabase.auth.signOut();
@@ -246,7 +249,7 @@ export default function Account() {
             <View key={m.org_id} style={{ borderRadius: t.radiusCard, borderWidth: t.boxWidth, borderColor: t.boxColor, padding: 12, gap: 6 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>{m.org_name}</Text>
-                <Chip kind="extra" label={m.role} />
+                <Chip kind="extra" label={humanize(m.role)} />
               </View>
               <View style={{ paddingLeft: 12, gap: 2 }}>
                 {(ROLE_CAPS[m.role] ?? ROLE_CAPS.member).map((c) => (

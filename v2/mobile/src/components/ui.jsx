@@ -12,6 +12,8 @@ import { AlertTriangle, Check, ChevronDown, Info, X } from 'lucide-react-native'
 import { useTheme, shadowBox, THEME_CHOICES, THEME_LABELS } from '../lib/theme';
 import { supabase } from '../lib/supabase';
 import { setCurrentOrg } from '../lib/org';
+import { unregisterPushToken } from '../lib/push';
+import { SyncBanner } from './SyncBanner';
 
 const WEB_BASE = process.env.EXPO_PUBLIC_WEB_URL ?? 'http://localhost:5173';
 
@@ -42,7 +44,7 @@ export function Screen({ children, refresh, pad = 16, scroll = true }) {
   const body = scroll ? (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ padding: pad, paddingBottom: pad + insets.bottom + 24, gap: 14 }}
+      contentContainerStyle={{ padding: pad, paddingBottom: pad + insets.bottom + 72, gap: 14 }}
       keyboardShouldPersistTaps="handled"
       refreshControl={refresh ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.ink3} /> : undefined}
     >
@@ -51,7 +53,12 @@ export function Screen({ children, refresh, pad = 16, scroll = true }) {
   ) : (
     <View style={{ flex: 1, padding: pad, gap: 14 }}>{children}</View>
   );
-  return <View style={{ flex: 1, backgroundColor: t.surface }}>{body}</View>;
+  return (
+    <View style={{ flex: 1, backgroundColor: t.surface }}>
+      <SyncBanner />
+      {body}
+    </View>
+  );
 }
 
 /* ── Button ─────────────────────────────────────────────────────────── */
@@ -454,7 +461,7 @@ function ErrorBoundaryInner({ reset }) {
         <Pressable
           accessibilityRole="button"
           style={{ minHeight: 44, justifyContent: 'center' }}
-          onPress={async () => { await supabase.auth.signOut(); setCurrentOrg(null); reset(); }}
+          onPress={async () => { await unregisterPushToken(); await supabase.auth.signOut(); setCurrentOrg(null); reset(); }}
         >
           <Text style={{ fontSize: 14, color: t.ink3 }}>Sign out instead</Text>
         </Pressable>

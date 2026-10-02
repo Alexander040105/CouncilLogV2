@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Button, Card, Field, Input } from '../components/ui';
+import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { useAuth } from '../lib/auth';
 
 export default function Login() {
@@ -51,7 +52,9 @@ export default function Login() {
     }
   };
 
-  const google = () =>
+  // GIS button can't load (script blocked, no client id) → old redirect flow.
+  const [gisUnavailable, setGisUnavailable] = useState(false);
+  const googleFallback = () =>
     supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${location.origin}/auth/callback` },
@@ -79,11 +82,22 @@ export default function Login() {
             {busy ? '…' : mode === 'in' ? 'Sign in' : mode === 'up' ? 'Create account' : 'Send reset link'}
           </Button>
         </form>
-        {mode !== 'forgot' && (
-          <Button variant="secondary" className="w-full" onClick={google}>
-            Continue with Google
-          </Button>
-        )}
+        {mode !== 'forgot' &&
+          (gisUnavailable ? (
+            <div className="space-y-1">
+              <Button variant="secondary" className="w-full" onClick={googleFallback}>
+                Continue with Google
+              </Button>
+              <p className="text-center text-xs text-[var(--color-ink-3)]">
+                Opens Google and brings you back here.
+              </p>
+            </div>
+          ) : (
+            <GoogleSignInButton
+              onLoadError={() => setGisUnavailable(true)}
+              onAuthError={setErr}
+            />
+          ))}
         <div className="space-y-1">
           {mode === 'in' && (
             <button

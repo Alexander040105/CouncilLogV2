@@ -12,6 +12,7 @@ from ..models import (AttendanceDay, DutySchedule, JournalEntry, JournalPhoto,
                       OrgMember, Profile, Project, SchoolYear)
 from ..pagination import envelope, org_today, page_params
 from ..services.audit import audit
+from ..services.idempotent import add_deduped, deduped_response
 from ..services import storage
 from ..services.ratelimit import check_rate_limit
 
@@ -70,6 +71,7 @@ class EntryIn(BaseModel):
     description: str = Field(min_length=1, max_length=4000)
     project_id: uuid.UUID | None = None
     photos: list[dict] = []  # [{storage_path, mime, byte_size}]
+    client_request_id: str | None = Field(default=None, max_length=64)
 
 
 @router.post("/orgs/{org_id}/journal", status_code=201)
@@ -81,9 +83,13 @@ async def create_entry(org_id: uuid.UUID, body: EntryIn, session: Session, membe
         if proj is None or proj.org_id != org_id:
             raise not_found("project")
     entry = JournalEntry(org_id=org_id, member_id=uid, entry_date=day,
-                         description=body.description, project_id=body.project_id)
-    session.add(entry)
-    await session.flush()
+                         description=body.description, project_id=body.project_id,
+                         client_request_id=body.client_request_id)
+    entry, deduped = await add_deduped(
+        session, entry, JournalEntry, org_id=org_id,
+        client_request_id=body.client_request_id)
+    if deduped:
+        return deduped_response(entry)
     for p in body.photos:
         path = p.get("storage_path", "")
         if not path.startswith(f"{org_id}/"):
@@ -131,6 +137,10 @@ async def feed(org_id: uuid.UUID, session: Session, day: date | None = None, mem
 class EntryPatch(BaseModel):
     description: str | None = Field(default=None, min_length=1, max_length=4000)
     project_id: uuid.UUID | None = None
+    # photo edits: same validation as create — paths must be org-scoped and
+    # already uploaded; removals must be photos of this entry
+    add_photos: list[dict] | None = None      # [{storage_path, mime, byte_size}]
+    remove_photo_ids: list[uuid.UUID] | None = None
 
 
 def _editable(entry: JournalEntry, member: Membership) -> bool:
@@ -160,10 +170,45 @@ async def patch_entry(org_id: uuid.UUID, entry_id: uuid.UUID, body: EntryPatch, 
                 raise not_found("project")
             e.project_id = body.project_id
     e.updated_at = datetime.now(timezone.utc)
+
+    removed_paths: list[str] = []
+    if body.remove_photo_ids:
+        doomed = (await session.execute(select(JournalPhoto).where(
+            JournalPhoto.id.in_(body.remove_photo_ids)))).scalars().all()
+        if {p.id for p in doomed} != set(body.remove_photo_ids) \
+                or any(p.entry_id != e.id for p in doomed):
+            raise APIError(422, "BAD_PATH", "Photo ids must belong to this entry")
+        removed_paths = [p.storage_path for p in doomed]
+        for p in doomed:
+            await session.delete(p)
+    if body.add_photos:
+        for p in body.add_photos:
+            path = p.get("storage_path", "")
+            if not path.startswith(f"{org_id}/"):
+                raise APIError(422, "BAD_PATH", "Photo path not scoped to org")
+            head = await storage.object_head(path)
+            if head is None:
+                raise APIError(422, "UPLOAD_MISSING",
+                               "Uploaded object not found in storage")
+            if not storage.check_magic_bytes(head, p.get("mime", "")):
+                raise APIError(422, "BAD_FILE_TYPE",
+                               "File content is not a valid image")
+            session.add(JournalPhoto(entry_id=e.id, org_id=org_id,
+                                     storage_path=path, mime=p["mime"],
+                                     byte_size=p["byte_size"]))
+
     if not (is_own and same_day):
         await audit(session, org_id=org_id, actor_id=member.user_id, action="journal.edited_post_day",
-                    entity_type="journal_entry", entity_id=e.id)
+                    entity_type="journal_entry", entity_id=e.id,
+                    metadata={"photos_added": len(body.add_photos or []),
+                              "photos_removed": len(removed_paths)})
     await session.commit()
+    # storage cleanup is best-effort — a stuck object never blocks the edit
+    for path in removed_paths:
+        try:
+            await storage.delete_object(path)
+        except Exception:
+            pass
     return {"data": e}
 
 

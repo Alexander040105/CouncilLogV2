@@ -2,20 +2,23 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import {
-  BookOpen, CalendarCheck, FileText, FolderKanban, LogOut, MoreHorizontal, ChevronRight,
-  NotebookPen, Settings, ShieldCheck, Sun, Users,
+  BookOpen, CalendarCheck, CalendarDays, FileText, FolderKanban, ListTodo, LogOut,
+  MoreHorizontal, ChevronRight, NotebookPen, Settings, ShieldCheck, Sun, Users,
 } from 'lucide-react';
 import { get } from '../lib/api';
 import { atLeast, currentOrgId, setCurrentOrg } from '../lib/org';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { Avatar, ErrorState, Sheet, ThemePicker } from './ui';
+import { NotificationBell } from './NotificationBell';
 
 const NAV = [
   { to: '/', label: 'Today', Icon: Sun },
   { to: '/journal', label: 'Journal', Icon: NotebookPen },
   { to: '/attendance', label: 'Attendance', Icon: CalendarCheck },
   { to: '/projects', label: 'Projects', Icon: FolderKanban },
+  { to: '/tasks', label: 'Tasks', Icon: ListTodo },
+  { to: '/agenda', label: 'Agenda', Icon: CalendarDays },
   { to: '/documents', label: 'Papers', Icon: FileText },
   { to: '/members', label: 'Members', Icon: Users },
   { to: '/guide', label: 'Guide', Icon: BookOpen },
@@ -115,7 +118,10 @@ export function AppShell() {
     <div className="flex min-h-dvh">
       {/* Desktop sidebar */}
       <aside className="hidden w-56 shrink-0 flex-col [border-right:var(--border-box)] bg-[var(--color-surface-2)] p-4 md:flex">
-        <div className="label-strong mb-4 text-lg">CounciLog</div>
+        <div className="label-strong mb-4 flex items-center justify-between text-lg">
+          CounciLog
+          <NotificationBell />
+        </div>
         <div className="mb-4">{orgSwitcher}</div>
         <nav className="flex flex-1 flex-col gap-1">
           {visible.map(({ to, label, Icon }) => (
@@ -134,6 +140,11 @@ export function AppShell() {
       </aside>
 
       <main className="min-w-0 flex-1 pb-20 md:pb-0">
+        {/* mobile top strip — gives the bell a home on every screen */}
+        <header className="sticky top-0 z-30 flex items-center justify-between bg-[var(--color-surface-2)] px-4 py-1 [border-bottom:var(--border-box)] md:hidden">
+          <span className="label-strong">CounciLog</span>
+          <NotificationBell />
+        </header>
         <div className="mx-auto max-w-5xl p-4">
           {me.isError
             ? <ErrorState error={me.error} retry={me.refetch} />

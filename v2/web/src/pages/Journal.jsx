@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useSearchParams, useOutletContext } from 'react-router-dom';
-import { NotebookPen, Pencil, Plus, Trash2 } from 'lucide-react';
+import { NotebookPen, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { del, get, patch, post } from '../lib/api';
 import { currentOrgId, todayOrg } from '../lib/org';
 import { useAuth } from '../lib/auth';
@@ -9,14 +9,27 @@ import { useToast } from '../lib/toast';
 import { PhotoPicker } from '../components/PhotoPicker';
 import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
 
-function PhotoThumb({ org, photo }) {
+function PhotoThumb({ org, photo, onRemove }) {
   const q = useQuery({
     queryKey: ['photourl', photo.id],
     queryFn: () => get(`/orgs/${org}/photos/${photo.id}/url`),
     staleTime: 10 * 60 * 1000,
   });
   if (!q.data) return <Skeleton className="h-40 w-full" />;
-  return <img src={q.data.url} alt="work photo" className="max-h-64 w-full rounded-[var(--radius-card)] object-cover" />;
+  const img = <img src={q.data.url} alt="work photo" className="max-h-64 w-full rounded-[var(--radius-card)] object-cover" />;
+  if (!onRemove) return img;
+  return (
+    <div className="relative">
+      {img}
+      <button
+        aria-label="Remove this photo"
+        className="absolute right-2 top-2 flex min-h-[32px] min-w-[32px] items-center justify-center rounded-full bg-black/60 text-white"
+        onClick={onRemove}
+      >
+        <X size={15} />
+      </button>
+    </div>
+  );
 }
 
 export default function Journal() {
@@ -31,7 +44,8 @@ export default function Journal() {
   const [deleting, setDeleting] = useState(null); // entry object pending confirm
   const [desc, setDesc] = useState('');
   const [projectId, setProjectId] = useState('');
-  const [photos, setPhotos] = useState([]);
+  const [photos, setPhotos] = useState([]);          // new File[] to upload
+  const [keepIds, setKeepIds] = useState(null);      // edit mode: photo ids to keep
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
 
@@ -71,33 +85,36 @@ export default function Journal() {
     setDesc(e.description);
     setProjectId(e.project_id ?? '');
     setPhotos([]);
+    setKeepIds(new Set(e.photos.map((p) => p.id)));   // all kept; X drops one
     setErr(null);
     setComposeOpen(true);
   };
 
   const openCompose = () => {
-    setEditing(null); setDesc(''); setPhotos([]); setProjectId(''); setErr(null);
+    setEditing(null); setDesc(''); setPhotos([]); setProjectId(''); setKeepIds(null); setErr(null);
     setComposeOpen(true);
   };
 
   const submit = async () => {
     setBusy(true); setErr(null);
     try {
+      const uploaded = [];
+      for (const f of photos) {
+        const sign = await post(
+          `/orgs/${org}/journal/photos/sign`, { mime: f.type, byte_size: f.size });
+        const put = await fetch(sign.upload_url, { method: 'PUT', body: f });
+        if (!put.ok) throw new Error('Photo upload failed');
+        uploaded.push({ storage_path: sign.path, mime: f.type, byte_size: f.size });
+      }
       if (editing) {
         await patch(`/orgs/${org}/journal/${editing.id}`, {
           description: desc,
           project_id: projectId || null,
+          add_photos: uploaded.length ? uploaded : null,
+          remove_photo_ids: editing.photos.filter((p) => !keepIds.has(p.id)).map((p) => p.id),
         });
         toast.success('Entry updated.');
       } else {
-        const uploaded = [];
-        for (const f of photos) {
-          const sign = await post(
-            `/orgs/${org}/journal/photos/sign`, { mime: f.type, byte_size: f.size });
-          const put = await fetch(sign.upload_url, { method: 'PUT', body: f });
-          if (!put.ok) throw new Error('Photo upload failed');
-          uploaded.push({ storage_path: sign.path, mime: f.type, byte_size: f.size });
-        }
         await post(`/orgs/${org}/journal`, {
           description: desc,
           project_id: projectId || null,
@@ -178,15 +195,20 @@ export default function Journal() {
         </div>
       ))}
 
-      <Sheet open={composeOpen} onClose={() => { setComposeOpen(false); setEditing(null); }}
+      <Sheet open={composeOpen} onClose={() => { setComposeOpen(false); setEditing(null); setKeepIds(null); }}
              title={editing ? 'Edit entry' : "Log today's work"}>
         <div className="space-y-3">
-          {!editing && <PhotoPicker photos={photos} onChange={setPhotos} />}
-          {editing && (
-            <p className="text-xs text-[var(--color-ink-3)]">
-              Photos can't be changed on an existing entry — delete and re-file to swap photos.
-            </p>
+          {editing && editing.photos.length > 0 && (
+            <div className="space-y-1">
+              <span className="label-strong block text-sm text-[var(--color-ink-2)]">Photos on this entry</span>
+              {editing.photos.filter((p) => keepIds?.has(p.id)).map((p) => (
+                <PhotoThumb key={p.id} org={org} photo={p}
+                            onRemove={() => setKeepIds((s) => { const n = new Set(s); n.delete(p.id); return n; })} />
+              ))}
+            </div>
           )}
+          <PhotoPicker photos={photos} onChange={setPhotos}
+                       max={editing ? Math.max(0, 4 - (keepIds?.size ?? 0)) : 4} />
           <Field label="What did you do?">
             <Input value={desc} onChange={(e) => setDesc(e.target.value)}
                    placeholder="Delivered concept paper to SD office" />

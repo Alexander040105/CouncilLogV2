@@ -26,7 +26,7 @@ export function ChecklistPreview({ templates, paper, logistics, eventType, flags
             <li key={k}>
               {i.label}
               <span className="text-[var(--color-ink-3)]"> — {i.template_name}</span>
-              {i.due && <span className="text-[var(--color-ink-3)]"> · due {i.due}</span>}
+              {i.due && <span className="text-[var(--color-ink-3)]"> · Due {i.due}</span>}
             </li>
           ))}
         </ul>

@@ -98,6 +98,9 @@ class AttendanceDay(SQLModel, table=True):
 
 class Project(SQLModel, table=True):
     __tablename__ = "projects"
+    # NULLs are distinct in unique indexes — constraint == migration's
+    # partial "where not null" index; declared here so test DDL enforces it.
+    __table_args__ = (UniqueConstraint("org_id", "client_request_id"),)
     id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
     org_id: uuid.UUID = Field(foreign_key="organizations.id")
     title: str
@@ -112,17 +115,20 @@ class Project(SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     )
+    client_request_id: str | None = None
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
 
 class JournalEntry(SQLModel, table=True):
     __tablename__ = "journal_entries"
+    __table_args__ = (UniqueConstraint("org_id", "client_request_id"),)
     id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
     org_id: uuid.UUID = Field(foreign_key="organizations.id")
     member_id: uuid.UUID
     entry_date: date = Field(sa_column=Column(Date))
     description: str
     project_id: uuid.UUID | None = Field(default=None, foreign_key="projects.id")
+    client_request_id: str | None = None
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
     updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
@@ -179,6 +185,7 @@ class ProjectChecklistItem(SQLModel, table=True):
 
 class Document(SQLModel, table=True):
     __tablename__ = "documents"
+    __table_args__ = (UniqueConstraint("org_id", "client_request_id"),)
     id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
     org_id: uuid.UUID = Field(foreign_key="organizations.id")
     project_id: uuid.UUID | None = Field(default=None, foreign_key="projects.id")
@@ -189,19 +196,23 @@ class Document(SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     )
+    client_request_id: str | None = None
     created_by: uuid.UUID
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
 
 class DocumentMovement(SQLModel, table=True):
     __tablename__ = "document_movements"
+    __table_args__ = (UniqueConstraint("org_id", "client_request_id"),)
     id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
     org_id: uuid.UUID = Field(foreign_key="organizations.id")
     document_id: uuid.UUID = Field(foreign_key="documents.id")
+    step_id: uuid.UUID | None = Field(default=None, foreign_key="document_signatory_steps.id")
     location_text: str
     note: str | None = None
     photo_path: str | None = None
     moved_by: uuid.UUID
+    client_request_id: str | None = None
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
 
@@ -304,3 +315,58 @@ class RateLimit(SQLModel, table=True):
     key: str = Field(primary_key=True)
     window_start: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
     count: int = 0
+
+
+class Task(SQLModel, table=True):
+    __tablename__ = "tasks"
+    __table_args__ = (UniqueConstraint("org_id", "client_request_id"),)  # see projects table
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    org_id: uuid.UUID = Field(foreign_key="organizations.id")
+    title: str
+    description: str | None = None
+    assignee_id: uuid.UUID | None = None
+    creator_id: uuid.UUID
+    due_date: date | None = Field(default=None, sa_column=Column(Date))
+    priority: str = "normal"  # low|normal|high
+    status: str = "open"      # open|done|cancelled
+    project_id: uuid.UUID | None = Field(default=None, foreign_key="projects.id")
+    document_id: uuid.UUID | None = Field(default=None, foreign_key="documents.id")
+    journal_entry_id: uuid.UUID | None = Field(default=None, foreign_key="journal_entries.id")
+    completed_by: uuid.UUID | None = None
+    completed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+    client_request_id: str | None = None
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+
+
+class TaskComment(SQLModel, table=True):
+    __tablename__ = "task_comments"
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    task_id: uuid.UUID = Field(foreign_key="tasks.id")
+    author_id: uuid.UUID
+    body: str
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+
+
+class Notification(SQLModel, table=True):
+    __tablename__ = "notifications"
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    org_id: uuid.UUID = Field(foreign_key="organizations.id")
+    user_id: uuid.UUID
+    kind: str
+    payload: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    )
+    read_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+
+
+class PushToken(SQLModel, table=True):
+    __tablename__ = "push_tokens"
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    user_id: uuid.UUID
+    token: str = Field(unique=True)
+    platform: str  # android|ios
+    last_seen_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))

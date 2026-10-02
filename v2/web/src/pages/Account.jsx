@@ -7,6 +7,7 @@ import { setCurrentOrg } from '../lib/org';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
+import { humanize } from '../lib/labels';
 import { PhotoPicker } from '../components/PhotoPicker';
 import {
   Avatar, Button, Card, Chip, ConfirmDialog, Empty, Field, Input,
@@ -235,7 +236,7 @@ export default function Account() {
             <div key={m.org_id} className="rounded-[var(--radius-card)] [border:var(--border-box)] p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium">{m.org_name}</span>
-                <Chip kind="extra" label={m.role} />
+                <Chip kind="extra" label={humanize(m.role)} />
               </div>
               <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm text-[var(--color-ink-2)]">
                 {(ROLE_CAPS[m.role] ?? ROLE_CAPS.member).map((c) => <li key={c}>{c}</li>)}

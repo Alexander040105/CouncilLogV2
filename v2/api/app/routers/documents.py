@@ -3,7 +3,8 @@ from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import aliased
 from sqlmodel import delete, select
 
 from ..deps import Membership, Session, authorize
@@ -14,6 +15,7 @@ from ..models import (Document, DocumentMovement, DocumentRevision,
 from ..pagination import envelope, org_today, page_params
 from ..services import instantiate, storage
 from ..services.audit import audit
+from ..services.idempotent import add_deduped, deduped_response
 
 router = APIRouter(tags=["documents"])
 
@@ -104,14 +106,34 @@ class DocIn(BaseModel):
     project_id: uuid.UUID | None = None
     chain_id: uuid.UUID | None = None  # override; else auto-match by doc_type
     flags: dict[str, bool] = {}
+    client_request_id: str | None = Field(default=None, max_length=64)
 
 
 @router.get("/orgs/{org_id}/documents")
-async def list_documents(org_id: uuid.UUID, session: Session, status: str | None = None, page: int = 1, pageSize: int = 20, member: Membership = Depends(authorize())):
+async def list_documents(org_id: uuid.UUID, session: Session, status: str | None = None,
+                         held_by: str | None = None,
+                         page: int = 1, pageSize: int = 20, member: Membership = Depends(authorize())):
     page, page_size = page_params(page, pageSize)
     q = select(Document).where(Document.org_id == org_id)
     if status:
         q = q.where(Document.status == status)
+    if held_by == "me":
+        # papers physically with me = my movement is the newest on the doc.
+        # "Newest" = max(created_at), ties broken by id so equal timestamps
+        # resolve deterministically — an anti-join, so no doc row duplicates.
+        uid = uuid.UUID(member.user_id)
+        newer = aliased(DocumentMovement)
+        has_newer = (
+            select(newer.id)
+            .where(newer.document_id == DocumentMovement.document_id)
+            .where(or_(newer.created_at > DocumentMovement.created_at,
+                       and_(newer.created_at == DocumentMovement.created_at,
+                            newer.id > DocumentMovement.id)))
+            .exists()
+        )
+        latest_mine = (select(DocumentMovement.document_id)
+                       .where(DocumentMovement.moved_by == uid, ~has_newer))
+        q = q.where(Document.id.in_(latest_mine))
     total = (await session.execute(
         select(func.count()).select_from(q.subquery()))).scalar_one()
     rows = (await session.execute(
@@ -133,9 +155,13 @@ async def create_document(org_id: uuid.UUID, body: DocIn, session: Session, memb
 
     doc = Document(org_id=org_id, project_id=body.project_id, title=body.title,
                    doc_type=body.doc_type, flags=flags,
-                   created_by=uuid.UUID(member.user_id))
-    session.add(doc)
-    await session.flush()
+                   created_by=uuid.UUID(member.user_id),
+                   client_request_id=body.client_request_id)
+    doc, deduped = await add_deduped(
+        session, doc, Document, org_id=org_id,
+        client_request_id=body.client_request_id)
+    if deduped:
+        return deduped_response(doc)
 
     # instantiate signatory steps from matching chain
     chain_id = body.chain_id
@@ -222,6 +248,8 @@ class MovementIn(BaseModel):
     location_text: str = Field(min_length=1, max_length=300)
     note: str | None = None
     photo_path: str | None = None
+    step_id: uuid.UUID | None = None   # which process card this evidence pins to
+    client_request_id: str | None = Field(default=None, max_length=64)
 
 
 @router.post("/orgs/{org_id}/documents/{doc_id}/movements", status_code=201)
@@ -231,9 +259,18 @@ async def add_movement(org_id: uuid.UUID, doc_id: uuid.UUID, body: MovementIn, s
         raise not_found("document")
     if body.photo_path and not body.photo_path.startswith(f"{org_id}/"):
         raise APIError(422, "BAD_PATH", "Photo path not scoped to org")
+    if body.step_id is not None:
+        step = await session.get(DocumentSignatoryStep, body.step_id)
+        if step is None or step.document_id != doc_id:
+            raise APIError(422, "STEP_MISMATCH",
+                           "step_id must be a signatory step of this document")
     mv = DocumentMovement(org_id=org_id, document_id=doc_id, moved_by=uuid.UUID(member.user_id),
                           **body.model_dump())
-    session.add(mv)
+    mv, deduped = await add_deduped(
+        session, mv, DocumentMovement, org_id=org_id,
+        client_request_id=body.client_request_id)
+    if deduped:
+        return deduped_response(mv)
     await audit(session, org_id=org_id, actor_id=member.user_id, action="document.moved",
                 entity_type="document", entity_id=doc.id,
                 metadata={"location": body.location_text})
@@ -241,9 +278,23 @@ async def add_movement(org_id: uuid.UUID, doc_id: uuid.UUID, body: MovementIn, s
     return {"data": mv}
 
 
+@router.get("/orgs/{org_id}/documents/{doc_id}/movements/{movement_id}/photo")
+async def movement_photo_url(org_id: uuid.UUID, doc_id: uuid.UUID, movement_id: uuid.UUID,
+                             session: Session, member: Membership = Depends(authorize())):
+    """Signed download URL for a movement's photo — the chain cards' evidence
+    thumbnails hit this (movement rows store private storage paths only)."""
+    mv = await _get_movement(org_id, doc_id, movement_id, session)
+    if not mv.photo_path:
+        raise not_found("movement photo")
+    return {"url": await storage.signed_download_url(mv.photo_path),
+            "expires_in": 900}
+
+
 class MovementPatch(BaseModel):
     location_text: str | None = Field(default=None, min_length=1, max_length=300)
     note: str | None = None
+    photo_path: str | None = None    # replace the photo (org-scoped, uploaded)
+    clear_photo: bool | None = None  # remove the photo entirely
 
 
 def _movement_org_day(mv: DocumentMovement) -> date:
@@ -276,15 +327,31 @@ async def patch_movement(org_id: uuid.UUID, doc_id: uuid.UUID, movement_id: uuid
     mv = await _get_movement(org_id, doc_id, movement_id, session)
     if not _movement_editable(mv, member):
         raise APIError(403, "FORBIDDEN", "Only the mover same-day, or an owner, can edit a movement")
+    if body.photo_path and body.clear_photo:
+        raise APIError(422, "PHOTO_CONFLICT", "photo_path and clear_photo can't both be sent")
     if body.location_text is not None:
         mv.location_text = body.location_text
     # note is tri-state: absent → leave, null → clear, string → set
     if "note" in body.model_fields_set:
         mv.note = body.note
+    old_photo = None
+    if body.clear_photo or body.photo_path:
+        if body.photo_path:
+            if not body.photo_path.startswith(f"{org_id}/"):
+                raise APIError(422, "BAD_PATH", "Photo path not scoped to org")
+            if await storage.object_head(body.photo_path) is None:
+                raise APIError(422, "UPLOAD_MISSING",
+                               "Uploaded object not found in storage")
+        old_photo, mv.photo_path = mv.photo_path, (None if body.clear_photo else body.photo_path)
     if not (str(mv.moved_by) == member.user_id and _movement_org_day(mv) == org_today()):
         await audit(session, org_id=org_id, actor_id=member.user_id, action="document.movement_edited",
                     entity_type="document", entity_id=doc_id, metadata={"movement_id": str(movement_id)})
     await session.commit()
+    if old_photo:
+        try:
+            await storage.delete_object(old_photo)
+        except Exception:
+            pass
     return {"data": mv}
 
 
@@ -391,9 +458,10 @@ async def advance_step(org_id: uuid.UUID, doc_id: uuid.UUID, step_id: uuid.UUID,
 
 # ── Revision rounds ────────────────────────────────────────────────────
 class RevisionIn(BaseModel):
-    at_step_id: uuid.UUID | None = None   # pending step sending it back; null = late revision on signed/filed doc
+    at_step_id: uuid.UUID | None = None        # pending step sending it back
+    return_to_step_id: uuid.UUID | None = None  # resolved step to bounce back to
     note: str = Field(min_length=1, max_length=500)
-    resend_step_ids: list[uuid.UUID] = []
+    resend_step_ids: list[uuid.UUID] = []       # resolved = re-sign; pending = carry into the new round
 
 
 RESOLVED = ("signed", "skipped", "revision_requested")
@@ -410,44 +478,62 @@ async def request_revision(org_id: uuid.UUID, doc_id: uuid.UUID, body: RevisionI
         raise APIError(409, "NOTHING_TO_REVISE", "Document has no signatory chain")
     by_id = {s.id: s for s in steps}
 
-    at_step = by_id.get(body.at_step_id) if body.at_step_id else None
+    if body.at_step_id and body.return_to_step_id:
+        raise APIError(422, "ONE_TRIGGER",
+                       "Send back from one step — pick at_step_id or return_to_step_id, not both")
+
+    trigger = None
     if body.at_step_id:
-        if at_step is None:
+        trigger = by_id.get(body.at_step_id)
+        if trigger is None:
             raise not_found("signatory step")
-        if at_step.status != "pending":
+        if trigger.status != "pending":
             raise APIError(409, "STEP_CLOSED", "Step already resolved")
+    elif body.return_to_step_id:
+        trigger = by_id.get(body.return_to_step_id)
+        if trigger is None:
+            raise not_found("signatory step")
+        if trigger.status not in RESOLVED:
+            raise APIError(422, "NOT_RESOLVED",
+                           "Can only return to a step that already resolved — sign it or pick a pending step")
     elif doc.status not in ("signed", "filed"):
         raise APIError(422, "AT_STEP_REQUIRED",
-                       "Pick the pending step that's sending it back")
+                       "Pick the step that's sending it back")
 
     resends = []
     for sid in dict.fromkeys(body.resend_step_ids):
+        if trigger is not None and sid == trigger.id:
+            continue  # the trigger clones into the new round on its own
         s = by_id.get(sid)
-        if s is None or s.status not in RESOLVED:
-            raise APIError(422, "NOT_RESOLVED", "Re-sign list must be resolved steps of this document")
+        if s is None:
+            raise not_found("signatory step")
+        if s.status not in RESOLVED and s.status != "pending":
+            raise APIError(422, "NOT_RESOLVED",
+                           "Re-sign list must be steps of this document")
         resends.append(s)
-    if not resends and body.at_step_id is None:
+    if not resends and body.at_step_id is None and body.return_to_step_id is None:
         raise APIError(422, "RESEND_REQUIRED",
                        "A late revision needs at least one office re-signing")
 
     round_no = max(s.round_no for s in steps) + 1
     rev = DocumentRevision(org_id=org_id, document_id=doc.id,
-                           requested_at_step_id=body.at_step_id,
+                           requested_at_step_id=body.at_step_id or body.return_to_step_id,
                            round_no=round_no, note=body.note,
                            created_by=uuid.UUID(member.user_id))
     session.add(rev)
 
-    if at_step is not None:
-        at_step.status = "revision_requested"
-        at_step.note = body.note
-        at_step.noted_by = uuid.UUID(member.user_id)
-    # supersede every other stale pending — the new round is the live route
+    if trigger is not None:
+        trigger.status = "revision_requested"
+        trigger.note = body.note
+        trigger.noted_by = uuid.UUID(member.user_id)
+    # supersede every stale pending — the new round is the live route;
+    # pending steps the officer chose to carry get cloned below
     for s in steps:
         if s.status == "pending":
             s.status = "superseded"
 
     new_steps = []
-    for orig in resends + ([at_step] if at_step is not None else []):
+    for orig in resends + ([trigger] if trigger is not None else []):
         ns = DocumentSignatoryStep(
             org_id=org_id, document_id=doc.id, ord=orig.ord, label=orig.label,
             office=orig.office, status="pending", round_no=round_no, revises=orig.id)
@@ -460,6 +546,7 @@ async def request_revision(org_id: uuid.UUID, doc_id: uuid.UUID, body: RevisionI
                 entity_id=doc.id,
                 metadata={"round": round_no,
                           "at_step": str(body.at_step_id) if body.at_step_id else None,
+                          "return_to": str(body.return_to_step_id) if body.return_to_step_id else None,
                           "resend": [str(s.id) for s in resends], "note": body.note})
     await session.commit()
     return {"data": rev, "new_steps": new_steps}

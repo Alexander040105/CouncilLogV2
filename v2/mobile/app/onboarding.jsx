@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react-native';
 import { post, patch } from '../src/lib/api';
+import { unregisterPushToken } from '../src/lib/push';
 import { currentOrgId, setCurrentOrg } from '../src/lib/org';
 import { supabase } from '../src/lib/supabase';
 import { useAuth } from '../src/lib/auth';
@@ -73,6 +74,7 @@ export default function Onboarding() {
 
   // /onboarding sits outside the tab shell — sign out routes to /login itself
   const signOut = async () => {
+    await unregisterPushToken();
     await supabase.auth.signOut();
     setCurrentOrg(null);
     router.replace('/login');

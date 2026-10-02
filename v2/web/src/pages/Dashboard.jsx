@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useOutletContext } from 'react-router-dom';
-import { Check, CalendarCheck, FileText, FolderKanban, Users } from 'lucide-react';
+import { Check, CalendarCheck, FileText, FolderKanban, ListTodo, Users } from 'lucide-react';
 import { get } from '../lib/api';
 import { currentOrgId, todayOrg } from '../lib/org';
 import { Button, Card, Chip, Empty, ErrorState, HintBanner, PageHeader, Skeleton } from '../components/ui';
@@ -20,6 +20,39 @@ export default function Dashboard() {
     queryFn: () => get(`/orgs/${org}/positions`),
     enabled: !!org,
   });
+  // "What needs you" — my open tasks + my open checklist items + papers
+  // whose latest custody move was mine (still out for signatures).
+  const myTasks = useQuery({
+    queryKey: ['tasks', org, 'mine'],
+    queryFn: () => get(`/orgs/${org}/tasks?assignee=me&status=open&pageSize=10`),
+    enabled: !!org,
+  });
+  const myItems = useQuery({
+    queryKey: ['checklist-mine', org],
+    queryFn: () => get(`/orgs/${org}/checklist-items?assignee_id=${me?.id}&done=false`),
+    enabled: !!org && !!me?.id,
+  });
+  const myPapers = useQuery({
+    queryKey: ['documents', org, 'held-by-me'],
+    queryFn: () => get(`/orgs/${org}/documents?held_by=me&pageSize=10`),
+    enabled: !!org,
+  });
+  const needs = [
+    ...(myTasks.data?.data ?? []).map((x) => ({
+      id: `t-${x.id}`, label: x.title, to: `/tasks?task=${x.id}`,
+      sub: x.due_date ? `Task · due ${x.due_date}` : 'Task',
+      hot: x.due_date && x.due_date < today,
+    })),
+    ...(myItems.data?.data ?? []).map((x) => ({
+      id: `i-${x.id}`, label: x.label, to: `/projects/${x.project_id}`,
+      sub: x.due_date ? `${x.project_title} · due ${x.due_date}` : `Checklist · ${x.project_title}`,
+      hot: x.due_date && x.due_date < today,
+    })),
+    ...(myPapers.data?.data ?? []).map((x) => ({
+      id: `d-${x.id}`, label: x.title, to: `/documents/${x.id}`,
+      sub: 'Paper in your custody', hot: x.status === 'revision',
+    })),
+  ];
 
   const myRow = att.data?.data.find((r) => r.member_id === me?.id);
   const isFresh =
@@ -49,7 +82,7 @@ export default function Dashboard() {
           {myRow && (
             <Chip
               kind={myRow.status === 'documented' ? 'done' : 'neutral'}
-              label={myRow.duty_type === 'extra' ? 'extra duty' : 'on duty'}
+              label={myRow.duty_type === 'extra' ? 'Extra duty' : 'On duty'}
               icon={<Check size={12} />}
             />
           )}
@@ -69,6 +102,28 @@ export default function Dashboard() {
             <li><Link className="text-[var(--color-accent)]" to="/projects">Projects</Link> holds events and their paperwork + logistics checklists.</li>
             <li>Admins set up positions, duty days, and templates in <Link className="text-[var(--color-accent)]" to="/settings">Settings</Link>.</li>
           </ul>
+        </Card>
+      )}
+
+      {(myTasks.isLoading || myItems.isLoading || myPapers.isLoading) && (
+        <Card><Skeleton className="h-16" /></Card>
+      )}
+      {needs.length > 0 && (
+        <Card>
+          <div className="label-strong mb-2 flex items-center gap-1.5 text-sm text-[var(--color-ink-2)]">
+            <ListTodo size={14} /> Needs you ({needs.length})
+          </div>
+          <div className="space-y-1">
+            {needs.map((n) => (
+              <Link key={n.id} to={n.to}
+                    className="flex items-center justify-between gap-3 rounded-[var(--radius-input)] px-2 py-2 hover:bg-[var(--color-surface-3)]">
+                <span className="min-w-0 truncate text-sm font-medium">{n.label}</span>
+                <span className={`shrink-0 text-xs ${n.hot ? 'font-semibold text-[var(--color-status-alert)]' : 'text-[var(--color-ink-3)]'}`}>
+                  {n.sub}
+                </span>
+              </Link>
+            ))}
+          </div>
         </Card>
       )}
 

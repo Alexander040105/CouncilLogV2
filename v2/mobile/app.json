@@ -34,7 +34,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#27146e"
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "scheme": "councilog",
     "runtimeVersion": {

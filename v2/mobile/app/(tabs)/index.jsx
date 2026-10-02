@@ -3,12 +3,13 @@
 import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarCheck, Check, FileText, FolderKanban, Users } from 'lucide-react-native';
+import { CalendarCheck, Check, FileText, FolderKanban, ListTodo, Users } from 'lucide-react-native';
 import { get } from '../../src/lib/api';
 import { todayOrg, useOrgId } from '../../src/lib/org';
 import { useMe } from '../../src/lib/me';
 import { useTheme } from '../../src/lib/theme';
 import { Button, Card, Chip, Empty, ErrorState, HintBanner, PageHeader, Screen, Skeleton } from '../../src/components/ui';
+import { BellButton } from '../../src/components/BellButton';
 
 export default function Dashboard() {
   const me = useMe();
@@ -27,6 +28,39 @@ export default function Dashboard() {
     queryFn: () => get(`/orgs/${org}/positions`),
     enabled: !!org,
   });
+  // "Needs you" — my open tasks + my open checklist items + papers whose
+  // latest custody move was mine (still out for signatures).
+  const myTasks = useQuery({
+    queryKey: ['tasks', org, 'mine'],
+    queryFn: () => get(`/orgs/${org}/tasks?assignee=me&status=open&pageSize=10`),
+    enabled: !!org,
+  });
+  const myItems = useQuery({
+    queryKey: ['checklist-mine', org],
+    queryFn: () => get(`/orgs/${org}/checklist-items?assignee_id=${me.data?.id}&done=false`),
+    enabled: !!org && !!me.data?.id,
+  });
+  const myPapers = useQuery({
+    queryKey: ['documents', org, 'held-by-me'],
+    queryFn: () => get(`/orgs/${org}/documents?held_by=me&pageSize=10`),
+    enabled: !!org,
+  });
+  const needs = [
+    ...(myTasks.data?.data ?? []).map((x) => ({
+      id: `t-${x.id}`, label: x.title, to: `/tasks?task=${x.id}`,
+      sub: x.due_date ? `task · due ${x.due_date}` : 'task',
+      hot: !!x.due_date && x.due_date < today,
+    })),
+    ...(myItems.data?.data ?? []).map((x) => ({
+      id: `i-${x.id}`, label: x.label, to: `/project/${x.project_id}`,
+      sub: x.due_date ? `${x.project_title} · due ${x.due_date}` : `checklist · ${x.project_title}`,
+      hot: !!x.due_date && x.due_date < today,
+    })),
+    ...(myPapers.data?.data ?? []).map((x) => ({
+      id: `d-${x.id}`, label: x.title, to: `/document/${x.id}`,
+      sub: 'paper in your custody', hot: x.status === 'revision',
+    })),
+  ];
 
   const myRow = att.data?.data.find((r) => r.member_id === me.data?.id);
   const isFresh =
@@ -40,10 +74,11 @@ export default function Dashboard() {
   );
 
   return (
-    <Screen refresh={async () => { await Promise.all([att.refetch(), positions.refetch(), me.refetch()]); }}>
+    <Screen refresh={async () => { await Promise.all([att.refetch(), positions.refetch(), myTasks.refetch(), myItems.refetch(), myPapers.refetch(), me.refetch()]); }}>
       <PageHeader
         title="Today"
         description="Your duty day at a glance: file once, you’re accounted."
+        action={<BellButton />}
       />
 
       <HintBanner id="dashboard">
@@ -72,6 +107,25 @@ export default function Dashboard() {
           <Button variant="secondary" style={{ flex: 1 }} onPress={() => router.push('/journal?notasks=1')}>No tasks today</Button>
         </View>
       </Card>
+
+      {(myTasks.isLoading || myItems.isLoading || myPapers.isLoading) ? <Skeleton style={{ height: 64 }} /> : null}
+      {needs.length > 0 ? (
+        <Card style={{ gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <ListTodo size={14} color={t.ink2} />
+            <Text style={{ fontSize: 13, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink2 }}>
+              Needs you ({needs.length})
+            </Text>
+          </View>
+          {needs.map((n) => (
+            <Pressable key={n.id} accessibilityRole="button" onPress={() => router.push(n.to)}
+                       style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 8, paddingHorizontal: 8, borderRadius: t.radiusInput, minHeight: 44 }}>
+              <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: 14, fontWeight: '500', color: t.ink }}>{n.label}</Text>
+              <Text style={{ fontSize: 12, color: n.hot ? t.alert : t.ink3, fontWeight: n.hot ? '700' : '400' }}>{n.sub}</Text>
+            </Pressable>
+          ))}
+        </Card>
+      ) : null}
 
       {isFresh ? (
         <Card style={{ gap: 6 }}>

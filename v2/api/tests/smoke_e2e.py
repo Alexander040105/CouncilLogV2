@@ -320,11 +320,16 @@ s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/revisions", tok_b,
            {"at_step_id": st[2]["id"], "resend_step_ids": [st[0]["id"]]}, org=org_a)
 check("revision without note -> 422", s == 422, f"{s}")
 s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/revisions", tok_b,
-           {"at_step_id": st[2]["id"], "note": "fix", "resend_step_ids": [st[1]["id"]]}, org=org_a)
-check("pending resend id -> 422", s == 422, f"{s}")
+           {"at_step_id": st[2]["id"], "note": "fix",
+            "resend_step_ids": ["00000000-0000-0000-0000-000000000000"]}, org=org_a)
+check("unknown resend id -> 404", s == 404, f"{s}")
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/revisions", tok_b,
+           {"at_step_id": st[2]["id"], "return_to_step_id": st[0]["id"],
+            "note": "pick one", "resend_step_ids": [st[0]["id"]]}, org=org_a)
+check("both triggers -> 422", s == 422, f"{s}")
 s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/revisions", tok_b,
            {"at_step_id": st[2]["id"], "note": "revise budget table",
-            "resend_step_ids": [st[0]["id"]]}, org=org_a)
+            "resend_step_ids": [st[0]["id"], st[1]["id"]]}, org=org_a)
 check("mid-route revision created", s == 201, f"{s} {str(r)[:140]}")
 s, d2 = api("GET", f"/orgs/{org_a}/documents/{did2}", tok_b, org=org_a)
 st2 = d2["signatory_steps"]
@@ -334,9 +339,11 @@ check("requester marked revision_requested",
       next(x for x in st2 if x["id"] == st[2]["id"])["status"] == "revision_requested")
 check("stale pending superseded",
       next(x for x in st2 if x["id"] == st[1]["id"])["status"] == "superseded")
-check("round 2 = resend + requester copy",
-      len(r2) == 2 and all(x["status"] == "pending" and x["revises"] for x in r2),
+check("round 2 = resend + carried pending + requester copy",
+      len(r2) == 3 and all(x["status"] == "pending" and x["revises"] for x in r2),
       str(r2)[:140])
+check("carried pending clones into round 2",
+      any(x["revises"] == st[1]["id"] for x in r2), str(r2)[:140])
 check("revisions list + current_round=2",
       len(d2.get("revisions", [])) == 1 and d2.get("current_round") == 2)
 
@@ -364,6 +371,26 @@ check("late revision on signed doc", s == 201, f"{s} {str(r)[:120]}")
 s, d2 = api("GET", f"/orgs/{org_a}/documents/{did2}", tok_a, org=org_a)
 check("doc back to revision, round 3",
       d2["data"]["status"] == "revision" and d2.get("current_round") == 3)
+
+# return_to_step_id — bounce a resolved desk back into a new round
+pending3 = [x for x in d2["signatory_steps"] if x["status"] == "pending"]
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/revisions", tok_a,
+           {"return_to_step_id": pending3[0]["id"], "note": "still open"},
+           org=org_a)
+check("return_to pending step -> 422", s == 422, f"{s}")
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/steps/sign-all", tok_b, {}, org=org_a)
+check("round 3 signs off", s == 200, f"{s}")
+s, d2 = api("GET", f"/orgs/{org_a}/documents/{did2}", tok_a, org=org_a)
+resolved3 = [x for x in d2["signatory_steps"] if x["status"] == "signed"]
+s, r = api("POST", f"/orgs/{org_a}/documents/{did2}/revisions", tok_a,
+           {"return_to_step_id": resolved3[0]["id"],
+            "note": "Dean needs to sign again"}, org=org_a)
+check("return_to_step_id revision", s == 201, f"{s} {str(r)[:120]}")
+s, d2 = api("GET", f"/orgs/{org_a}/documents/{did2}", tok_a, org=org_a)
+r4 = [x for x in d2["signatory_steps"] if x["round_no"] == 4]
+check("round 4 = returned step only",
+      d2["data"]["status"] == "revision" and len(r4) == 1
+      and r4[0]["revises"] == resolved3[0]["id"], str(r4)[:140])
 
 s, doc3 = api("POST", f"/orgs/{org_a}/documents", tok_b,
               {"title": "No chain", "doc_type": "letter"}, org=org_a)

@@ -8,6 +8,7 @@ import { Download, Library, Lightbulb } from 'lucide-react-native';
 import { get, post } from '../../src/lib/api';
 import { atLeast, useOrgId } from '../../src/lib/org';
 import { describeCondition, describeItemRule } from '../../src/lib/rules';
+import { docTypeLabel, humanize } from '../../src/lib/labels';
 import { STARTER_CHAINS, STARTER_CONTACTS, STARTER_TEMPLATES } from '../../src/lib/starterPack';
 import { useToast } from '../../src/lib/toast';
 import { useTheme } from '../../src/lib/theme';
@@ -95,9 +96,9 @@ function LibraryEntry({ kind, entry, present, isOwner, onInstall }) {
   const [open, setOpen] = useState(false);
   const title = kind === 'contact' ? entry.label : entry.name;
   const meta = kind === 'chain'
-    ? `doc type "${entry.doc_type}"`
+    ? `doc type "${docTypeLabel(entry.doc_type)}"`
     : kind === 'template'
-      ? `${entry.track} track${entry.event_type ? ` · ${entry.event_type} events` : ' · any event'}`
+      ? `${humanize(entry.track)} track${entry.event_type ? ` · ${humanize(entry.event_type)} events` : ' · any event'}`
       : entry.category;
   const settingsTab = kind === 'chain' ? 'chains' : kind === 'template' ? 'templates' : 'contacts';
   return (

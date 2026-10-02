@@ -5,6 +5,7 @@ import { Pressable, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserX, Users } from 'lucide-react-native';
 import { get, patch } from '../lib/api';
+import { humanize } from '../lib/labels';
 import { atLeast, useOrgId } from '../lib/org';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
@@ -41,7 +42,7 @@ export function MemberManager() {
   const update = useMutation({
     mutationFn: ({ uid, ...body }) => patch(`/orgs/${org}/members/${uid}`, body),
     onSuccess: (r) => {
-      toast.success(`Updated — now ${r.data.role}${r.data.status === 'removed' ? ' (removed)' : ''}.`);
+      toast.success(`Updated — now ${humanize(r.data.role)}${r.data.status === 'removed' ? ' (removed)' : ''}.`);
       setRemoving(null); setRoleFor(null);
       qc.invalidateQueries({ queryKey: ['members', org] });
     },
@@ -92,7 +93,7 @@ export function MemberManager() {
                       backgroundColor: t.surface2,
                     }}
                   >
-                    <Text style={{ fontSize: 12, color: t.ink2 }}>{m.role}</Text>
+                    <Text style={{ fontSize: 12, color: t.ink2 }}>{humanize(m.role)}</Text>
                   </Pressable>
                   <Pressable
                     accessibilityLabel={`Remove ${m.display_name}`} accessibilityRole="button" hitSlop={4}
@@ -103,7 +104,7 @@ export function MemberManager() {
                   </Pressable>
                 </View>
               ) : (
-                <Text style={{ fontSize: 12, color: t.ink3 }}>{m.role}</Text>
+                <Text style={{ fontSize: 12, color: t.ink3 }}>{humanize(m.role)}</Text>
               )}
             </View>
           );
@@ -116,7 +117,7 @@ export function MemberManager() {
             <Pressable key={r} accessibilityRole="button" disabled={update.isPending}
                        onPress={() => update.mutate({ uid: roleFor.user_id, role: r })}
                        style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: t.radiusInput, borderWidth: r === roleFor?.role ? t.elWidth : 0, borderColor: t.elColor, backgroundColor: r === roleFor?.role ? t.surface3 : 'transparent' }}>
-              <Text style={{ fontSize: 14, color: t.ink, fontWeight: r === roleFor?.role ? '700' : '400' }}>{r}</Text>
+              <Text style={{ fontSize: 14, color: t.ink, fontWeight: r === roleFor?.role ? '700' : '400' }}>{humanize(r)}</Text>
               <Text style={{ fontSize: 12, color: t.ink3 }}>{ROLE_HINTS[r]}</Text>
             </Pressable>
           ))}

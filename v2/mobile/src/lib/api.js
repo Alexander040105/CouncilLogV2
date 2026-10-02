@@ -1,7 +1,10 @@
 /** 1:1 port of web/src/lib/api.js — same Bearer JWT + x-org-id contract, same
- *  error shape. The API is client-agnostic; no mobile-specific endpoints. */
+ *  error shape. Plus an offline layer: a write that fails on NETWORK/TIMEOUT
+ *  is queued to the SQLite outbox and replayed on reconnect — the caller gets
+ *  {queued:true, op_id} instead of an error. */
 import { accessToken } from './supabase';
 import { currentOrgId } from './org';
+import { bindApiSender, enqueueWrite } from './offline';
 
 const API = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1';
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -20,7 +23,7 @@ let onAuthFailure = null;
  *  /login when the server rejects the session mid-use. */
 export function setAuthFailureHandler(fn) { onAuthFailure = fn; }
 
-export async function api(path, opts = {}) {
+export async function apiRaw(path, opts = {}) {
   // currentOrgId() is non-reactive — a screen can fire before /me resolves and
   // the shell writes it, producing literal /orgs/null/... paths (a 422).
   if (path.includes('/orgs/null/') || path.includes('/orgs/undefined/')) {
@@ -62,6 +65,31 @@ export async function api(path, opts = {}) {
   }
   return json;
 }
+
+/** Reads hit the network directly (React Query serves cached data offline);
+ *  writes that can't reach the server queue to the outbox instead of throwing. */
+export async function api(path, opts = {}) {
+  try {
+    return await apiRaw(path, opts);
+  } catch (e) {
+    const isWrite = (opts.method ?? 'GET') !== 'GET';
+    if (!isWrite || (e.code !== 'NETWORK' && e.code !== 'TIMEOUT')) throw e;
+    const opId = enqueueWrite({
+      method: opts.method, path, body: opts.body,
+      orgId: opts.org ?? path.match(/\/orgs\/([^/]+)/)?.[1] ?? currentOrgId(),
+    });
+    return { queued: true, op_id: opId };
+  }
+}
+
+bindApiSender(apiRaw);
+
+export const isQueued = (r) => r?.queued === true;
+
+/** Mutation onSuccess copy: a queued write did NOT reach the server yet —
+ *  say so honestly (never a silent no-op). */
+export const queuedMsg = (r, okMsg) =>
+  isQueued(r) ? 'Saved on this device — sends when you’re back online.' : okMsg;
 
 export const get = (path, opts) => api(path, opts);
 export const post = (path, body, opts) => api(path, { ...opts, method: 'POST', body });

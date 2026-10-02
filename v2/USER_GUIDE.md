@@ -127,24 +127,27 @@ There is no clock-in — **a filed day is attendance**.
      `has_merch`). The checkboxes only appear when a template item or chain
      step is gated on that flag; ticking one is what makes those gated items
      appear on the checklist.
-   - The sheet **previews the checklist** that will generate from your
-     papers/logistics + event type + flag choices — matching templates and
-     their items, with due dates when a target date is set.
-2. **Generate the checklist.** Open the project → the checklist card shows what
-   will generate before you click — matching templates, their items, and due
-   dates — and the button says how many items it will create. If nothing can
-   match, the card says exactly why (no templates on the right track, event-type
-   mismatch, project not flagged for papers/logistics) and points you to the
-   fix. When templates exist but none auto-match, adviser+ can force-pick a
-   template from the dropdown. Editing a template later won't rewrite existing
-   checklists — snapshots are frozen.
-3. **Assign tasks.** Adviser+ can assign any checklist item to a member via the
+   - The sheet **lets you edit the checklist** that will generate from your
+     papers/logistics + event type + flag choices — tick or untick templates,
+     then rename, reorder, re-date, or remove items, or add your own. The
+     toggles only *suggest* templates; the list below is what actually saves.
+2. **Manage the checklist.** Open the project → the checklist card shows items
+   with a filter row (All / Not done / Done / Assigned / Unassigned / Mine).
+   Advisers/owners and the project lead can **add, edit, reorder, or remove
+   items** on the live checklist — snapshots are frozen against template edits,
+   but the checklist itself is yours to shape. If it's empty, the card says
+   exactly why no template matched, and adviser+ can force-pick one or add the
+   first item by hand.
+3. **Move the status.** The project lead and adviser+ can set the project
+   **Draft → Active → Done → Archived** (and back) from the status picker on
+   the project header — done/archived ask to confirm first.
+4. **Assign tasks.** Adviser+ can assign any checklist item to a member via the
    per-item dropdown — they're emailed. Officers can self-assign an unassigned
    item with "Take it".
-4. **Work the checklist.** Officers tick items as they're done (officer+).
+5. **Work the checklist.** Officers tick items as they're done (officer+).
    Hints and due dates ride along when present.
-4. **Track each paper** it produces — see A5.
-5. **After the event:** the financial report goes to CHECK within 1 week
+6. **Track each paper** it produces — see A5.
+7. **After the event:** the financial report goes to CHECK within 1 week
    (handbook §7), the activity report answers to Ate Daphne's format (§6), and
    the semester-end report bundles everything (§8).
 
@@ -164,9 +167,9 @@ where the paper physically sits.
    "with Ma'am Ana"), an optional note, and an optional photo of the
    paper/location. Movements are correctable but never silent — whoever moved
    it can fix or remove their record the same day, and owners can correct
-   any (all logged in the audit trail). Deleting the newest movement reverts
-   "current location" to the previous record; deleting a middle one only
-   edits the timeline.
+   any (all logged in the audit trail) — including **swapping or clearing the
+   photo** on Edit. Deleting the newest movement reverts "current location"
+   to the previous record; deleting a middle one only edits the timeline.
 3. **Advance the chain** (officer+): mark each step **Sign** when done, or
    **Skip** with a required reason (recorded for the next signer — e.g. "office
    closed this week").
@@ -179,13 +182,16 @@ where the paper physically sits.
 
 **Sent back for revision?** When an office returns the paper:
 
-1. Tap **Send back** on the step that's holding it (or the header button on a
-   signed/filed doc).
+1. Tap **Send back** on the desk that's holding it — or **Sign again** on a
+   desk that already resolved, to bounce the paper back to that office (the
+   "president signed but it needs changes" case). On a signed/filed doc, use
+   the header button.
 2. Say *what needs changing* — it becomes the note in the log.
-3. Tick which offices must **re-sign** (all are pre-checked; untick any that
-   don't need to). The paper re-routes through them, then returns to the
-   requesting desk — as a new "Round" in the log. Old signatures are never
-   erased.
+3. Two lists: **offices that must sign again** (resolved desks — all
+   pre-checked) and **desks still waiting to sign** (pending desks — tick to
+   keep them on the route; unchecked ones drop off, and the sheet warns you
+   which). A preview line shows the new round's route before you commit.
+   Old signatures are never erased.
 4. **Fast path:** when everyone re-signs the same day, **Sign all pending**
    marks the whole round at once (with a confirm).
 
@@ -264,12 +270,15 @@ app doesn't cover, the handbook is the source of truth:
 | Page | What it's for | Who can use it | Gotchas |
 |---|---|---|---|
 | **Today** (`/`) | Your duty status, today's roster, unaccounted-member count, quick links | everyone | "Nothing filed yet" until you log work or declare no-tasks |
-| **Journal** | Photo + one-line work entries, grouped by day; optional project link | member+ | Photo optional; entries prove the duty day; edit/delete own-day (owner: any); deleting the day's last entry un-marks it |
+| **Journal** | Photo + one-line work entries, grouped by day; optional project link | member+ | Photos can be added/removed on Edit; entries prove the duty day; edit/delete own-day (owner: any); deleting the day's last entry un-marks it |
 | **Attendance** | Weekly filing grid + per-officer filing rate for the school year | everyone (read) | A "filed" chip needs a journal entry; ∅ = declared no tasks (tap to retract, own-day/owner); extra = off-day filing |
-| **Projects** | Board by status (`draft/active/done/archived`); events + their paperwork | read: member+ · create/edit: adviser+ | `event_type` + needs-papers/logistics + flags decide which templates instantiate |
-| **Project detail** | The live checklist generated from templates | check-off: officer+ | Checklist is a snapshot — later template edits don't apply |
-| **Papers** | Registry of physical documents being routed for signature | read: member+ · register: officer+ | `doc_type` auto-picks the signatory chain |
-| **Paper detail** | Signatory steps + custody timeline | sign/skip & move: officer+ | Skip needs a reason; movements correctable by mover same-day or owner (audited) |
+| **Projects** | Board by status (Draft/Active/Done/Archived); events + their paperwork | read: member+ · create/edit: adviser+ · status: project lead too | `event_type` + needs-papers/logistics + flags *suggest* templates — the create sheet's checklist editor decides what actually saves |
+| **Project detail** | The live checklist generated from templates | check-off: officer+ · structure: adviser+ or the lead | Filter All/Not done/Done/Assigned/Unassigned/Mine; snapshot items editable by lead+adviser — later template edits don't apply |
+| **Tasks** (`/tasks`) | Freeform assignments — assign work to anyone in the org, due dates, priorities, comments, links to projects/papers/journal entries | read: member+ · create/assign: member+ · edit/delete: creator or owner | Assignee can only mark done/reopen; assigning pings their inbox + email + push |
+| **Agenda** (`/agenda`) | Every dated thing in the org — task deadlines, checklist items, project targets — grouped by day | everyone | Overdue rows flag themselves; empty = nothing has a date |
+| **Papers** | Registry of physical documents being routed for signature — list or status **board** view | read: member+ · register: officer+ | `doc_type` auto-picks the signatory chain; board groups by where papers are in the chain |
+| **Paper detail** | Signatory **process cards** (sign → sign → sign, with sent-back loops) + custody timeline pinned to each step | sign/skip & move: officer+ | Skip needs a reason; "Sign again" on a resolved desk re-signs it in a new round; pending desks you don't carry drop off the route; movements incl. photo correctable by mover same-day or owner (audited) |
+| **Notifications** (bell) | Inbox: assignments, task comments, due-tomorrow pings, duty reminders | everyone | Tap a row to jump to the thing it points at; badge = unread count |
 | **Members** | Roster (roles, remove) + org chart | read: member+ · manage: owner | Can't change your own role; owner isn't reassignable here; the only owner can't be removed — archive the org instead |
 | **Guide** (`/guide`) | How chains/templates/flags work + the starter library | everyone (read) · install: owner | Library entries install as ordinary rows — nothing is locked |
 | **Settings** | members, positions, duty, templates, chains, contacts, invites, audit + danger zone | view: adviser+ · write: owner | Templates/chains have full editors (hints, offices, conditions, due rules, reorder, delete); audit tab is read-only; owners can archive the org (hidden for everyone, admin-restorable) |
@@ -294,12 +303,21 @@ app doesn't cover, the handbook is the source of truth:
 | §15 Quick reference | Settings → contacts |
 | §2 Pending handover items | Not seeded — create them as projects/tasks yourself |
 
+### Offline on the phone app
+
+The mobile app keeps working with no data connection: every save queues
+locally and syncs when you're back online. A banner at the top tells you the
+state — offline, queued items, syncing, or something that needs attention.
+Queued items are reviewable under **More → Pending changes** (retry or
+discard anything that couldn't sync). Entries and custody moves made
+offline land in the same order you made them.
+
 ## Known gaps (today)
 
-- **Template snapshots.** Checklists are frozen at generation — editing a
-  template later never rewrites a live project's items. To change a live
-  checklist, edit its items directly (or force-pick a template, which
-  appends — it asks to confirm first).
+- **Template snapshots.** Template edits never rewrite a live project's
+  items — but the checklist itself is editable (adviser+ or the project lead):
+  add/rename/reorder/delete items on the project page, or force-pick a
+  template to append (it asks to confirm first).
 - **No sequential enforcement.** Signatory steps record who signed, in listed
   order, but any officer can mark any pending step — it's a custody record,
   not a gate.
