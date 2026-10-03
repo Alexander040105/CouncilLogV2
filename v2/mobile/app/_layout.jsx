@@ -14,6 +14,7 @@ import { AuthProvider, useAuth } from '../src/lib/auth';
 import { ThemeProvider, useTheme } from '../src/lib/theme';
 import { ToastProvider } from '../src/lib/toast';
 import { ErrorBoundary } from '../src/components/ui';
+import { UpdateBanner } from '../src/components/UpdateBanner';
 import { setAuthFailureHandler } from '../src/lib/api';
 import { supabase } from '../src/lib/supabase';
 import { currentOrgId, hydrateOrg, orgHydrated, setCurrentOrg } from '../src/lib/org';
@@ -74,6 +75,7 @@ function Gate() {
     <>
       <StatusBar barStyle={t.dark ? 'light-content' : 'dark-content'} backgroundColor={t.surface} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: t.surface } }} />
+      <UpdateBanner />
     </>
   );
 }

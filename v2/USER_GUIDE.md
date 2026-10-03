@@ -319,8 +319,11 @@ but saving always needs a connection there; only the phone app queues.
 
 When a new version of the web app is ready, a small banner asks you to
 reload — it never reloads on its own mid-task, and you can dismiss it and
-update next visit. The phone app updates itself in the background when a
-compatible update is published; bigger upgrades arrive as a new APK.
+update next visit. The phone app works the same way: when an update has
+downloaded in the background, a banner at the bottom offers **Restart** —
+tap it whenever you're ready, or ignore it and it applies on your next
+cold start anyway. Bigger upgrades (new native capabilities) arrive as a
+new APK instead.
 
 ## Known gaps (today)
 
