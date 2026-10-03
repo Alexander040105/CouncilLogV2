@@ -71,6 +71,10 @@ jobs:
       - name: Install mobile dependencies
         working-directory: v2/mobile
         run: npm ci                       # .npmrc already pins legacy-peer-deps
+      - name: Changelog files in sync
+        # the hosted notes and the bundled snapshot must ship identical
+        # bytes in the same commit — see v2/DEPLOY.md release checklist
+        run: cmp -s v2/web/public/updates.json v2/mobile/src/lib/changelog-data.json
       - name: Run offline-engine unit tests
         working-directory: v2/mobile
         run: node --test "src/lib/offline/outbox.test.js" "src/lib/offline/store.test.js"

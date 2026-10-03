@@ -28,8 +28,8 @@ from app.deps import Membership
 from app.errors import APIError
 from app.models import (AuditLog, Document, DocumentMovement, DocumentRevision,
                         DocumentSignatoryStep, JournalEntry, JournalPhoto,
-                        Notification, OrgMember, Organization, Profile,
-                        Project, ProjectChecklistItem)
+                        Notification, OrgMember, Organization, Position,
+                        Profile, Project, ProjectChecklistItem, SchoolYear)
 from app.pagination import org_today
 from app.routers.daily import EntryPatch, patch_entry
 from app.routers.documents import (MovementPatch, RevisionIn, patch_movement,
@@ -46,6 +46,7 @@ TABLES = (Project.__table__, ProjectChecklistItem.__table__,
           Document.__table__, DocumentMovement.__table__,
           DocumentSignatoryStep.__table__, DocumentRevision.__table__,
           Organization.__table__, Profile.__table__, OrgMember.__table__,
+          SchoolYear.__table__, Position.__table__,
           Notification.__table__, AuditLog.__table__)
 
 
@@ -533,7 +534,7 @@ async def test_return_to_signed_step_mid_route(session):
         org_id=org, doc_id=doc.id,
         body=RevisionIn(return_to_step_id=a.id, note="fix the date",
                         resend_step_ids=[c.id]),   # carry OSA; Dean drops off
-        session=session, member=_member(org, officer, "officer"))
+        session=session, bg=_bg(), member=_member(org, officer, "officer"))
 
     await session.refresh(a)
     assert a.status == "revision_requested" and a.note == "fix the date"
@@ -566,20 +567,20 @@ async def test_return_to_rejects_pending_and_unknown(session):
     with pytest.raises(APIError) as e1:
         await request_revision(org_id=org, doc_id=doc.id,
                                body=RevisionIn(return_to_step_id=b.id, note="x"),
-                               session=session, member=m)
+                               session=session, bg=_bg(), member=m)
     assert e1.value.status_code == 422
     # unknown step
     with pytest.raises(APIError) as e2:
         await request_revision(org_id=org, doc_id=doc.id,
                                body=RevisionIn(return_to_step_id=uuid.uuid4(), note="x"),
-                               session=session, member=m)
+                               session=session, bg=_bg(), member=m)
     assert e2.value.status_code == 404
     # both triggers at once is ambiguous
     with pytest.raises(APIError) as e3:
         await request_revision(org_id=org, doc_id=doc.id,
                                body=RevisionIn(at_step_id=b.id, return_to_step_id=a.id,
                                                note="x"),
-                               session=session, member=m)
+                               session=session, bg=_bg(), member=m)
     assert e3.value.code == "ONE_TRIGGER"
 
 
@@ -596,7 +597,7 @@ async def test_return_to_is_idempotent_for_already_carried(session):
         org_id=org, doc_id=doc.id,
         body=RevisionIn(return_to_step_id=a.id, note="again",
                         resend_step_ids=[a.id]),
-        session=session, member=_member(org, officer, "officer"))
+        session=session, bg=_bg(), member=_member(org, officer, "officer"))
     assert len(r["new_steps"]) == 1
 
 
@@ -613,7 +614,7 @@ async def test_pending_trigger_still_works(session):
     r = await request_revision(
         org_id=org, doc_id=doc.id,
         body=RevisionIn(at_step_id=b.id, note="revise", resend_step_ids=[a.id]),
-        session=session, member=_member(org, officer, "officer"))
+        session=session, bg=_bg(), member=_member(org, officer, "officer"))
     await session.refresh(b)
     assert b.status == "revision_requested"
     assert {s.label for s in r["new_steps"]} == {"President", "Dean"}

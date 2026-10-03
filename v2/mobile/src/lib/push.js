@@ -81,6 +81,8 @@ export function routeForPushData(data) {
     case 'project': return entity_id ? `/project/${entity_id}` : '/projects';
     case 'task': return '/tasks';
     case 'journal': return '/journal';
+    case 'member': return '/members';
+    case 'org': return '/';
     default: return null;
   }
 }

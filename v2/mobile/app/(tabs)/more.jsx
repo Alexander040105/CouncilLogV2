@@ -3,7 +3,7 @@
 import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { BookOpen, CalendarDays, ChevronRight, FileText, ListTodo, LogOut, RefreshCw, Settings, ShieldCheck, Users } from 'lucide-react-native';
+import { BookOpen, CalendarDays, ChevronRight, FileText, ListTodo, LogOut, RefreshCw, Settings, ShieldCheck, Sparkles, Users } from 'lucide-react-native';
 import { supabase } from '../../src/lib/supabase';
 import { queueCounts, subscribeOutbox } from '../../src/lib/offline';
 import { unregisterPushToken } from '../../src/lib/push';
@@ -20,6 +20,7 @@ const ROWS = [
   { path: '/members', label: 'Members', Icon: Users },
   { path: '/pending', label: 'Pending changes', Icon: RefreshCw },
   { path: '/guide', label: 'Guide', Icon: BookOpen },
+  { path: '/whatsnew', label: "What's new", Icon: Sparkles },
   { path: '/settings', label: 'Settings', Icon: Settings, admin: true },
   { path: '/admin', label: 'Admin', Icon: ShieldCheck, platform: true },
 ];

@@ -249,6 +249,7 @@ class DocumentSignatoryStep(SQLModel, table=True):
     signed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     noted_by: uuid.UUID | None = None
     note: str | None = None
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
 
 class DocumentRevision(SQLModel, table=True):

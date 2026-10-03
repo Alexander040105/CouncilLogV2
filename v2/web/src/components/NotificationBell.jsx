@@ -13,6 +13,8 @@ function targetFor(n) {
   if (entity_type === 'project' && entity_id) return `/projects/${entity_id}`;
   if (entity_type === 'document' && entity_id) return `/documents/${entity_id}`;
   if (entity_type === 'journal') return '/journal';
+  if (entity_type === 'member') return '/settings?tab=members';
+  if (entity_type === 'org') return '/';
   return null;
 }
 
@@ -23,6 +25,14 @@ function lineFor(n) {
   if (n.kind === 'task_commented') return `${p.by ?? 'Someone'} commented on ${p.title ?? 'a task'}`;
   if (n.kind === 'task_due_soon') return `"${p.title ?? 'A task'}" is due tomorrow`;
   if (n.kind === 'duty_reminder') return "You're on duty today and haven't filed yet";
+  if (n.kind === 'sign_needed') return `"${p.title ?? 'A paper'}" is at your desk — it needs your signature`;
+  if (n.kind === 'sent_back') return `"${p.title ?? 'A paper'}" was sent back for another look`;
+  if (n.kind === 'doc_signed') return `"${p.title ?? 'A paper'}" collected every signature — ready to file`;
+  if (n.kind === 'task_done') return `"${p.title ?? 'A task'}" is marked done`;
+  if (n.kind === 'project_done') return `"${p.title ?? 'A project'}" is now ${p.status ?? 'updated'}`;
+  if (n.kind === 'join_request') return `${p.name ?? 'Someone'} wants to join`;
+  if (n.kind === 'join_decided') return p.approved ? 'Welcome — your join request was approved' : 'Your join request was declined';
+  if (n.kind === 'desk_stale') return `"${p.title ?? 'A paper'}" has been waiting on your desk for 3+ days`;
   return p.title ?? 'Notification';
 }
 

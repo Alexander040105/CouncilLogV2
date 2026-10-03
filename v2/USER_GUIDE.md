@@ -278,7 +278,7 @@ app doesn't cover, the handbook is the source of truth:
 | **Agenda** (`/agenda`) | Every dated thing in the org — task deadlines, checklist items, project targets — grouped by day | everyone | Overdue rows flag themselves; empty = nothing has a date |
 | **Papers** | Registry of physical documents being routed for signature — list or status **board** view | read: member+ · register: officer+ | `doc_type` auto-picks the signatory chain; board groups by where papers are in the chain |
 | **Paper detail** | Signatory **process cards** (sign → sign → sign, with sent-back loops) + custody timeline pinned to each step | sign/skip & move: officer+ | Skip needs a reason; "Sign again" on a resolved desk re-signs it in a new round; pending desks you don't carry drop off the route; movements incl. photo correctable by mover same-day or owner (audited) |
-| **Notifications** (bell) | Inbox: assignments, task comments, due-tomorrow pings, duty reminders | everyone | Tap a row to jump to the thing it points at; badge = unread count |
+| **Notifications** (bell) | Inbox: assignments, task comments, papers at your desk / sent back / fully signed, task & project progress, join requests + verdicts, due-tomorrow pings, duty reminders, stale-desk nudges | everyone | Tap a row to jump to the thing it points at; badge = unread count. Phones ping for all of these — the bell is the same list in-app |
 | **Members** | Roster (roles, remove) + org chart | read: member+ · manage: owner | Can't change your own role; owner isn't reassignable here; the only owner can't be removed — archive the org instead |
 | **Guide** (`/guide`) | How chains/templates/flags work + the starter library | everyone (read) · install: owner | Library entries install as ordinary rows — nothing is locked |
 | **Settings** | members, positions, duty, templates, chains, contacts, invites, audit + danger zone | view: adviser+ · write: owner | Templates/chains have full editors (hints, offices, conditions, due rules, reorder, delete); audit tab is read-only; owners can archive the org (hidden for everyone, admin-restorable) |
@@ -319,11 +319,13 @@ but saving always needs a connection there; only the phone app queues.
 
 When a new version of the web app is ready, a small banner asks you to
 reload — it never reloads on its own mid-task, and you can dismiss it and
-update next visit. The phone app works the same way: when an update has
-downloaded in the background, a banner at the bottom offers **Restart** —
-tap it whenever you're ready, or ignore it and it applies on your next
-cold start anyway. Bigger upgrades (new native capabilities) arrive as a
-new APK instead.
+update next visit. The phone app works the same way: when a *noteworthy*
+update has downloaded in the background, a banner at the bottom tells you
+**what changed** and offers **Restart** — tap it whenever you're ready, or
+ignore it and it applies on your next cold start anyway. Small fixes don't
+interrupt you at all — they slip in on your next cold start with no banner.
+The full release history lives under **More → What's new** on the phone.
+Bigger upgrades (new native capabilities) arrive as a new APK instead.
 
 ## Known gaps (today)
 

@@ -2,7 +2,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlmodel import select
@@ -12,6 +12,7 @@ from ..errors import APIError, not_found
 from ..models import Invite, JoinRequest, OrgMember, Organization, Profile, SchoolYear
 from ..pagination import envelope, page_params
 from ..services.audit import audit
+from ..services.notify import fan_out_join_decided, fan_out_join_request
 from ..services.ratelimit import check_rate_limit
 
 router = APIRouter(tags=["orgs"])
@@ -213,7 +214,7 @@ class JoinReqCreate(BaseModel):
 
 
 @router.post("/orgs/{org_id}/join-requests", status_code=201)
-async def request_join(org_id: uuid.UUID, body: JoinReqCreate, user: CurrentUser, session: Session):
+async def request_join(org_id: uuid.UUID, body: JoinReqCreate, user: CurrentUser, session: Session, bg: BackgroundTasks):
     join_org = await session.get(Organization, org_id)
     if join_org is None or join_org.archived_at is not None:
         raise not_found("organization")  # archived orgs take no new members
@@ -237,6 +238,11 @@ async def request_join(org_id: uuid.UUID, body: JoinReqCreate, user: CurrentUser
     else:
         jr = JoinRequest(org_id=org_id, user_id=uid, message=body.message)
         session.add(jr)
+    requester = await session.get(Profile, uid)
+    await fan_out_join_request(
+        session, bg, org_id=org_id, requester_id=str(uid),
+        requester_name=(requester.display_name if requester else None)
+        or user.email or "Someone")
     await session.commit()
     return {"data": jr}
 
@@ -259,7 +265,7 @@ class DecideBody(BaseModel):
 
 
 @router.post("/orgs/{org_id}/join-requests/{request_id}/decide")
-async def decide_join(org_id: uuid.UUID, request_id: uuid.UUID, body: DecideBody, session: Session, member: Membership = Depends(authorize("owner"))):
+async def decide_join(org_id: uuid.UUID, request_id: uuid.UUID, body: DecideBody, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("owner"))):
     jr = await session.get(JoinRequest, request_id)
     if jr is None or jr.org_id != org_id:
         raise not_found("join request")
@@ -279,5 +285,8 @@ async def decide_join(org_id: uuid.UUID, request_id: uuid.UUID, body: DecideBody
     await audit(session, org_id=org_id, actor_id=member.user_id,
                 action=f"join_request.{jr.status}", entity_type="join_request",
                 entity_id=jr.id, metadata={"target": str(jr.user_id), "role": body.role})
+    await fan_out_join_decided(session, bg, org_id=org_id,
+                               user_id=jr.user_id, actor_id=member.user_id,
+                               approved=body.approve)
     await session.commit()
     return {"data": {"id": str(jr.id), "status": jr.status}}

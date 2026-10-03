@@ -16,14 +16,25 @@ from sqlmodel import select
 from ..config import get_settings
 from ..deps import Session
 from ..errors import forbidden
-from ..models import (AttendanceDay, DutySchedule, Notification, Organization,
-                      SchoolYear, Task)
+from ..models import (AttendanceDay, Document, DocumentSignatoryStep,
+                      DutySchedule, Notification, Organization, SchoolYear,
+                      Task)
 from ..pagination import org_today
 from ..services.notify import (notify_duty_reminder, notify_task_due_soon,
-                               record_notification)
+                               record_notification, step_holder)
 from ..services.push import send_push
 
 router = APIRouter(tags=["internal"])
+
+STALE_DESK_DAYS = 3
+
+
+async def _ever_sent(session, user_id, kind: str, ref: str) -> bool:
+    """Has this ref ever fired for this user (any day)? Used by the stale-
+    desk nag, which pings a step once ever — not once per day."""
+    rows = (await session.execute(select(Notification).where(
+        Notification.user_id == user_id, Notification.kind == kind))).scalars().all()
+    return any((n.payload or {}).get("ref") == ref for n in rows)
 
 
 async def _already_sent(session, user_id, kind: str, ref: str, today) -> bool:
@@ -51,7 +62,7 @@ async def reminders(session: Session,
 
     today = org_today()
     tomorrow = today + timedelta(days=1)
-    sent = {"task_due_soon": 0, "duty_reminder": 0}
+    sent = {"task_due_soon": 0, "duty_reminder": 0, "desk_stale": 0}
 
     # tasks due tomorrow → ping the assignee
     due = (await session.execute(select(Task, Organization).join(
@@ -103,6 +114,38 @@ async def reminders(session: Session,
                                   "kind": "duty_reminder"})
             await notify_duty_reminder(org_name=org.name, user_id=uid)
             sent["duty_reminder"] += 1
+
+    # papers parked on one desk ≥ STALE_DESK_DAYS → nudge the holder (once
+    # per step — the ref carries the step id, not the day)
+    stale_cutoff = (datetime.now(timezone.utc).replace(tzinfo=None)
+                    - timedelta(days=STALE_DESK_DAYS))
+    parked = (await session.execute(
+        select(DocumentSignatoryStep, Document, Organization)
+        .join(Document, Document.id == DocumentSignatoryStep.document_id)
+        .join(Organization, Organization.id == DocumentSignatoryStep.org_id)
+        .where(DocumentSignatoryStep.status == "pending",
+               DocumentSignatoryStep.created_at < stale_cutoff,
+               Organization.archived_at == None))).all()  # noqa: E711
+    for step, doc, org in parked:
+        holder = await step_holder(session, org.id, step)
+        if not holder:
+            continue
+        ref = f"stale:{step.id}"
+        if await _ever_sent(session, holder, "desk_stale", ref):
+            continue
+        record_notification(session, org_id=org.id, user_id=holder,
+                            kind="desk_stale",
+                            payload={"ref": ref, "entity_type": "document",
+                                     "entity_id": str(doc.id), "title": doc.title,
+                                     "desk": step.label})
+        await send_push(session, holder,
+                        title=f"{org.name} · paper waiting on you",
+                        body=f'"{doc.title}" has been at your desk for '
+                             f"{STALE_DESK_DAYS}+ days — {step.label}'s "
+                             "signature keeps it moving.",
+                        data={"entity_type": "document", "entity_id": str(doc.id),
+                              "kind": "desk_stale"})
+        sent["desk_stale"] += 1
 
     await session.commit()
     return {"data": {"sent": sent, "day": str(today)}}

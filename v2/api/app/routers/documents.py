@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import aliased
@@ -16,8 +16,17 @@ from ..pagination import envelope, org_today, page_params
 from ..services import instantiate, storage
 from ..services.audit import audit
 from ..services.idempotent import add_deduped, deduped_response
+from ..services.notify import (fan_out_desk, fan_out_doc_signed,
+                               fan_out_sent_back)
 
 router = APIRouter(tags=["documents"])
+
+
+def _next_desk(steps, round_no: int):
+    """The desk a paper currently sits at: lowest-ord pending step of the
+    round. Chains are sequential — only that desk gets pinged."""
+    pending = [s for s in steps if s.status == "pending" and s.round_no == round_no]
+    return min(pending, key=lambda s: s.ord) if pending else None
 
 
 # ── Signatory chain templates ───────────────────────────────────────────
@@ -143,7 +152,7 @@ async def list_documents(org_id: uuid.UUID, session: Session, status: str | None
 
 
 @router.post("/orgs/{org_id}/documents", status_code=201)
-async def create_document(org_id: uuid.UUID, body: DocIn, session: Session, member: Membership = Depends(authorize("officer"))):
+async def create_document(org_id: uuid.UUID, body: DocIn, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("officer"))):
     proj = None
     if body.project_id:
         proj = await session.get(Project, body.project_id)
@@ -170,15 +179,22 @@ async def create_document(org_id: uuid.UUID, body: DocIn, session: Session, memb
             SignatoryChain.org_id == org_id, SignatoryChain.doc_type == body.doc_type)
             .order_by(SignatoryChain.name))).scalars().first()
         chain_id = chain.id if chain else None
+    first_desk = None
     if chain_id:
         raw = (await session.execute(select(SignatoryStep).where(
             SignatoryStep.chain_id == chain_id).order_by(SignatoryStep.ord))).scalars().all()
         for s in instantiate.instantiate_chain(
                 [x.model_dump() for x in raw], event_type=event_type, flags=flags):
-            session.add(DocumentSignatoryStep(
+            step = DocumentSignatoryStep(
                 org_id=org_id, document_id=doc.id, ord=s["ord"], label=s["label"],
-                office=s.get("office")))
+                office=s.get("office"))
+            session.add(step)
+            if first_desk is None or step.ord < first_desk.ord:
+                first_desk = step
         doc.status = "routing"
+    if first_desk is not None:
+        await fan_out_desk(session, bg, org_id=org_id,
+                           actor_id=member.user_id, doc=doc, step=first_desk)
 
     await audit(session, org_id=org_id, actor_id=member.user_id, action="document.created",
                 entity_type="document", entity_id=doc.id,
@@ -210,7 +226,7 @@ class AttachChain(BaseModel):
 
 
 @router.post("/orgs/{org_id}/documents/{doc_id}/attach-chain")
-async def attach_chain(org_id: uuid.UUID, doc_id: uuid.UUID, body: AttachChain, session: Session, member: Membership = Depends(authorize("officer"))):
+async def attach_chain(org_id: uuid.UUID, doc_id: uuid.UUID, body: AttachChain, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("officer"))):
     """Route an unrouted document — escape hatch for docs created before a
     matching chain existed."""
     doc = await session.get(Document, doc_id)
@@ -230,12 +246,19 @@ async def attach_chain(org_id: uuid.UUID, doc_id: uuid.UUID, body: AttachChain, 
         event_type = proj.event_type if proj else None
     raw = (await session.execute(select(SignatoryStep).where(
         SignatoryStep.chain_id == chain.id).order_by(SignatoryStep.ord))).scalars().all()
+    first_desk = None
     for s in instantiate.instantiate_chain(
             [x.model_dump() for x in raw], event_type=event_type, flags=doc.flags or {}):
-        session.add(DocumentSignatoryStep(
+        step = DocumentSignatoryStep(
             org_id=org_id, document_id=doc.id, ord=s["ord"], label=s["label"],
-            office=s.get("office")))
+            office=s.get("office"))
+        session.add(step)
+        if first_desk is None or step.ord < first_desk.ord:
+            first_desk = step
     doc.status = "routing"
+    if first_desk is not None:
+        await fan_out_desk(session, bg, org_id=org_id,
+                           actor_id=member.user_id, doc=doc, step=first_desk)
 
     await audit(session, org_id=org_id, actor_id=member.user_id, action="document.chain_attached",
                 entity_type="document", entity_id=doc.id,
@@ -382,7 +405,7 @@ class SignAllIn(BaseModel):
 
 # NOTE: must be declared BEFORE /steps/{step_id} — path order matters.
 @router.post("/orgs/{org_id}/documents/{doc_id}/steps/sign-all")
-async def sign_all(org_id: uuid.UUID, doc_id: uuid.UUID, body: SignAllIn, session: Session, member: Membership = Depends(authorize("officer"))):
+async def sign_all(org_id: uuid.UUID, doc_id: uuid.UUID, body: SignAllIn, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("officer"))):
     doc = await session.get(Document, doc_id)
     if doc is None or doc.org_id != org_id:
         raise not_found("document")
@@ -410,6 +433,13 @@ async def sign_all(org_id: uuid.UUID, doc_id: uuid.UUID, body: SignAllIn, sessio
 
     if not [s for s in steps if s.status == "pending" and s.round_no == max_round]:
         doc.status = "signed"
+        await fan_out_doc_signed(session, bg, org_id=org_id,
+                                 actor_id=member.user_id, doc=doc)
+    else:
+        nxt = _next_desk(steps, max_round)
+        if nxt is not None:
+            await fan_out_desk(session, bg, org_id=org_id,
+                               actor_id=member.user_id, doc=doc, step=nxt)
 
     await audit(session, org_id=org_id, actor_id=member.user_id,
                 action="signatory.bulk_signed", entity_type="document",
@@ -426,7 +456,7 @@ class StepAdvance(BaseModel):
 
 
 @router.post("/orgs/{org_id}/documents/{doc_id}/steps/{step_id}")
-async def advance_step(org_id: uuid.UUID, doc_id: uuid.UUID, step_id: uuid.UUID, body: StepAdvance, session: Session, member: Membership = Depends(authorize("officer"))):
+async def advance_step(org_id: uuid.UUID, doc_id: uuid.UUID, step_id: uuid.UUID, body: StepAdvance, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("officer"))):
     step = await session.get(DocumentSignatoryStep, step_id)
     if step is None or step.org_id != org_id or step.document_id != doc_id:
         raise not_found("signatory step")
@@ -448,6 +478,11 @@ async def advance_step(org_id: uuid.UUID, doc_id: uuid.UUID, step_id: uuid.UUID,
     if doc is not None and not [s for s in steps
                                 if s.status == "pending" and s.round_no == max_round]:
         doc.status = "signed"
+        await fan_out_doc_signed(session, bg, org_id=org_id,
+                                 actor_id=member.user_id, doc=doc)
+    elif doc is not None and (nxt := _next_desk(steps, max_round)) is not None:
+        await fan_out_desk(session, bg, org_id=org_id,
+                           actor_id=member.user_id, doc=doc, step=nxt)
 
     await audit(session, org_id=org_id, actor_id=member.user_id,
                 action=f"signatory.{body.status}", entity_type="document_signatory_step",
@@ -468,7 +503,7 @@ RESOLVED = ("signed", "skipped", "revision_requested")
 
 
 @router.post("/orgs/{org_id}/documents/{doc_id}/revisions", status_code=201)
-async def request_revision(org_id: uuid.UUID, doc_id: uuid.UUID, body: RevisionIn, session: Session, member: Membership = Depends(authorize("officer"))):
+async def request_revision(org_id: uuid.UUID, doc_id: uuid.UUID, body: RevisionIn, session: Session, bg: BackgroundTasks, member: Membership = Depends(authorize("officer"))):
     doc = await session.get(Document, doc_id)
     if doc is None or doc.org_id != org_id:
         raise not_found("document")
@@ -541,6 +576,16 @@ async def request_revision(org_id: uuid.UUID, doc_id: uuid.UUID, body: RevisionI
         new_steps.append(ns)
 
     doc.status = "revision"
+
+    # who's affected: the mover (creator) + the desk it lands back on —
+    # the explicit return-to step when given, else the new round's first
+    # pending desk. One fan-out, no double-ping for the same holder.
+    back_to = by_id.get(body.return_to_step_id) \
+        or (min(new_steps, key=lambda s: s.ord) if new_steps else None)
+    await fan_out_sent_back(session, bg, org_id=org_id,
+                            actor_id=member.user_id, doc=doc,
+                            back_to_step=back_to, note=body.note)
+
     await audit(session, org_id=org_id, actor_id=member.user_id,
                 action="document.revision_requested", entity_type="document",
                 entity_id=doc.id,

@@ -1,0 +1,14 @@
+{
+  "updates": [
+    {
+      "date": "2026-10-05",
+      "level": "notable",
+      "notes": [
+        "Phones now ping you when a paper needs your signature, a task lands on you, or someone asks to join",
+        "Papers sent back for revision and fully signed papers let you know",
+        "Update banners tell you what changed before you restart",
+        "More → What's new lists the app's release history"
+      ]
+    }
+  ]
+}

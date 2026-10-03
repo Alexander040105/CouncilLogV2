@@ -26,25 +26,28 @@ from app.config import get_settings
 from app.deps import Membership
 from app.errors import APIError
 from app.models import (AttendanceDay, AuditLog, ChecklistTemplate, Document,
-                        DocumentMovement, DocumentSignatoryStep, DutySchedule,
-                        JournalEntry, Notification, OrgMember, Organization,
-                        Profile, Project, ProjectChecklistItem, PushToken,
-                        SchoolYear, SignatoryChain, SignatoryStep, Task,
-                        TaskComment)
+                        DocumentMovement, DocumentRevision, DocumentSignatoryStep,
+                        DutySchedule, JoinRequest, JournalEntry, Notification,
+                        OrgMember, Organization, Position, Profile, Project,
+                        ProjectChecklistItem, PushToken, RateLimit, SchoolYear,
+                        SignatoryChain, SignatoryStep, Task, TaskComment)
 from app.pagination import org_today
 from app.routers.daily import EntryIn, create_entry
-from app.routers.documents import (DocIn, MovementIn, add_movement,
-                                   create_document, list_documents)
+from app.routers.documents import (DocIn, MovementIn, StepAdvance, add_movement,
+                                   advance_step, create_document,
+                                   list_documents)
 from app.routers.internal import reminders
 from app.routers.notifications import (MarkRead, TokenDelete, TokenIn,
                                        delete_push_token, list_notifications,
                                        mark_all_read, mark_read,
                                        register_push_token)
-from app.routers.projects import (ChecklistItemPatch, ProjectIn, create_project,
-                                  patch_item)
+from app.routers.orgs import DecideBody, JoinReqCreate, decide_join, request_join
+from app.routers.projects import (ChecklistItemPatch, ProjectIn, ProjectPatch,
+                                  create_project, patch_item, patch_project)
 from app.routers.tasks import (CommentIn, TaskIn, TaskPatch, add_comment,
                                create_task, delete_task, get_task, list_tasks,
                                patch_task)
+from app.security import AuthUser
 
 TABLES = (Organization.__table__, Profile.__table__, OrgMember.__table__,
           SchoolYear.__table__, DutySchedule.__table__, AttendanceDay.__table__,
@@ -53,6 +56,8 @@ TABLES = (Organization.__table__, Profile.__table__, OrgMember.__table__,
           SignatoryChain.__table__, SignatoryStep.__table__,
           DocumentSignatoryStep.__table__, DocumentMovement.__table__,
           JournalEntry.__table__, Task.__table__, TaskComment.__table__,
+          DocumentRevision.__table__, JoinRequest.__table__, Position.__table__,
+          RateLimit.__table__,
           Notification.__table__, PushToken.__table__, AuditLog.__table__)
 
 
@@ -240,10 +245,10 @@ async def test_journal_and_movement_and_project_replays(session):
                             body=EntryIn(description="day one", client_request_id="j-1"))
     assert getattr(r2, "status_code", None) == 200
 
-    d = await create_document(org_id=org.id, session=session, member=m,
+    d = await create_document(org_id=org.id, session=session, bg=_bg(), member=m,
                               body=DocIn(title="Letter", doc_type="memo",
                                          client_request_id="d-1"))
-    d2 = await create_document(org_id=org.id, session=session, member=m,
+    d2 = await create_document(org_id=org.id, session=session, bg=_bg(), member=m,
                                body=DocIn(title="Letter", doc_type="memo",
                                           client_request_id="d-1"))
     assert getattr(d2, "status_code", None) == 200
@@ -481,3 +486,245 @@ async def test_reminders_pings_unfiled_duty_roster(session, monkeypatch):
     assert r["data"]["sent"]["duty_reminder"] == 1
     assert len(await _notifs(session, uid, "duty_reminder")) == 1
     assert await _notifs(session, filed) == []
+
+
+# ── Desk routing + paper + people + progress notifications ─────────────
+
+async def _sy(session, org):
+    sy = SchoolYear(org_id=org.id, label="2026-2027", is_current=True)
+    session.add(sy)
+    await session.flush()
+    return sy
+
+
+async def _chain(session, org, doc_type, steps):
+    """steps: [(label, office)] — office must match a Position.title to ping."""
+    chain = SignatoryChain(org_id=org.id, name=f"{doc_type} route",
+                           doc_type=doc_type)
+    session.add(chain)
+    await session.flush()
+    for i, (label, office) in enumerate(steps, 1):
+        session.add(SignatoryStep(chain_id=chain.id, ord=i, label=label,
+                                  office=office))
+    await session.flush()
+    return chain
+
+
+async def test_create_doc_pings_only_the_first_desk(session):
+    """A routed paper notifies the FIRST desk — later desks ping as the
+    paper reaches them, not all at once."""
+    org = await _org(session)
+    mover, clerk, dean = (uuid.uuid4() for _ in range(3))
+    sy = await _sy(session, org)
+    session.add_all([
+        Position(org_id=org.id, school_year_id=sy.id, title="Clerk",
+                 holder=clerk),
+        Position(org_id=org.id, school_year_id=sy.id, title="Dean",
+                 holder=dean),
+    ])
+    await _chain(session, org, "memo",
+                 [("Records Clerk", "Clerk"), ("Dean", "Dean")])
+
+    r = await create_document(
+        org_id=org.id, session=session, bg=_bg(),
+        member=_member(org.id, mover, "officer"),
+        body=DocIn(title="Budget letter", doc_type="memo"))
+
+    assert r["data"].status == "routing"
+    clerk_notes = await _notifs(session, clerk, "sign_needed")
+    assert len(clerk_notes) == 1
+    assert clerk_notes[0].payload["desk"] == "Records Clerk"
+    assert clerk_notes[0].payload["entity_type"] == "document"
+    assert await _notifs(session, dean) == []          # not their turn yet
+    assert await _notifs(session, mover) == []         # never ping yourself
+
+
+async def test_step_advance_pings_next_desk_then_signed(session):
+    """Signing hands the paper to the next desk; the last signature tells
+    the mover it's fully signed."""
+    org = await _org(session)
+    mover, clerk, dean = (uuid.uuid4() for _ in range(3))
+    sy = await _sy(session, org)
+    session.add_all([
+        Position(org_id=org.id, school_year_id=sy.id, title="Clerk",
+                 holder=clerk),
+        Position(org_id=org.id, school_year_id=sy.id, title="Dean",
+                 holder=dean),
+    ])
+    doc = Document(org_id=org.id, title="Letter", doc_type="memo",
+                   status="routing", created_by=mover)
+    session.add(doc)
+    await session.flush()
+    s1 = DocumentSignatoryStep(org_id=org.id, document_id=doc.id, ord=1,
+                               label="Clerk", office="Clerk")
+    s2 = DocumentSignatoryStep(org_id=org.id, document_id=doc.id, ord=2,
+                               label="Dean", office="Dean")
+    session.add_all([s1, s2])
+    await session.flush()
+    officer = _member(org.id, clerk, "officer")
+
+    await advance_step(org_id=org.id, doc_id=doc.id, step_id=s1.id,
+                       session=session, bg=_bg(), member=officer,
+                       body=StepAdvance(status="signed"))
+    dean_notes = await _notifs(session, dean, "sign_needed")
+    assert len(dean_notes) == 1 and "waiting" not in dean_notes[0].kind
+    assert (await session.get(Document, doc.id)).status == "routing"
+    assert await _notifs(session, mover, "doc_signed") == []
+
+    await advance_step(org_id=org.id, doc_id=doc.id, step_id=s2.id,
+                       session=session, bg=_bg(), member=officer,
+                       body=StepAdvance(status="signed"))
+    assert (await session.get(Document, doc.id)).status == "signed"
+    done_notes = await _notifs(session, mover, "doc_signed")
+    assert len(done_notes) == 1
+    # nobody left pending → no more desk pings
+    assert len(await _notifs(session, dean, "sign_needed")) == 1
+
+
+async def test_revision_pings_mover_and_the_desk_it_returns_to(session):
+    """Sent-back papers tell the mover AND the holder of the desk the
+    paper lands back on."""
+    from app.routers.documents import RevisionIn, request_revision
+    org = await _org(session)
+    mover, dean, president = (uuid.uuid4() for _ in range(3))
+    sy = await _sy(session, org)
+    session.add(Position(org_id=org.id, school_year_id=sy.id,
+                         title="President", holder=president))
+    doc = Document(org_id=org.id, title="Letter", doc_type="memo",
+                   status="routing", created_by=mover)
+    session.add(doc)
+    await session.flush()
+    s1 = DocumentSignatoryStep(org_id=org.id, document_id=doc.id, ord=1,
+                               label="President", office="President",
+                               status="signed")
+    s2 = DocumentSignatoryStep(org_id=org.id, document_id=doc.id, ord=2,
+                               label="Dean", office="Dean")
+    session.add_all([s1, s2])
+    await session.flush()
+
+    await request_revision(
+        org_id=org.id, doc_id=doc.id, session=session, bg=_bg(),
+        member=_member(org.id, dean, "officer"),
+        body=RevisionIn(return_to_step_id=s1.id, note="fix the date"))
+
+    assert len(await _notifs(session, mover, "sent_back")) == 1
+    assert len(await _notifs(session, president, "sent_back")) == 1
+    assert await _notifs(session, dean, "sent_back") == []   # actor skipped
+
+
+async def test_task_done_pings_creator_and_project_done_pings_lead(session):
+    org = await _org(session)
+    creator, assignee, lead, adviser = (uuid.uuid4() for _ in range(4))
+    await _member_row(session, org.id, assignee)
+    t = Task(org_id=org.id, title="Print tarp", creator_id=creator,
+             assignee_id=assignee)
+    p = Project(org_id=org.id, title="Fair", owner_id=lead, status="active")
+    session.add_all([t, p])
+    await session.flush()
+
+    await patch_task(org_id=org.id, task_id=t.id, session=session, bg=_bg(),
+                     member=_member(org.id, assignee),
+                     body=TaskPatch(status="done"))
+    done = await _notifs(session, creator, "task_done")
+    assert len(done) == 1 and done[0].payload["entity_id"] == str(t.id)
+    assert await _notifs(session, assignee, "task_done") == []
+
+    await patch_project(org_id=org.id, project_id=p.id, session=session,
+                        bg=_bg(), member=_member(org.id, adviser, "adviser"),
+                        body=ProjectPatch(status="done"))
+    pnotifs = await _notifs(session, lead, "project_done")
+    assert len(pnotifs) == 1 and pnotifs[0].payload["status"] == "done"
+
+
+async def test_join_request_pings_owners_decision_pings_requester(session):
+    org = await _org(session)
+    owner, requester = uuid.uuid4(), uuid.uuid4()
+    await _member_row(session, org.id, owner, "owner")
+    session.add(Profile(id=requester, display_name="New Kid"))
+    await session.flush()
+    user = AuthUser(id=str(requester), email="new@x.test", claims={})
+
+    await request_join(org_id=org.id, session=session, bg=_bg(), user=user,
+                       body=JoinReqCreate())
+    jns = await _notifs(session, owner, "join_request")
+    assert len(jns) == 1 and jns[0].payload["name"] == "New Kid"
+    assert await _notifs(session, requester) == []
+
+    jr = (await session.execute(select(JoinRequest))).scalars().one()
+    await decide_join(org_id=org.id, request_id=jr.id, session=session,
+                      bg=_bg(), member=_member(org.id, owner, "owner"),
+                      body=DecideBody(approve=True))
+    dec = await _notifs(session, requester, "join_decided")
+    assert len(dec) == 1 and dec[0].payload["approved"] is True
+
+
+async def test_stale_desk_nags_once_ever(session, monkeypatch):
+    """A pending step older than STALE_DESK_DAYS pings its holder — and
+    only once, not every cron run."""
+    org = await _org(session)
+    holder = uuid.uuid4()
+    sy = await _sy(session, org)
+    session.add(Position(org_id=org.id, school_year_id=sy.id, title="Dean",
+                         holder=holder))
+    doc = Document(org_id=org.id, title="Letter", doc_type="memo",
+                   status="routing", created_by=uuid.uuid4())
+    session.add(doc)
+    await session.flush()
+    old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=4)
+    step = DocumentSignatoryStep(org_id=org.id, document_id=doc.id, ord=1,
+                                 label="Dean", office="Dean",
+                                 created_at=old)
+    session.add(step)
+    await session.flush()
+    monkeypatch.setattr(get_settings(), "cron_secret", "sekrit")
+
+    r = await reminders(session=session, x_cron_secret="sekrit")
+    assert r["data"]["sent"]["desk_stale"] == 1
+    assert len(await _notifs(session, holder, "desk_stale")) == 1
+    # next day's run doesn't re-nag — the ref is the step, not the day
+    r = await reminders(session=session, x_cron_secret="sekrit")
+    assert r["data"]["sent"]["desk_stale"] == 0
+    assert len(await _notifs(session, holder, "desk_stale")) == 1
+
+
+async def test_dead_tokens_pruned_on_device_not_registered(session, monkeypatch):
+    """Expo says a device is gone → its push_tokens row gets deleted so we
+    stop hammering dead installs."""
+    from app.services import push as push_service
+    uid = uuid.uuid4()
+    session.add_all([
+        PushToken(user_id=uid, token="ExponentPushToken[dead]",
+                  platform="android"),
+        PushToken(user_id=uid, token="ExponentPushToken[live]",
+                  platform="android"),
+    ])
+    await session.flush()
+
+    class FakeResp:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"data": [
+                {"status": "error",
+                 "details": {"error": "DeviceNotRegistered"}},
+                {"status": "ok"}]}
+
+    class FakeClient:
+        def __init__(self, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, *a, **kw):
+            return FakeResp()
+
+    monkeypatch.setattr(push_service.httpx, "AsyncClient", FakeClient)
+    ok = await push_service.send_push(session, uid, title="t", body="b")
+    assert ok is True
+    remaining = (await session.execute(select(PushToken))).scalars().all()
+    assert [t.token for t in remaining] == ["ExponentPushToken[live]"]

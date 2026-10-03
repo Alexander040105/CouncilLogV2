@@ -14,8 +14,11 @@ from email.message import EmailMessage
 import aiosmtplib
 import httpx
 
+from sqlmodel import func, select
+
 from ..config import get_settings
-from ..models import Notification, Organization, Profile
+from ..models import (Notification, Organization, Position, Profile,
+                      SchoolYear)
 
 log = logging.getLogger("councilog.notify")
 
@@ -105,6 +108,7 @@ async def push_to_user(user_id, *, title: str, body: str,
     from .push import send_push
     async with SessionLocal() as s:
         await send_push(s, user_id, title=title, body=body, data=data)
+        await s.commit()   # persists dead-token pruning from the receipts
 
 
 async def fan_out_assignment(session, bg, *, org_id, actor_id: str, kind: str,
@@ -156,3 +160,146 @@ async def notify_duty_reminder(*, org_name: str,
             text=(f"You're on today's duty roster in {org_name} and haven't "
                   "filed yet — log a journal entry or tap \"No tasks today\".\n\n"
                   "— CounciLog"))
+
+
+# ── Paper + people + progress fan-outs ────────────────────────────────
+# Same contract as fan_out_assignment: record_notification rides the
+# caller's transaction; push goes out on BackgroundTasks. These are
+# push+inbox only — no email; papers and joins would spam inboxes.
+
+def _notify(session, bg, *, org_id, user_id, kind: str, entity_type: str,
+            entity_id, payload_extra: dict, push_title: str,
+            push_body: str) -> None:
+    record_notification(
+        session, org_id=org_id, user_id=user_id, kind=kind,
+        payload={"entity_type": entity_type,
+                 "entity_id": str(entity_id) if entity_id else "",
+                 **payload_extra})
+    bg.add_task(push_to_user, user_id, title=push_title, body=push_body,
+                data={"entity_type": entity_type,
+                      "entity_id": str(entity_id) if entity_id else "",
+                      "kind": kind})
+
+
+async def step_holder(session, org_id, step) -> uuid.UUID | None:
+    """Resolve a signatory step's desk to the member holding that position
+    in the org's current school year. None when the seat is vacant — a
+    paper on an empty desk stays silent (the doc UI shows it waiting)."""
+    title = (step.office or step.label or "").strip()
+    if not title:
+        return None
+    sy = (await session.execute(select(SchoolYear).where(
+        SchoolYear.org_id == org_id, SchoolYear.is_current == True))  # noqa: E712
+    ).scalars().first()
+    if sy is None:
+        return None
+    pos = (await session.execute(select(Position).where(
+        Position.org_id == org_id, Position.school_year_id == sy.id,
+        func.lower(Position.title) == title.lower()))).scalars().first()
+    return pos.holder if pos else None
+
+
+async def fan_out_desk(session, bg, *, org_id, actor_id: str, doc, step) -> None:
+    """A paper just landed on `step`'s desk — ping its position holder.
+    `actor_id` is skipped so you never ping yourself."""
+    holder = await step_holder(session, org_id, step)
+    if not holder or str(holder) == str(actor_id):
+        return
+    org = await session.get(Organization, org_id)
+    _notify(
+        session, bg, org_id=org_id, user_id=holder, kind="sign_needed",
+        entity_type="document", entity_id=doc.id,
+        payload_extra={"title": doc.title, "desk": step.label},
+        push_title=f"{org.name if org else 'CounciLog'} · a paper is at your desk",
+        push_body=f'"{doc.title}" is waiting for the {step.label}\'s signature')
+
+
+async def fan_out_sent_back(session, bg, *, org_id, actor_id: str, doc,
+                            back_to_step=None, note: str | None = None) -> None:
+    """Paper was sent back for revision — tell the mover, plus the holder
+    of the desk it bounced back to (who must re-sign)."""
+    org = await session.get(Organization, org_id)
+    org_name = org.name if org else "CounciLog"
+    why = f" — {note}" if note else ""
+    for uid, body in [
+        (doc.created_by, f'"{doc.title}" was sent back for revision{why}'),
+        (await step_holder(session, org_id, back_to_step) if back_to_step else None,
+         f'"{doc.title}" is back at your desk for another look{why}'),
+    ]:
+        if not uid or str(uid) == str(actor_id):
+            continue
+        _notify(
+            session, bg, org_id=org_id, user_id=uid, kind="sent_back",
+            entity_type="document", entity_id=doc.id,
+            payload_extra={"title": doc.title, "note": note},
+            push_title=f"{org_name} · paper sent back", push_body=body)
+
+
+async def fan_out_doc_signed(session, bg, *, org_id, actor_id: str, doc) -> None:
+    """Every step in the round signed — the mover should know it's ready
+    to file."""
+    if not doc.created_by or str(doc.created_by) == str(actor_id):
+        return
+    org = await session.get(Organization, org_id)
+    _notify(
+        session, bg, org_id=org_id, user_id=doc.created_by, kind="doc_signed",
+        entity_type="document", entity_id=doc.id,
+        payload_extra={"title": doc.title},
+        push_title=f"{org.name if org else 'CounciLog'} · paper fully signed",
+        push_body=f'"{doc.title}" collected every signature — ready to file')
+
+
+async def fan_out_progress(session, bg, *, org_id, actor_id: str, kind: str,
+                           user_id, entity_type: str, entity_id,
+                           title: str, push_body: str,
+                           payload_extra: dict | None = None) -> None:
+    """Progress pings: task marked done → creator, project status change →
+    lead. Caller passes the recipient; actor is skipped."""
+    if not user_id or str(user_id) == str(actor_id):
+        return
+    org = await session.get(Organization, org_id)
+    _notify(
+        session, bg, org_id=org_id, user_id=user_id, kind=kind,
+        entity_type=entity_type, entity_id=entity_id,
+        payload_extra={"title": title, **(payload_extra or {})},
+        push_title=f"{org.name if org else 'CounciLog'} · progress",
+        push_body=push_body)
+
+
+async def fan_out_join_request(session, bg, *, org_id, requester_id: str,
+                               requester_name: str) -> None:
+    """Someone asked to join — every active owner gets the ping (they're
+    the only role that can decide)."""
+    from ..models import OrgMember
+    owners = (await session.execute(select(OrgMember.user_id).where(
+        OrgMember.org_id == org_id, OrgMember.role == "owner",
+        OrgMember.status == "active"))).scalars().all()
+    org = await session.get(Organization, org_id)
+    org_name = org.name if org else "CounciLog"
+    for uid in owners:
+        if str(uid) == str(requester_id):
+            continue
+        _notify(
+            session, bg, org_id=org_id, user_id=uid, kind="join_request",
+            entity_type="member", entity_id="",
+            payload_extra={"title": f"{requester_name} wants to join",
+                           "name": requester_name},
+            push_title=f"{org_name} · join request",
+            push_body=f"{requester_name} wants to join {org_name}")
+
+
+async def fan_out_join_decided(session, bg, *, org_id, user_id, actor_id: str,
+                               approved: bool) -> None:
+    """The requester hears the verdict."""
+    if str(user_id) == str(actor_id):
+        return
+    org = await session.get(Organization, org_id)
+    org_name = org.name if org else "CounciLog"
+    _notify(
+        session, bg, org_id=org_id, user_id=user_id, kind="join_decided",
+        entity_type="org", entity_id=org_id,
+        payload_extra={"title": "approved" if approved else "declined",
+                       "approved": approved},
+        push_title=f"{org_name} · join request {'approved' if approved else 'declined'}",
+        push_body=(f"You're in — welcome to {org_name}." if approved
+                   else f"Your request to join {org_name} was declined."))

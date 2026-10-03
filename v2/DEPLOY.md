@@ -216,8 +216,10 @@ Part 3 (`WEB_ORIGIN` typo or missing redeploy).
 
 ### 5a. Optional — daily reminders cron
 
-`POST /internal/reminders` pings assignees whose tasks are due tomorrow and
-roster members who haven't filed — once per user per kind per day. It needs
+`POST /internal/reminders` pings assignees whose tasks are due tomorrow,
+roster members who haven't filed, and desks that have held a paper for
+3+ days — once per user per kind per day (the stale-desk nag fires once
+per step ever). It needs
 `CRON_SECRET` set on the API (Part 1 env table), then schedule one daily call
 sending it as the `x-cron-secret` header — e.g. a Vercel Cron job on any of
 your projects, or `pg_cron`/Supabase scheduled function hitting the URL:
@@ -356,6 +358,22 @@ in `mobile/app.json`). Email/password needs nothing extra.
 eas update --channel preview --message "short description"  # JS-only fixes, OTA
 eas build -p android --profile preview                      # native changes → new APK
 ```
+
+**Every release needs release notes** — the update banner and More →
+What's new both read `web/public/updates.json`. Before shipping:
+
+1. Add an entry to `v2/web/public/updates.json` (**newest first**):
+   `"date"`, `"level"`, `"notes": ["…"]`. `"level": "minor"` = silent on
+   phones (no banner, applies on next cold start); `"notable"` = banner
+   with your notes + Restart button. Web always prompts either way.
+2. Copy the file verbatim to `v2/mobile/src/lib/changelog-data.json` in the
+   **same commit** — that's the app's offline history snapshot. CI fails
+   if the two files drift.
+3. `git push` first (Vercel puts the file live), **then** `eas update` —
+   if the OTA lands before the notes file is reachable, early updaters
+   see a generic banner instead of your notes.
+4. Same two files for `eas build` releases — the notes describe the
+   update, not the delivery mechanism.
 
 ### Landing page
 

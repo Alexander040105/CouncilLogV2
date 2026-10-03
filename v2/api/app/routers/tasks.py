@@ -19,8 +19,8 @@ from ..models import (Document, JournalEntry, Organization, Profile, Project,
 from ..pagination import envelope, page_params
 from ..services.audit import audit
 from ..services.idempotent import add_deduped, deduped_response
-from ..services.notify import (fan_out_assignment, push_to_user,
-                               record_notification)
+from ..services.notify import (fan_out_assignment, fan_out_progress,
+                               push_to_user, record_notification)
 
 router = APIRouter(tags=["tasks"])
 
@@ -183,6 +183,11 @@ async def patch_task(org_id: uuid.UUID, task_id: uuid.UUID, body: TaskPatch,
     if body.status == "done" and old_status != "done":
         t.completed_by = uuid.UUID(member.user_id)
         t.completed_at = datetime.now(timezone.utc)
+        await fan_out_progress(
+            session, bg, org_id=org_id, actor_id=member.user_id,
+            kind="task_done", user_id=t.creator_id,
+            entity_type="task", entity_id=t.id, title=t.title,
+            push_body=f'"{t.title}" is marked done')
     if body.status == "open":
         t.completed_by = None
         t.completed_at = None

@@ -14,7 +14,7 @@ from ..pagination import envelope, page_params
 from ..services import instantiate
 from ..services.audit import audit
 from ..services.idempotent import add_deduped, deduped_response
-from ..services.notify import fan_out_assignment
+from ..services.notify import fan_out_assignment, fan_out_progress
 
 router = APIRouter(tags=["projects"])
 
@@ -121,8 +121,19 @@ async def patch_project(org_id: uuid.UUID, project_id: uuid.UUID, body: ProjectP
     if body.owner_id and body.owner_id != p.owner_id:
         await require_user_in_org(session, org_id, str(body.owner_id))
     changed_lead = bool(body.owner_id) and body.owner_id != p.owner_id
+    old_status = p.status
     for k, v in body.model_dump(exclude_none=True).items():
         setattr(p, k, v)
+    # "done"/"archived" pings the lead — unless the lead just changed in
+    # this same request (assignment ping covers that).
+    if (body.status in ("done", "archived") and body.status != old_status
+            and not changed_lead):
+        await fan_out_progress(
+            session, bg, org_id=org_id, actor_id=member.user_id,
+            kind="project_done", user_id=p.owner_id,
+            entity_type="project", entity_id=p.id, title=p.title,
+            push_body=f'"{p.title}" is now {body.status}',
+            payload_extra={"status": body.status})
     await audit(session, org_id=org_id, actor_id=member.user_id, action="project.updated",
                 entity_type="project", entity_id=p.id)
     if changed_lead:
