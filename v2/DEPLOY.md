@@ -122,9 +122,12 @@ The API only accepts requests from the web app's URL (CORS).
 
 ### 4a. Database migrations
 
-If this is the **same Supabase project** you've been developing against,
-migrations `0001`–`0006` are already applied — skip. For a **fresh**
-project: SQL Editor → run every file in `supabase/migrations/` in order.
+For a **fresh** project: SQL Editor → run every file in
+`supabase/migrations/` in order. For an **existing** project, compare the
+files against what you've already applied and run only the missing ones —
+migrations are additive, so running one twice is a no-op or a harmless error.
+(`0007`–`0010` were added after this guide was first written — make sure
+they're applied or projects/tasks/notifications endpoints will 500.)
 
 ### 4b. Auth redirect URLs — required for login + password reset
 

@@ -181,6 +181,7 @@ class ProjectChecklistItem(SQLModel, table=True):
     done: bool = False
     done_by: uuid.UUID | None = None
     done_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
 
 class Document(SQLModel, table=True):

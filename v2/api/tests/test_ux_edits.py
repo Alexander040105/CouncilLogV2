@@ -37,8 +37,8 @@ from app.routers.documents import (MovementPatch, RevisionIn, patch_movement,
 from app.routers.projects import (ChecklistItemPatch, ItemSeed, ProjectIn,
                                   ProjectPatch, ReorderIn, add_checklist_item,
                                   create_project, delete_checklist_item,
-                                  patch_item, patch_project,
-                                  reorder_checklist_items)
+                                  list_checklist_items, patch_item,
+                                  patch_project, reorder_checklist_items)
 from app.services import storage
 
 TABLES = (Project.__table__, ProjectChecklistItem.__table__,
@@ -275,6 +275,52 @@ async def test_cross_org_item_404s(session):
         await delete_checklist_item(org_id=org, item_id=it.id,
                                     session=session, member=owner)
     assert e.value.status_code == 404
+
+
+# ── Flat checklist list ("needs you" / agenda) ──────────────────────────
+
+async def test_list_checklist_items_filters_and_joins(session):
+    org = uuid.uuid4()
+    p1, p2 = _project(org), Project(org_id=org, title="Outreach")
+    me, other = uuid.uuid4(), uuid.uuid4()
+    mine = ProjectChecklistItem(org_id=org, project_id=p1.id, ord=0,
+                                label="Mine", assignee_id=me,
+                                due_date=date(2026, 3, 2))
+    early = ProjectChecklistItem(org_id=org, project_id=p2.id, ord=0,
+                                 label="Early", assignee_id=me,
+                                 due_date=date(2026, 3, 1))
+    undated = ProjectChecklistItem(org_id=org, project_id=p1.id, ord=1,
+                                   label="Undated", assignee_id=me)
+    done_item = ProjectChecklistItem(org_id=org, project_id=p1.id, ord=2,
+                                     label="Done", assignee_id=me, done=True)
+    theirs = ProjectChecklistItem(org_id=org, project_id=p1.id, ord=3,
+                                  label="Theirs", assignee_id=other)
+    session.add_all([p1, p2, mine, early, undated, done_item, theirs])
+    await session.flush()
+
+    m = _member(org, me)
+    r = await list_checklist_items(org_id=org, session=session,
+                                   assignee_id=me, done=False, member=m)
+    rows = r["data"]
+    # due_date asc, undated last; done and other assignees excluded
+    assert [x["label"] for x in rows] == ["Early", "Mine", "Undated"]
+    titles = {x["label"]: x["project_title"] for x in rows}
+    assert titles == {"Early": "Outreach", "Mine": "Fair", "Undated": "Fair"}
+
+    r = await list_checklist_items(org_id=org, session=session,
+                                   assignee_id=None, done=None, member=m)
+    assert len(r["data"]) == 5
+
+    # org scoping: a foreign org's items never leak in
+    other_org = uuid.uuid4()
+    fp = _project(other_org)
+    session.add_all([fp, ProjectChecklistItem(
+        org_id=other_org, project_id=fp.id, ord=0, label="Foreign",
+        assignee_id=me)])
+    await session.flush()
+    r = await list_checklist_items(org_id=org, session=session,
+                                   assignee_id=me, done=None, member=m)
+    assert "Foreign" not in [x["label"] for x in r["data"]]
 
 
 # ── Project status transitions ──────────────────────────────────────────

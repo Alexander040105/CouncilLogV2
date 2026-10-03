@@ -4,8 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError
 
 from .config import get_settings
-from .errors import (APIError, api_error_handler, integrity_error_handler,
-                     unhandled_error_handler)
+from .errors import (APIError, UnhandledErrorMiddleware, api_error_handler,
+                     integrity_error_handler, unhandled_error_handler)
 from .routers import (admin, audit, core, daily, documents, internal,
                       notifications, org_structure, orgs, projects, tasks)
 
@@ -21,6 +21,10 @@ app = FastAPI(
 
 _origins = [settings.web_origin] + [
     o.strip() for o in settings.web_origin_extra.split(",") if o.strip()]
+
+# Added before CORSMiddleware so it runs inside it — the 500 it produces
+# still carries CORS headers instead of surfacing as a CORS failure.
+app.add_middleware(UnhandledErrorMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
