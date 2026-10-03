@@ -2,7 +2,8 @@
  *  down-arrows (vertical only on phones). Each card carries status, who/when,
  *  and movement+photo evidence pinned to that step. The custody timeline on
  *  the page stays the append-only record. */
-import { Image, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, Ban, Camera, CheckCircle2, Clock, SkipForward, Undo2 } from 'lucide-react-native';
 import { get } from '../lib/api';
@@ -37,7 +38,7 @@ export function MovementThumb({ docId, movement }) {
       accessibilityLabel={`Photo at ${movement.location_text}`}
       style={{ height: 96, width: '100%', borderRadius: t.radiusInput, marginTop: 4,
                borderWidth: Math.max(t.elWidth, 1), borderColor: t.elColor }}
-      resizeMode="cover"
+      contentFit="cover" cachePolicy="memory-disk" recyclingKey={movement.id} transition={100}
     />
   );
 }

@@ -3,8 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#27146e" />
     <title>CounciLog</title>
     <script src="/theme-init.js"></script>
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- manifest link is injected by vite-plugin-pwa at build time -->
+    <!-- Warm the two origins every page hits before the bundle even parses. -->
+    <link rel="preconnect" href="https://ijcjzllfusxpfqqonuyk.supabase.co" />
+    <link rel="dns-prefetch" href="https://ijcjzllfusxpfqqonuyk.supabase.co" />
+    <link rel="preconnect" href="https://council-log-v2-backend.vercel.app" />
+    <link rel="dns-prefetch" href="https://council-log-v2-backend.vercel.app" />
   </head>
   <body>
     <div id="root"></div>

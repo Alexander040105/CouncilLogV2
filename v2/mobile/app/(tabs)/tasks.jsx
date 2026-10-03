@@ -1,8 +1,9 @@
 /** Port of web/pages/Tasks.jsx — to-dos between people. Assign → the
  *  assignee is notified in-app, by email, and by push. Comments ping the
  *  assignee + creator. Everything here queues offline like any other write. */
-import { useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { memo, useMemo, useState } from 'react';
+import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Circle, FileText, FolderKanban, ListTodo, NotebookPen, Plus, Trash2 } from 'lucide-react-native';
@@ -141,6 +142,37 @@ function TaskForm({ form, setForm, members, projects, documents, journals, t }) 
   );
 }
 
+/** One task row — memoized; filter switches shouldn't re-render every card. */
+const TaskRow = memo(function TaskRow({ x, projects, router, nameOf, onPress }) {
+  const { t } = useTheme();
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress}>
+      <Card style={{
+        flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
+        gap: 8, opacity: x.status !== 'open' ? 0.6 : 1,
+      }}>
+        <View style={{ flexShrink: 1, gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {x.status === 'done'
+              ? <CheckCircle2 size={16} color={t.done} />
+              : <Circle size={16} color={t.ink3} />}
+            <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink, flexShrink: 1 }}>{x.title}</Text>
+          </View>
+          <Text style={{ fontSize: 12, color: t.ink3 }}>
+            → {nameOf(x.assignee_id)}
+            {x.due_date ? `  ·  Due ${x.due_date}${overdue(x) ? ' — overdue' : ''}` : ''}
+          </Text>
+          <LinkChips t={x} projects={projects} router={router} />
+        </View>
+        <View style={{ gap: 4, alignItems: 'flex-end' }}>
+          <Chip kind={STATUS_CHIP[x.status]} label={taskStatusLabel(x.status)} />
+          {x.priority === 'high' ? <Chip kind="alert" label="High" /> : null}
+        </View>
+      </Card>
+    </Pressable>
+  );
+});
+
 export default function Tasks() {
   const org = useOrgId();
   const qc = useQueryClient();
@@ -262,8 +294,15 @@ export default function Tasks() {
     router.setParams({ task: row.id });
   };
 
-  return (
-    <Screen refresh={async () => { await Promise.all([tasks.refetch(), members.refetch()]); }}>
+  const insets = useSafeAreaInsets();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try { await Promise.all([tasks.refetch(), members.refetch()]); } finally { setRefreshing(false); }
+  };
+
+  const header = (
+    <View style={{ gap: 14, marginBottom: 6 }}>
       <PageHeader
         title="Tasks"
         description="To-dos between people — assign one and they’re notified."
@@ -273,7 +312,6 @@ export default function Tasks() {
           </Button>
         }
       />
-
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {FILTERS.map((f) => (
           <Pressable
@@ -293,48 +331,40 @@ export default function Tasks() {
           </Pressable>
         ))}
       </View>
-
       {tasks.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
       {tasks.isError ? <ErrorState error={tasks.error} retry={tasks.refetch} /> : null}
-      {tasks.isSuccess && filtered.length === 0 ? (
-        <Empty
-          icon={<ListTodo size={24} color={t.ink3} />}
-          title={filter === 'mine' ? 'Nothing assigned to you' : 'No tasks here'}
-          hint={filter === 'mine'
-            ? 'When someone assigns you a task it lands here — and you get notified.'
-            : 'Create a task and assign it to someone in the org.'}
-          action={<Button onPress={() => { setForm(BLANK); setCreateOpen(true); }}>New task</Button>}
-        />
-      ) : null}
+    </View>
+  );
 
-      <View style={{ gap: 8 }}>
-        {filtered.map((x) => (
-          <Pressable key={x.id} accessibilityRole="button" onPress={() => openDetail(x)}>
-            <Card style={{
-              flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between',
-              gap: 8, opacity: x.status !== 'open' ? 0.6 : 1,
-            }}>
-              <View style={{ flexShrink: 1, gap: 4 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  {x.status === 'done'
-                    ? <CheckCircle2 size={16} color={t.done} />
-                    : <Circle size={16} color={t.ink3} />}
-                  <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink, flexShrink: 1 }}>{x.title}</Text>
-                </View>
-                <Text style={{ fontSize: 12, color: t.ink3 }}>
-                  → {nameOf(x.assignee_id)}
-                  {x.due_date ? `  ·  Due ${x.due_date}${overdue(x) ? ' — overdue' : ''}` : ''}
-                </Text>
-                <LinkChips t={x} projects={projects.data?.data} router={router} />
-              </View>
-              <View style={{ gap: 4, alignItems: 'flex-end' }}>
-                <Chip kind={STATUS_CHIP[x.status]} label={taskStatusLabel(x.status)} />
-                {x.priority === 'high' ? <Chip kind="alert" label="High" /> : null}
-              </View>
-            </Card>
-          </Pressable>
-        ))}
-      </View>
+  return (
+    <Screen scroll={false} pad={0}>
+      <FlatList
+        style={{ flex: 1 }}
+        data={filtered}
+        keyExtractor={(x) => x.id}
+        renderItem={({ item: x }) => (
+          <TaskRow x={x} projects={projects.data?.data} router={router}
+                   nameOf={nameOf} onPress={() => openDetail(x)} />
+        )}
+        ListHeaderComponent={header}
+        ListEmptyComponent={tasks.isSuccess ? (
+          <Empty
+            icon={<ListTodo size={24} color={t.ink3} />}
+            title={filter === 'mine' ? 'Nothing assigned to you' : 'No tasks here'}
+            hint={filter === 'mine'
+              ? 'When someone assigns you a task it lands here — and you get notified.'
+              : 'Create a task and assign it to someone in the org.'}
+            action={<Button onPress={() => { setForm(BLANK); setCreateOpen(true); }}>New task</Button>}
+          />
+        ) : null}
+        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ padding: 16, paddingBottom: 16 + insets.bottom + 72 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.ink3} />}
+      />
 
       <Sheet open={createOpen} onClose={() => setCreateOpen(false)} title="New task">
         <TaskForm form={form} setForm={setForm} members={activeMembers}

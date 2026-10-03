@@ -126,7 +126,7 @@ export function PhotoPicker({ photos, onChange, max = 4 }) {
         <div className="flex flex-wrap gap-2">
           {photos.map((f, i) => (
             <div key={`${f.name}-${i}`} className="relative">
-              <img src={urlOf(f, i)} alt={`selected photo ${i + 1}`}
+              <img src={urlOf(f, i)} alt={`selected photo ${i + 1}`} loading="lazy" decoding="async"
                    className="h-20 w-20 rounded-[var(--radius-input)] object-cover" />
               <button
                 aria-label={`Remove photo ${i + 1}`}

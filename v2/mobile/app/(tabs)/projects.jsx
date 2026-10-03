@@ -1,7 +1,8 @@
 /** Port of web/pages/Projects.jsx — status board + create sheet with flags
  *  and live checklist preview. Board becomes stacked status sections. */
-import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { memo, useMemo, useState } from 'react';
+import { Pressable, RefreshControl, SectionList, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FolderKanban, Plus } from 'lucide-react-native';
@@ -17,6 +18,25 @@ import { FlagCheckboxes } from '../../src/components/RuleFields';
 import { Button, Card, CheckRow, Chip, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Screen, Select, Sheet, Skeleton } from '../../src/components/ui';
 
 const STATUS = ['draft', 'active', 'done', 'archived'];
+
+/** One board card — memoized so the board doesn't re-render every row on
+ *  unrelated state changes (sheet open, form typing). */
+const ProjectCard = memo(function ProjectCard({ p, nameOf, onPress }) {
+  const { t } = useTheme();
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress}>
+      <Card style={{ gap: 4 }}>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>{p.title}</Text>
+        {p.target_date ? <Text style={{ fontSize: 12, color: t.ink3 }}>Target {p.target_date}</Text> : null}
+        {nameOf(p.owner_id) ? <Text style={{ fontSize: 12, color: t.ink3 }}>Lead: {nameOf(p.owner_id)}</Text> : null}
+        <View style={{ flexDirection: 'row', gap: 4 }}>
+          {p.needs_paper_processing ? <Chip kind="pending" label="Papers" /> : null}
+          {p.needs_logistics ? <Chip kind="extra" label="Logistics" /> : null}
+        </View>
+      </Card>
+    </Pressable>
+  );
+});
 
 export default function Projects() {
   const org = useOrgId();
@@ -81,10 +101,22 @@ export default function Projects() {
     onError: (e) => { setErr(e.message); toast.error(e.message); },
   });
 
-  const groups = STATUS.map((s) => ({ s, items: (list.data?.data ?? []).filter((p) => p.status === s) }));
+  const sections = useMemo(
+    () => STATUS
+      .map((s) => ({ title: s, data: (list.data?.data ?? []).filter((p) => p.status === s) }))
+      .filter((sec) => sec.data.length > 0),
+    [list.data]);
 
-  return (
-    <Screen refresh={async () => { await Promise.all([list.refetch(), members.refetch(), templates.refetch(), chains.refetch()]); }}>
+  const insets = useSafeAreaInsets();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try { await Promise.all([list.refetch(), members.refetch(), templates.refetch(), chains.refetch()]); }
+    finally { setRefreshing(false); }
+  };
+
+  const header = (
+    <View style={{ gap: 14, marginBottom: 6 }}>
       <PageHeader
         title="Projects"
         description="Events and the paperwork + logistics behind them."
@@ -100,31 +132,41 @@ export default function Projects() {
       </HintBanner>
       {list.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
       {list.isError ? <ErrorState error={list.error} retry={list.refetch} /> : null}
-      {list.data?.data.length === 0 ? (
-        <Empty icon={<FolderKanban size={24} color={t.ink3} />} title="No projects"
-               hint={canCreate
-                 ? 'Create one to start tracking papers and logistics.'
-                 : 'Projects are created by advisers and owners — ask one to set one up.'}
-               action={canCreate ? <Button onPress={() => setOpen(true)}>New project</Button> : null} />
-      ) : null}
-      {groups.map(({ s, items }) => items.length > 0 && (
-        <View key={s} style={{ gap: 8 }}>
-          <Text style={{ fontSize: 12, fontWeight: '700', textTransform: 'uppercase', color: t.ink3 }}>{projectStatusLabel(s)} · {items.length}</Text>
-          {items.map((p) => (
-            <Pressable key={p.id} accessibilityRole="button" onPress={() => router.push(`/project/${p.id}`)}>
-              <Card style={{ gap: 4 }}>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>{p.title}</Text>
-                {p.target_date ? <Text style={{ fontSize: 12, color: t.ink3 }}>Target {p.target_date}</Text> : null}
-                {nameOf(p.owner_id) ? <Text style={{ fontSize: 12, color: t.ink3 }}>Lead: {nameOf(p.owner_id)}</Text> : null}
-                <View style={{ flexDirection: 'row', gap: 4 }}>
-                  {p.needs_paper_processing ? <Chip kind="pending" label="Papers" /> : null}
-                  {p.needs_logistics ? <Chip kind="extra" label="Logistics" /> : null}
-                </View>
-              </Card>
-            </Pressable>
-          ))}
-        </View>
-      ))}
+    </View>
+  );
+
+  return (
+    <Screen scroll={false} pad={0}>
+      <SectionList
+        style={{ flex: 1 }}
+        sections={sections}
+        keyExtractor={(p) => p.id}
+        renderSectionHeader={({ section }) => (
+          <Text style={{ fontSize: 12, fontWeight: '700', textTransform: 'uppercase', color: t.ink3 }}>
+            {projectStatusLabel(section.title)} · {section.data.length}
+          </Text>
+        )}
+        renderItem={({ item: p }) => (
+          <ProjectCard p={p} nameOf={nameOf} onPress={() => router.push(`/project/${p.id}`)} />
+        )}
+        ListHeaderComponent={header}
+        ListEmptyComponent={list.isSuccess ? (
+          <Empty icon={<FolderKanban size={24} color={t.ink3} />} title="No projects"
+                 hint={canCreate
+                   ? 'Create one to start tracking papers and logistics.'
+                   : 'Projects are created by advisers and owners — ask one to set one up.'}
+                 action={canCreate ? <Button onPress={() => setOpen(true)}>New project</Button> : null} />
+        ) : null}
+        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+        SectionSeparatorComponent={() => <View style={{ height: 14 }} />}
+        stickySectionHeadersEnabled={false}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ padding: 16, paddingBottom: 16 + insets.bottom + 72 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.ink3} />}
+      />
 
       <Sheet open={open} onClose={() => setOpen(false)} title="New project">
         <Field label="Title"><Input value={form.title} onChangeText={(v) => setForm({ ...form, title: v })} /></Field>

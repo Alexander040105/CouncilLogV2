@@ -3,9 +3,10 @@
  *  All styling resolves through useTheme() tokens — never hardcode colors. */
 import { Component, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Animated, Image, KeyboardAvoidingView, Modal, Platform,
+  ActivityIndicator, Animated, KeyboardAvoidingView, Modal, Platform,
   Pressable, RefreshControl, ScrollView, Text, TextInput, useAnimatedValue, View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AlertTriangle, Check, ChevronDown, Info, X } from 'lucide-react-native';
@@ -412,7 +413,10 @@ export function Avatar({ name, url, size = 28 }) {
     width: size, height: size, borderRadius: t.avatarRadius,
     borderWidth: Math.max(t.elWidth, 1), borderColor: t.elColor, overflow: 'hidden',
   };
-  if (url) return <Image source={{ uri: url }} accessibilityLabel={name ?? ''} style={box} />;
+  if (url) return (
+    <Image source={{ uri: url }} accessibilityLabel={name ?? ''} style={box}
+           contentFit="cover" cachePolicy="memory-disk" recyclingKey={url} transition={60} />
+  );
   return (
     <View style={[box, { backgroundColor: t.accent, alignItems: 'center', justifyContent: 'center' }]}>
       <Text style={{ fontSize: size * 0.4, fontWeight: '700', color: t.accentFg }}>{initials}</Text>
