@@ -1,7 +1,9 @@
 /** Notifications inbox — mobile port of web's NotificationBell sheet as a
  *  full screen. Unread badge polls every 30s; tap a row to mark read and
  *  deep-link to the thing it points at. */
-import { Pressable, Text, View } from 'react-native';
+import { memo, useState } from 'react';
+import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bell, CheckCheck } from 'lucide-react-native';
@@ -37,6 +39,26 @@ function ago(iso) {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
+const NotifRow = memo(function NotifRow({ n, onPress }) {
+  const { t } = useTheme();
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress}>
+      <Card style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, opacity: n.read_at ? 0.65 : 1 }}>
+        <View style={{
+          marginTop: 6, height: 8, width: 8, borderRadius: 999,
+          backgroundColor: n.read_at ? 'transparent' : t.brand,
+        }} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ fontSize: 14, color: t.ink, fontWeight: n.read_at ? '400' : '600' }}>
+            {lineFor(n)}
+          </Text>
+          <Text style={{ fontSize: 12, color: t.ink3 }}>{ago(n.created_at)}</Text>
+        </View>
+      </Card>
+    </Pressable>
+  );
+});
+
 export default function Notifications() {
   const org = useOrgId();
   const router = useRouter();
@@ -66,8 +88,15 @@ export default function Notifications() {
     if (target) router.push(target);
   };
 
-  return (
-    <Screen refresh={notifs.refetch}>
+  const insets = useSafeAreaInsets();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try { await notifs.refetch(); } finally { setRefreshing(false); }
+  };
+
+  const header = (
+    <View style={{ gap: 14, marginBottom: 6 }}>
       <Pressable accessibilityRole="button" onPress={() => router.back()}
                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, alignSelf: 'flex-start' }}>
         <ArrowLeft size={14} color={t.ink3} /><Text style={{ fontSize: 14, color: t.ink3 }}>Back</Text>
@@ -81,32 +110,30 @@ export default function Notifications() {
           </Button>
         ) : null}
       />
-
       {notifs.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
       {notifs.isError ? <ErrorState error={notifs.error} retry={notifs.refetch} /> : null}
-      {notifs.data?.data.length === 0 ? (
-        <Empty icon={<Bell size={24} color={t.ink3} />} title="All quiet"
-               hint="Assignments and reminders land here — nothing yet." />
-      ) : null}
+    </View>
+  );
 
-      <View style={{ gap: 6 }}>
-        {(notifs.data?.data ?? []).map((n) => (
-          <Pressable key={n.id} accessibilityRole="button" onPress={() => open_(n)}>
-            <Card style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, opacity: n.read_at ? 0.65 : 1 }}>
-              <View style={{
-                marginTop: 6, height: 8, width: 8, borderRadius: 999,
-                backgroundColor: n.read_at ? 'transparent' : t.brand,
-              }} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ fontSize: 14, color: t.ink, fontWeight: n.read_at ? '400' : '600' }}>
-                  {lineFor(n)}
-                </Text>
-                <Text style={{ fontSize: 12, color: t.ink3 }}>{ago(n.created_at)}</Text>
-              </View>
-            </Card>
-          </Pressable>
-        ))}
-      </View>
+  return (
+    <Screen scroll={false} pad={0}>
+      <FlatList
+        style={{ flex: 1 }}
+        data={notifs.data?.data ?? []}
+        keyExtractor={(n) => n.id}
+        renderItem={({ item: n }) => <NotifRow n={n} onPress={() => open_(n)} />}
+        ListHeaderComponent={header}
+        ListEmptyComponent={notifs.isSuccess ? (
+          <Empty icon={<Bell size={24} color={t.ink3} />} title="All quiet"
+                 hint="Assignments and reminders land here — nothing yet." />
+        ) : null}
+        ItemSeparatorComponent={() => <View style={{ height: 6 }} />}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        contentContainerStyle={{ padding: 16, paddingBottom: 16 + insets.bottom + 72 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.ink3} />}
+      />
     </Screen>
   );
 }

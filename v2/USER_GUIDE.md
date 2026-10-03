@@ -312,6 +312,16 @@ Queued items are reviewable under **More → Pending changes** (retry or
 discard anything that couldn't sync). Entries and custody moves made
 offline land in the same order you made them.
 
+On the **web** app, opening a page you've used before works offline too —
+but saving always needs a connection there; only the phone app queues.
+
+### App updates
+
+When a new version of the web app is ready, a small banner asks you to
+reload — it never reloads on its own mid-task, and you can dismiss it and
+update next visit. The phone app updates itself in the background when a
+compatible update is published; bigger upgrades arrive as a new APK.
+
 ## Known gaps (today)
 
 - **Template snapshots.** Template edits never rewrite a live project's

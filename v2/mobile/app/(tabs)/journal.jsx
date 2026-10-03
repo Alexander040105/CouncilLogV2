@@ -1,8 +1,10 @@
 /** Port of web/pages/Journal.jsx — photo + a line about what you did.
  *  ?compose=1 opens the sheet; ?notasks=1 fires the no-tasks declaration
  *  (both come from Today quick-actions via route params). */
-import { useEffect, useState } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
+import { memo, useEffect, useMemo, useState } from 'react';
+import { Pressable, RefreshControl, SectionList, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NotebookPen, Pencil, Plus, Trash2, X } from 'lucide-react-native';
@@ -29,7 +31,7 @@ function PhotoThumb({ org, photo }) {
       source={{ uri: q.data.url }}
       accessibilityLabel="work photo"
       style={{ width: '100%', maxHeight: 240, height: 240, borderRadius: t.radiusCard }}
-      resizeMode="cover"
+      contentFit="cover" cachePolicy="memory-disk" recyclingKey={photo.id} transition={100}
     />
   );
 }
@@ -46,7 +48,8 @@ function EditPhotoThumb({ org, photo, onRemove }) {
     <View style={{ width: 88, height: 88 }}>
       {q.data
         ? <Image source={{ uri: q.data.url }} accessibilityLabel="work photo"
-                 style={{ width: 88, height: 88, borderRadius: t.radiusInput }} resizeMode="cover" />
+                 style={{ width: 88, height: 88, borderRadius: t.radiusInput }}
+                 contentFit="cover" cachePolicy="memory-disk" recyclingKey={photo.id} />
         : <Skeleton style={{ height: 88, width: 88 }} />}
       <Pressable
         accessibilityRole="button" accessibilityLabel="Remove photo" hitSlop={4}
@@ -62,6 +65,35 @@ function EditPhotoThumb({ org, photo, onRemove }) {
     </View>
   );
 }
+
+/** One journal entry — memoized so toggling one row doesn't re-mount every
+ *  PhotoThumb in the feed (each thumb runs its own signed-URL query). */
+const JournalCard = memo(function JournalCard({ e, org, canModify, onEdit, onDelete }) {
+  const { t } = useTheme();
+  return (
+    <Card style={{ gap: 8 }}>
+      {e.photos.map((p) => <PhotoThumb key={p.id} org={org} photo={p} />)}
+      <Text style={{ fontSize: 14, color: t.ink }}>{e.description}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <View>{e.project_id ? <Chip kind="neutral" label="Project" /> : null}</View>
+        {canModify ? (
+          <View style={{ flexDirection: 'row', gap: 4 }}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Edit entry"
+                       onPress={onEdit}
+                       style={{ minHeight: 36, minWidth: 36, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8 }}>
+              <Pencil size={14} color={t.ink2} /><Text style={{ fontSize: 12, color: t.ink2 }}>Edit</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Delete entry"
+                       onPress={onDelete}
+                       style={{ minHeight: 36, minWidth: 36, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8 }}>
+              <Trash2 size={14} color={t.alert} /><Text style={{ fontSize: 12, color: t.alert }}>Delete</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    </Card>
+  );
+});
 
 export default function Journal() {
   const org = useOrgId();
@@ -184,60 +216,64 @@ export default function Journal() {
     onError: (e) => { setDeleting(null); toast.error(e.message); },
   });
 
-  const byDay = (feed.data?.data ?? []).reduce((m, e) => {
-    (m[e.entry_date] ??= []).push(e);
-    return m;
-  }, {});
+  const sections = useMemo(() => {
+    const m = {};
+    for (const e of feed.data?.data ?? []) (m[e.entry_date] ??= []).push(e);
+    return Object.entries(m).map(([day, data]) => ({ title: day, data }));
+  }, [feed.data]);
 
-  return (
-    <Screen refresh={async () => { await Promise.all([feed.refetch(), projects.refetch()]); }}>
+  const insets = useSafeAreaInsets();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try { await Promise.all([feed.refetch(), projects.refetch()]); } finally { setRefreshing(false); }
+  };
+
+  const header = (
+    <View style={{ gap: 14, marginBottom: 6 }}>
       <PageHeader
         title="Daily Journal"
         description="Photo + a line about what you did — that's the day's record."
         action={<Button onPress={openCompose}><Plus size={16} color={t.accentFg} /><Text style={{ color: t.accentFg, fontWeight: '700' }}>Log work</Text></Button>}
       />
-
       <HintBanner id="journal">
         Entries here prove your duty day — a photo is optional but encouraged. Off-day
         filings count as extra duty.
       </HintBanner>
-
       {feed.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
       {feed.isError ? <ErrorState error={feed.error} retry={feed.refetch} /> : null}
-      {feed.data?.data.length === 0 ? (
-        <Empty icon={<NotebookPen size={24} color={t.ink3} />} title="No journal entries yet"
-               hint="Photo + a line about what you did — that's the day's record."
-               action={<Button onPress={openCompose}>Log work</Button>} />
-      ) : null}
+    </View>
+  );
 
-      {Object.entries(byDay).map(([day, entries]) => (
-        <View key={day} style={{ gap: 8 }}>
-          <Text style={{ fontSize: 13, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink2 }}>{day}</Text>
-          {entries.map((e) => (
-            <Card key={e.id} style={{ gap: 8 }}>
-              {e.photos.map((p) => <PhotoThumb key={p.id} org={org} photo={p} />)}
-              <Text style={{ fontSize: 14, color: t.ink }}>{e.description}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <View>{e.project_id ? <Chip kind="neutral" label="Project" /> : null}</View>
-                {canModify(e) ? (
-                  <View style={{ flexDirection: 'row', gap: 4 }}>
-                    <Pressable accessibilityRole="button" accessibilityLabel="Edit entry"
-                               onPress={() => openEdit(e)}
-                               style={{ minHeight: 36, minWidth: 36, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8 }}>
-                      <Pencil size={14} color={t.ink2} /><Text style={{ fontSize: 12, color: t.ink2 }}>Edit</Text>
-                    </Pressable>
-                    <Pressable accessibilityRole="button" accessibilityLabel="Delete entry"
-                               onPress={() => setDeleting(e)}
-                               style={{ minHeight: 36, minWidth: 36, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8 }}>
-                      <Trash2 size={14} color={t.alert} /><Text style={{ fontSize: 12, color: t.alert }}>Delete</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-              </View>
-            </Card>
-          ))}
-        </View>
-      ))}
+  return (
+    <Screen scroll={false} pad={0}>
+      <SectionList
+        style={{ flex: 1 }}
+        sections={sections}
+        keyExtractor={(e) => e.id}
+        renderSectionHeader={({ section }) => (
+          <Text style={{ fontSize: 13, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink2 }}>{section.title}</Text>
+        )}
+        renderItem={({ item: e }) => (
+          <JournalCard e={e} org={org} canModify={canModify(e)}
+                       onEdit={() => openEdit(e)} onDelete={() => setDeleting(e)} />
+        )}
+        ListHeaderComponent={header}
+        ListEmptyComponent={feed.isSuccess ? (
+          <Empty icon={<NotebookPen size={24} color={t.ink3} />} title="No journal entries yet"
+                 hint="Photo + a line about what you did — that's the day's record."
+                 action={<Button onPress={openCompose}>Log work</Button>} />
+        ) : null}
+        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+        SectionSeparatorComponent={() => <View style={{ height: 14 }} />}
+        stickySectionHeadersEnabled={false}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ padding: 16, paddingBottom: 16 + insets.bottom + 72 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.ink3} />}
+      />
 
       <Sheet open={composeOpen} onClose={() => { setComposeOpen(false); setEditing(null); }}
              title={editing ? 'Edit entry' : 'Log today’s work'}>

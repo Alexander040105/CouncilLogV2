@@ -16,7 +16,7 @@ function PhotoThumb({ org, photo, onRemove }) {
     staleTime: 10 * 60 * 1000,
   });
   if (!q.data) return <Skeleton className="h-40 w-full" />;
-  const img = <img src={q.data.url} alt="work photo" className="max-h-64 w-full rounded-[var(--radius-card)] object-cover" />;
+  const img = <img src={q.data.url} alt="work photo" loading="lazy" decoding="async" className="max-h-64 w-full rounded-[var(--radius-card)] object-cover" />;
   if (!onRemove) return img;
   return (
     <div className="relative">

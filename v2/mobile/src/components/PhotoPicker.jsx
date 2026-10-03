@@ -1,7 +1,8 @@
 /** Mobile port of PhotoPicker — same `photos`/`onChange`/`max` contract.
  *  Photos are normalized to {uri, name, type, size} so the upload helper can
  *  build the PUT body for the signed URL the API hands back. */
-import { Image, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Camera, ImageUp, X } from 'lucide-react-native';
@@ -80,7 +81,8 @@ export function PhotoPicker({ photos, onChange, max = 4 }) {
           {photos.map((p, i) => (
             <View key={`${p.uri}-${i}`}>
               <Image source={{ uri: p.uri }} accessibilityLabel={`selected photo ${i + 1}`}
-                     style={{ width: 80, height: 80, borderRadius: t.radiusInput }} />
+                     style={{ width: 80, height: 80, borderRadius: t.radiusInput }}
+                     contentFit="cover" recyclingKey={p.uri} transition={60} />
               <Pressable
                 accessibilityLabel={`Remove photo ${i + 1}`} accessibilityRole="button"
                 style={{

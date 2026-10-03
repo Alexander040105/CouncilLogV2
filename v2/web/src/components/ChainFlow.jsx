@@ -30,8 +30,8 @@ export function MovementThumb({ docId, movement }) {
   return (
     <a href={q.data.url} target="_blank" rel="noreferrer"
        className="block overflow-hidden rounded-[var(--radius-input)] [border:var(--border-el)]">
-      <img src={q.data.url} alt={`Photo at ${movement.location_text}`}
-           className="h-20 w-full object-cover" loading="lazy" />
+      <img src={q.data.url} alt={`Photo at ${movement.location_text}`} loading="lazy" decoding="async"
+           className="h-20 w-full object-cover" />
     </a>
   );
 }

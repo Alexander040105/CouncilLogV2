@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from sqlalchemy.exc import IntegrityError
 
+from .cache import CacheHeadersMiddleware
 from .config import get_settings
 from .errors import (APIError, UnhandledErrorMiddleware, api_error_handler,
                      integrity_error_handler, unhandled_error_handler)
@@ -36,6 +37,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["authorization", "content-type", "x-org-id"],
 )
+
+# Outermost: stamps tiered Cache-Control on GETs that didn't set their own —
+# private everywhere (browser-only reuse), no-store as the default (app/cache.py).
+app.add_middleware(CacheHeadersMiddleware)
 
 app.add_exception_handler(APIError, api_error_handler)
 app.add_exception_handler(IntegrityError, integrity_error_handler)

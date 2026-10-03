@@ -15,5 +15,6 @@ __pycache__/
 # node
 node_modules/
 dist/
+.expo/                 # expo dev-server state — machine-specific, not source
 test-results/          # playwright output — generated, not source
 COUNCIL_HANDBOOK_V2.md

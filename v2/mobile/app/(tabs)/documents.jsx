@@ -1,7 +1,8 @@
 /** Port of web/pages/Documents.jsx — custody list + register sheet with
  *  doc-type picker, project pre-tick flags, live ChainPreview, override chain. */
-import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { memo, useMemo, useState } from 'react';
+import { FlatList, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, FileText, Plus, Route } from 'lucide-react-native';
@@ -89,6 +90,22 @@ function ChainPreview({ chains, docType, overrideId, eventType = null, flags = {
   );
 }
 
+/** One custody row — memoized; status-filter switches shouldn't re-render all. */
+const DocRow = memo(function DocRow({ d, statusKind, onPress }) {
+  const { t } = useTheme();
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress}>
+      <Card style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <View style={{ flexShrink: 1 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>{d.title}</Text>
+          <Text style={{ fontSize: 12, color: t.ink3 }}>{docTypeLabel(d.doc_type)}</Text>
+        </View>
+        <Chip kind={statusKind(d.status)} label={docStatusLabel(d.status)} />
+      </Card>
+    </Pressable>
+  );
+});
+
 const STATUS_FILTERS = [
   { id: '', label: 'All' },
   { id: 'open', label: 'Registered' },
@@ -160,8 +177,19 @@ export default function Documents() {
   const statusKind = (s) =>
     s === 'signed' ? 'done' : ['routing', 'revision'].includes(s) ? 'pending' : s === 'filed' ? 'skip' : 'neutral';
 
-  return (
-    <Screen refresh={async () => { await Promise.all([docs.refetch(), chains.refetch(), projects.refetch()]); }}>
+  const filtered = useMemo(
+    () => (docs.data?.data ?? []).filter((d) => !statusFilter || d.status === statusFilter),
+    [docs.data, statusFilter]);
+
+  const insets = useSafeAreaInsets();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try { await Promise.all([docs.refetch(), chains.refetch(), projects.refetch()]); } finally { setRefreshing(false); }
+  };
+
+  const header = (
+    <View style={{ gap: 14, marginBottom: 6 }}>
       <PageHeader
         title="Papers"
         description="Where physical documents are and who's signing them."
@@ -177,13 +205,6 @@ export default function Documents() {
       </HintBanner>
       {docs.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
       {docs.isError ? <ErrorState error={docs.error} retry={docs.refetch} /> : null}
-      {docs.data?.data.length === 0 ? (
-        <Empty icon={<FileText size={24} color={t.ink3} />} title="No documents tracked"
-               hint={canWrite
-                 ? 'Register a paper to start its custody log.'
-                 : 'Papers are registered by officers — ask one to log a document.'}
-               action={canWrite ? <Button onPress={() => setOpen(true)}>New document</Button> : null} />
-      ) : null}
       {(docs.data?.data.length ?? 0) > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
           {STATUS_FILTERS.map((f) => {
@@ -208,19 +229,34 @@ export default function Documents() {
           })}
         </ScrollView>
       ) : null}
-      <View style={{ gap: 8 }}>
-        {(docs.data?.data ?? []).filter((d) => !statusFilter || d.status === statusFilter).map((d) => (
-          <Pressable key={d.id} accessibilityRole="button" onPress={() => router.push(`/document/${d.id}`)}>
-            <Card style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <View style={{ flexShrink: 1 }}>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>{d.title}</Text>
-                <Text style={{ fontSize: 12, color: t.ink3 }}>{docTypeLabel(d.doc_type)}</Text>
-              </View>
-              <Chip kind={statusKind(d.status)} label={docStatusLabel(d.status)} />
-            </Card>
-          </Pressable>
-        ))}
-      </View>
+    </View>
+  );
+
+  return (
+    <Screen scroll={false} pad={0}>
+      <FlatList
+        style={{ flex: 1 }}
+        data={filtered}
+        keyExtractor={(d) => d.id}
+        renderItem={({ item: d }) => (
+          <DocRow d={d} statusKind={statusKind} onPress={() => router.push(`/document/${d.id}`)} />
+        )}
+        ListHeaderComponent={header}
+        ListEmptyComponent={docs.isSuccess ? (
+          <Empty icon={<FileText size={24} color={t.ink3} />} title="No documents tracked"
+                 hint={canWrite
+                   ? 'Register a paper to start its custody log.'
+                   : 'Papers are registered by officers — ask one to log a document.'}
+                 action={canWrite ? <Button onPress={() => setOpen(true)}>New document</Button> : null} />
+        ) : null}
+        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ padding: 16, paddingBottom: 16 + insets.bottom + 72 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.ink3} />}
+      />
 
       <Sheet open={open} onClose={() => setOpen(false)} title="New document">
         <Field label="Title"><Input value={form.title} onChangeText={(v) => setForm({ ...form, title: v })} placeholder="IoT Session concept paper" /></Field>

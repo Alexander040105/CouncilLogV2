@@ -47,15 +47,20 @@ async def _active_memberships(session, uid: uuid.UUID) -> list[OrgMember]:
 
 @router.get("/me")
 async def me(user: CurrentUser, session: Session) -> dict:
-    profile = await session.get(Profile, uuid.UUID(user.id))
+    # One round-trip: profile LEFT JOIN memberships LEFT JOIN orgs — a user
+    # with no memberships (or a lazily-created profile) still resolves.
     rows = (
         await session.execute(
-            select(OrgMember, Organization)
-            .join(Organization, Organization.id == OrgMember.org_id)
-            .where(OrgMember.user_id == uuid.UUID(user.id), OrgMember.status == "active",
-                   Organization.archived_at.is_(None))  # archived orgs vanish for members
+            select(Profile, OrgMember, Organization)
+            .select_from(Profile)
+            .outerjoin(OrgMember, (OrgMember.user_id == Profile.id)
+                       & (OrgMember.status == "active"))
+            .outerjoin(Organization, (Organization.id == OrgMember.org_id)
+                       & (Organization.archived_at.is_(None)))  # archived orgs vanish for members
+            .where(Profile.id == uuid.UUID(user.id))
         )
     ).all()
+    profile = rows[0][0] if rows else None
     return {
         "id": user.id,
         "email": user.email,
@@ -63,7 +68,7 @@ async def me(user: CurrentUser, session: Session) -> dict:
         "is_admin": bool(profile and profile.is_admin),
         "memberships": [
             {"org_id": str(o.id), "org_name": o.name, "slug": o.slug, "role": m.role}
-            for m, o in rows
+            for _, m, o in rows if m is not None and o is not None
         ],
     }
 

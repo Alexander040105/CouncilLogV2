@@ -71,6 +71,9 @@ jobs:
       - name: Install mobile dependencies
         working-directory: v2/mobile
         run: npm ci                       # .npmrc already pins legacy-peer-deps
+      - name: Run offline-engine unit tests
+        working-directory: v2/mobile
+        run: node --test "src/lib/offline/outbox.test.js" "src/lib/offline/store.test.js"
       - name: Bundle the Expo app (compile check)
         working-directory: v2/mobile
         env:

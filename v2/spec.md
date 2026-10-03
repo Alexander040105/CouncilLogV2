@@ -926,6 +926,17 @@ schema, code, or shared defaults.
   camera-first photo capture (`input capture` / file picker).
 - **Performance:** p95 API < 500ms reads; dashboard < 2.5s LCP on mid-tier
   Android over campus Wi-Fi; lists paginated (default 20/max 100).
+  - Web ships route-level code splitting (per-page chunks, ~12 kB gzip entry)
+    plus stable vendor chunks so `/assets/*` caches immutably.
+  - React Query defaults: `staleTime` 30s, focus-refetch off; near-static org
+    config keys (members, positions, templates, chains, projects…) run a
+    5-minute stale window.
+  - API `Cache-Control` middleware: safe GETs get short `private` max-age by
+    freshness tier; mutations and error responses are `no-store`.
+  - Web PWA caches the app shell only — authenticated API/Supabase traffic is
+    never cached; updates ship behind a user-acknowledged reload prompt.
+  - Mobile long lists render via FlatList/SectionList; remote images use
+    expo-image memory+disk caching.
 - **Vercel limits:** functions ≤10s (hobby) → no binary pass-through; uploads
   direct-to-Storage via signed URL; EXIF strip client-side or async (OQ).
 - **Availability:** degrade gracefully offline → read-only cached shell is a

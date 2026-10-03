@@ -137,6 +137,17 @@ export function Skeleton({ className = '' }) {
   return <div className={`animate-pulse rounded-[var(--radius-input)] bg-[var(--color-surface-3)] ${className}`} />;
 }
 
+export function PageLoader() {
+  return (
+    <div className="mx-auto w-full max-w-4xl space-y-3 p-4">
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-24 w-full" />
+    </div>
+  );
+}
+
 export function Sheet({ open, onClose, children, title }) {
   // hooks must run before the `!open` early return
   useEffect(() => {
@@ -199,7 +210,7 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, body, confirmLa
 export function Avatar({ name, url, size = 'h-7 w-7', textSize = 'text-xs' }) {
   const initials = (name ?? '?').split(' ').map((s) => s[0]).join('').slice(0, 2).toUpperCase();
   return url ? (
-    <img src={url} alt={name ?? ''} className={`${size} rounded-[var(--avatar-radius)] [border:var(--border-el)] object-cover`} />
+    <img src={url} alt={name ?? ''} loading="lazy" decoding="async" className={`${size} rounded-[var(--avatar-radius)] [border:var(--border-el)] object-cover`} />
   ) : (
     <span className={`flex ${size} items-center justify-center rounded-[var(--avatar-radius)] [border:var(--border-el)] bg-[var(--color-accent)] ${textSize} font-semibold text-[var(--color-accent-fg)]`}>
       {initials}

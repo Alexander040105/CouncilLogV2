@@ -273,8 +273,12 @@ for Upstash Redis — call sites don't change.
 
 **Known non-blockers:** `npm audit` reports dev-server/router advisories
 that need major-version bumps (Vite 8, React Router 7) — schedule as a
-follow-up, not a launch gate. Bundle is ~560 kB — fine to ship, code
-splitting is a later optimization.
+follow-up, not a launch gate.
+
+**Mobile offline smoke:** before calling a new APK good, run the matrix in
+`mobile/OFFLINE_TESTING.md` on a preview build — cached reads, queued
+writes, dead-letter retry/discard, and the no-duplicates check after a full
+offline→online round trip.
 
 ---
 
