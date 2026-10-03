@@ -1,8 +1,11 @@
+import logging
 from typing import Any
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
+
+logger = logging.getLogger(__name__)
 
 
 def error_body(code: str, message: str, details: Any | None = None) -> dict:
@@ -49,3 +52,30 @@ async def unhandled_error_handler(_: Request, exc: Exception) -> JSONResponse:
         status_code=500,
         content=error_body("INTERNAL_ERROR", "Something went wrong"),
     )
+
+
+class UnhandledErrorMiddleware:
+    """500 catch-all registered INSIDE the CORS layer.
+
+    FastAPI's Exception handler runs in ServerErrorMiddleware — outside
+    CORSMiddleware — so bare 500s carry no Access-Control-Allow-Origin and
+    browsers report a CORS failure instead of the real error body. Catching
+    here means the response passes back through CORS and keeps its headers.
+    Registered before add_middleware(CORSMiddleware) in main.py.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        try:
+            await self.app(scope, receive, send)
+        except Exception:
+            logger.exception("unhandled request error")
+            await JSONResponse(
+                status_code=500,
+                content=error_body("INTERNAL_ERROR", "Something went wrong"),
+            )(scope, receive, send)
