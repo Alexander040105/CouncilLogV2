@@ -227,3 +227,9 @@ input, textarea, select { caret-color: var(--color-brand); }
 html {
   scrollbar-color: var(--color-surface-3) transparent;
 }
+
+@media print {
+  aside, header, nav { display: none !important; }
+  main { padding-bottom: 0 !important; }
+  .print\:hidden { display: none !important; }
+}

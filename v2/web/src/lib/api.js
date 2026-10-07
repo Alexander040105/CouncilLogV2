@@ -6,7 +6,7 @@ if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
   // produces a bundle that calls localhost. Fail loudly instead.
   throw new Error('VITE_API_URL is not set. Add it to the host\'s env vars and redeploy.');
 }
-const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1';
+export const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1';
 const DEFAULT_TIMEOUT_MS = 15000;
 
 export class ApiError extends Error {

@@ -147,8 +147,9 @@ a:focus-visible, .btn:focus-visible, [data-link]:focus-visible {
 .qr-slot { border-top: 1px dashed var(--ink-3); padding-top: 12px; width: 100%; }
 .qr-slot img { width: 140px; height: 140px; border: 2px solid var(--line); }
 
-/* iPhone note — the zero-cost "app" answer until a real iOS build exists */
-.iphone-note {
+/* "Why the name" strip — same note-panel look, amber accent */
+.why-wrap { padding-top: 0; padding-bottom: 0; }
+.iphone-note, .why-note {
   margin-top: 20px;
   border: 2px solid var(--line);
   border-left-width: 10px;
@@ -159,9 +160,11 @@ a:focus-visible, .btn:focus-visible, [data-link]:focus-visible {
   max-width: 560px;
   scroll-margin-top: 80px;
 }
-.iphone-note h3 { margin: 0 0 8px; font-size: 17px; font-weight: 800; }
-.iphone-note p { margin: 0 0 16px; font-size: 14px; color: var(--ink-3); }
-.iphone-note p b { color: var(--ink); }
+.iphone-note h3, .why-note h3 { margin: 0 0 8px; font-size: 17px; font-weight: 800; }
+.iphone-note p, .why-note p { margin: 0 0 16px; font-size: 14px; color: var(--ink-3); }
+.iphone-note p b, .why-note p b { color: var(--ink); }
+.iphone-note p:last-child, .why-note p:last-child { margin-bottom: 0; }
+.why-note { border-left-color: var(--accent); margin-top: 0; }
 
 /* ── Footer ──────────────────────────────────────────────── */
 .footer {

@@ -22,6 +22,8 @@ const Journal = lazy(() => import('./pages/Journal'));
 const Attendance = lazy(() => import('./pages/Attendance'));
 const Projects = lazy(() => import('./pages/Projects'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
+const Budget = lazy(() => import('./pages/Budget'));
+const FinancialReport = lazy(() => import('./pages/FinancialReport'));
 const Tasks = lazy(() => import('./pages/Tasks'));
 const Agenda = lazy(() => import('./pages/Agenda'));
 const Documents = lazy(() => import('./pages/Documents'));
@@ -86,6 +88,8 @@ createRoot(document.getElementById('root')).render(
               <Route path="attendance" element={P(Attendance)} />
               <Route path="projects" element={P(Projects)} />
               <Route path="projects/:id" element={P(ProjectDetail)} />
+              <Route path="projects/:id/report" element={P(FinancialReport)} />
+              <Route path="budget" element={P(Budget)} />
               <Route path="tasks" element={P(Tasks)} />
               <Route path="agenda" element={P(Agenda)} />
               <Route path="documents" element={P(Documents)} />

@@ -7,7 +7,7 @@ from .cache import CacheHeadersMiddleware
 from .config import get_settings
 from .errors import (APIError, UnhandledErrorMiddleware, api_error_handler,
                      integrity_error_handler, unhandled_error_handler)
-from .routers import (admin, audit, core, daily, documents, internal,
+from .routers import (admin, audit, core, daily, documents, finance, internal,
                       notifications, org_structure, orgs, projects, tasks)
 
 settings = get_settings()
@@ -54,5 +54,6 @@ app.add_exception_handler(Exception, unhandled_error_handler)
 
 for r in (core.router, orgs.router, org_structure.router,
           daily.router, projects.router, documents.router, tasks.router,
-          notifications.router, internal.router, audit.router, admin.router):
+          notifications.router, internal.router, audit.router, admin.router,
+          finance.router):
     app.include_router(r, prefix="/api/v1")

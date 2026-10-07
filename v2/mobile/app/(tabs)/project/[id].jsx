@@ -14,6 +14,7 @@ import { useMe, useActiveMembership } from '../../../src/lib/me';
 import { humanize, projectStatusLabel } from '../../../src/lib/labels';
 import { Button, Card, CheckRow, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, Screen, Select, Sheet, Skeleton } from '../../../src/components/ui';
 import { ChecklistPreview } from '../../../src/components/ChecklistPreview';
+import { BudgetSection } from '../../../src/components/BudgetSection';
 import { diagnoseChecklist, humanizeFlag } from '../../../src/lib/rules';
 
 const STATUS_ORDER = ['draft', 'active', 'done', 'archived'];
@@ -378,6 +379,8 @@ export default function ProjectDetail() {
           })}
         </View>
       </Card>
+
+      <BudgetSection org={org} projectId={id} active={active} myId={myId} />
 
       {/* assign picker sheet */}
       <Sheet open={!!assignItem} onClose={() => setAssignItem(null)} title={assignItem ? `Assign: ${assignItem.label}` : 'Assign'}>
