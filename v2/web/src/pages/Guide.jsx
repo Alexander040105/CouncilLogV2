@@ -214,9 +214,9 @@ export default function Guide() {
 
       <Section id="library" title="Starter library">
         <P>
-          Worked examples from a real student council's handbook — chains, checklist templates, and the
-          who-to-ask directory. Expand any entry to read its full contents and why it's built that way;
-          owners can add it to this org with one tap, then edit or delete it like anything hand-typed.
+          Worked examples — chains, checklist templates, and a who-to-ask directory built with generic
+          names you adapt to your org. Expand any entry to read its full contents and why it's built
+          that way; owners can add it to this org with one tap, then edit or delete it like anything hand-typed.
         </P>
         {isOwner && missing.length > 0 && (
           <Button variant="secondary" onClick={() => install.mutate(missing)} disabled={install.isPending}>

@@ -170,5 +170,39 @@ async def list_contacts(org_id: uuid.UUID, session: Session, member: Membership 
 async def create_contact(org_id: uuid.UUID, body: ContactIn, session: Session, member: Membership = Depends(authorize("owner"))):
     c = OrgContact(org_id=org_id, **body.model_dump())
     session.add(c)
+    await audit(session, org_id=org_id, actor_id=member.user_id, action="contact.created",
+                entity_type="org_contact", entity_id=c.id, metadata={"label": c.label})
     await session.commit()
     return {"data": c}
+
+
+class ContactPatch(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=200)
+    value: str | None = Field(default=None, min_length=1, max_length=500)
+    category: str | None = None
+    ord: int | None = None
+
+
+@router.patch("/orgs/{org_id}/contacts/{contact_id}")
+async def patch_contact(org_id: uuid.UUID, contact_id: uuid.UUID, body: ContactPatch, session: Session, member: Membership = Depends(authorize("owner"))):
+    c = await session.get(OrgContact, contact_id)
+    if c is None or c.org_id != org_id:
+        raise not_found("contact")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(c, k, v)
+    await audit(session, org_id=org_id, actor_id=member.user_id, action="contact.updated",
+                entity_type="org_contact", entity_id=c.id, metadata={"label": c.label})
+    await session.commit()
+    return {"data": c}
+
+
+@router.delete("/orgs/{org_id}/contacts/{contact_id}")
+async def delete_contact(org_id: uuid.UUID, contact_id: uuid.UUID, session: Session, member: Membership = Depends(authorize("owner"))):
+    c = await session.get(OrgContact, contact_id)
+    if c is None or c.org_id != org_id:
+        raise not_found("contact")
+    await audit(session, org_id=org_id, actor_id=member.user_id, action="contact.deleted",
+                entity_type="org_contact", entity_id=c.id, metadata={"label": c.label})
+    await session.delete(c)
+    await session.commit()
+    return {"ok": True}

@@ -683,6 +683,7 @@ paginated (`?page=&pageSize=`, default 20, max 100; response wraps
 | 36 | `GET/POST /orgs/{org}/signatory-chains` | member / owner | chain list/create (+steps) |
 | 36a | `PATCH/DELETE /orgs/{org}/signatory-chains/{id}` | owner | chain update (steps wholesale-replace) / delete (routed docs keep snapshots) |
 | 37 | `GET/POST /orgs/{org}/contacts` | member / owner | quick-ref directory |
+| 37a | `PATCH/DELETE /orgs/{org}/contacts/{id}` | owner | contact update / delete |
 | 38 | `GET /orgs/{org}/audit` | owner, adviser | audit log paged |
 | 39 | `GET /orgs/{org}/export` | owner | org data export (JSON/zip) — P5 |
 | 40 | `GET /orgs/{org}/attendance/{member}` | member | member history (self or owner/adviser view all) |

@@ -6,7 +6,7 @@ import { Pressable, ScrollView, Share, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, Plus } from 'lucide-react-native';
-import { get, post, put, del as delApi } from '../../src/lib/api';
+import { get, post, put, patch, del as delApi } from '../../src/lib/api';
 import { atLeast, setCurrentOrg, useOrgId } from '../../src/lib/org';
 import { collectFlagNames, describeCondition, describeItemRule } from '../../src/lib/rules';
 import { docTypeLabel, humanize } from '../../src/lib/labels';
@@ -19,6 +19,7 @@ import { TemplateEditor } from '../../src/components/TemplateEditor';
 import { ChainEditor } from '../../src/components/ChainEditor';
 
 const TABS = ['members', 'positions', 'duty', 'templates', 'chains', 'contacts', 'invites', 'audit'];
+const WEB_BASE = process.env.EXPO_PUBLIC_WEB_URL ?? 'http://localhost:5173';
 const WD = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const EVENT_TYPE_SUGGESTIONS = ['seminar', 'competition', 'webinar', 'webinar_intl',
                                 'outside', 'ces', 'educ_tour', 'merch'];
@@ -520,38 +521,91 @@ function Contacts({ canWrite }) {
   const qc = useQueryClient();
   const toast = useToast();
   const { t } = useTheme();
+  const [editing, setEditing] = useState(null); // contact row being edited
+  const [deleting, setDeleting] = useState(null);
   const [label, setLabel] = useState('');
   const [value, setValue] = useState('');
+  const [category, setCategory] = useState('');
   const c = useQuery({ queryKey: ['contacts', org], queryFn: () => get(`/orgs/${org}/contacts`), enabled: !!org });
-  const add = useMutation({
-    mutationFn: () => post(`/orgs/${org}/contacts`, { label, value }),
+  const reset = () => { setEditing(null); setLabel(''); setValue(''); setCategory(''); };
+  const startEdit = (x) => {
+    setEditing(x); setLabel(x.label); setValue(x.value); setCategory(x.category ?? '');
+  };
+  const save = useMutation({
+    mutationFn: () => editing
+      ? patch(`/orgs/${org}/contacts/${editing.id}`,
+              { label, value, category: category || null })
+      : post(`/orgs/${org}/contacts`, { label, value, category: category || null }),
     onSuccess: () => {
-      toast.success('Contact added.');
-      setLabel(''); setValue('');
+      toast.success(editing ? 'Contact updated.' : 'Contact added.');
+      reset();
+      qc.invalidateQueries({ queryKey: ['contacts', org] });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const del = useMutation({
+    mutationFn: (id) => delApi(`/orgs/${org}/contacts/${id}`),
+    onSuccess: () => {
+      toast.success('Contact removed.');
+      setDeleting(null);
       qc.invalidateQueries({ queryKey: ['contacts', org] });
     },
     onError: (e) => toast.error(e.message),
   });
   return (
-    <Card style={{ gap: 10 }}>
-      <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>Quick reference — who to ask</Text>
-      {c.isLoading ? <Skeleton style={{ height: 64 }} /> : null}
-      {c.isError ? <ErrorState error={c.error} retry={c.refetch} /> : null}
-      {c.data && c.data.data.length === 0 ? (
-        <Empty title="No contacts" hint="e.g. Concept papers → SAS office, 2nd floor." />
-      ) : null}
-      {c.data?.data.map((x, i) => (
-        <View key={x.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingVertical: 6, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: t.line }}>
-          <Text style={{ fontSize: 14, color: t.ink, flexShrink: 1 }}>{x.label}</Text>
-          <Text style={{ fontSize: 13, color: t.ink3, flexShrink: 1, textAlign: 'right' }}>{x.value}</Text>
+    <>
+      <Card style={{ gap: 10 }}>
+        <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>Quick reference — who to ask</Text>
+        {c.isLoading ? <Skeleton style={{ height: 64 }} /> : null}
+        {c.isError ? <ErrorState error={c.error} retry={c.refetch} /> : null}
+        {c.data && c.data.data.length === 0 ? (
+          <Empty title="No contacts"
+                 hint="e.g. Concept papers → your student affairs office. Owners add entries below." />
+        ) : null}
+        {c.data?.data.map((x, i) => (
+          <View key={x.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: t.line }}>
+            <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+              <Text style={{ fontSize: 14, color: t.ink }}>{x.label}</Text>
+              <Text style={{ fontSize: 13, color: t.ink3 }}>{x.value}</Text>
+            </View>
+            {canWrite ? (
+              <View style={{ flexDirection: 'row', gap: 4 }}>
+                <Pressable accessibilityRole="button" style={rowBtn(t)} onPress={() => startEdit(x)}>
+                  <Text style={{ fontSize: 12, color: t.ink2 }}>Edit</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" style={rowBtn(t)} onPress={() => setDeleting(x)}>
+                  <Text style={{ fontSize: 12, color: t.alert }}>Delete</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        ))}
+        <View style={{ gap: 8 }}>
+          <Input placeholder="Need" value={label} onChangeText={setLabel} />
+          <Input placeholder="Who / where" value={value} onChangeText={setValue} />
+          <Input placeholder="Category (optional)" value={category} onChangeText={setCategory} />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {canWrite && editing ? (
+              <View style={{ flex: 1 }}>
+                <Button variant="secondary" onPress={reset}>Cancel</Button>
+              </View>
+            ) : null}
+            <View style={{ flex: 1 }}>
+              <Button onPress={() => save.mutate()} disabled={!canWrite || !label || !value || save.isPending} busy={save.isPending}>
+                {editing ? 'Save' : 'Add'}
+              </Button>
+            </View>
+          </View>
         </View>
-      ))}
-      <View style={{ gap: 8 }}>
-        <Input placeholder="Need" value={label} onChangeText={setLabel} />
-        <Input placeholder="Who / where" value={value} onChangeText={setValue} />
-        <Button onPress={() => add.mutate()} disabled={!canWrite || !label || !value || add.isPending} busy={add.isPending}>Add</Button>
-      </View>
-    </Card>
+      </Card>
+      <ConfirmDialog
+        open={!!deleting} onClose={() => setDeleting(null)}
+        onConfirm={() => del.mutate(deleting.id)} busy={del.isPending}
+        title={`Delete "${deleting?.label}"?`}
+        body="It's removed from the who-to-ask directory for every member. Nothing else references it."
+        confirmLabel="Delete contact"
+      />
+    </>
   );
 }
 
@@ -586,7 +640,8 @@ function Invites() {
     onError: (e) => toast.error(e.message),
   });
 
-  const shareCode = (code) => Share.share({ message: code }).catch(() => {});
+  const shareInvite = (code) =>
+    Share.share({ message: `${WEB_BASE}/onboarding?code=${code}` }).catch(() => {});
 
   return (
     <Card style={{ gap: 14 }}>
@@ -619,7 +674,7 @@ function Invites() {
       <View style={{ gap: 8 }}>
         <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>Invite links</Text>
         <Text style={{ fontSize: 12, color: t.ink3 }}>
-          Anyone with a code joins instantly at the role you pick — share carefully.
+          Anyone with the link joins instantly at the role you pick — it stops working after 2 days. Share carefully.
         </Text>
         {inv.isLoading ? <Skeleton style={{ height: 48 }} /> : null}
         {inv.isError ? <ErrorState error={inv.error} retry={inv.refetch} /> : null}
@@ -633,14 +688,23 @@ function Invites() {
           </View>
           <Button onPress={() => mint.mutate()} disabled={mint.isPending} busy={mint.isPending}>Mint invite</Button>
         </View>
-        {inv.data?.data.map((i) => (
-          <Pressable key={i.id} accessibilityRole="button" accessibilityLabel={`Share invite code ${i.code}`}
-                     onPress={() => shareCode(i.code)}
-                     style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 36 }}>
-            <Text style={{ fontSize: 12, fontFamily: 'monospace', backgroundColor: t.surface3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: t.radiusInput, color: t.ink }}>{i.code}</Text>
-            <Text style={{ fontSize: 12, color: t.ink3 }}>{humanize(i.role)} · {i.uses}/{i.max_uses} uses</Text>
-          </Pressable>
-        ))}
+        {inv.data?.data.map((i) => {
+          const expired = new Date(i.expires_at) < new Date();
+          const usedUp = i.uses >= i.max_uses;
+          const dead = expired || usedUp;
+          return (
+            <Pressable key={i.id} accessibilityRole="button"
+                       accessibilityLabel={dead ? `Invite code ${i.code}, ${expired ? 'expired' : 'used up'}` : `Share invite link for code ${i.code}`}
+                       disabled={dead} onPress={() => shareInvite(i.code)}
+                       style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 36, opacity: dead ? 0.5 : 1 }}>
+              <Text style={{ fontSize: 12, fontFamily: 'monospace', backgroundColor: t.surface3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: t.radiusInput, color: t.ink }}>{i.code}</Text>
+              <Text style={{ fontSize: 12, color: t.ink3 }}>
+                {humanize(i.role)} · {i.uses} joined · {dead ? (expired ? 'expired' : 'used up')
+                  : `expires ${new Date(i.expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
       <ConfirmDialog
         open={!!rejecting}

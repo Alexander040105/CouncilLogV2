@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { get, post, patch } from '../lib/api';
@@ -45,6 +45,14 @@ export default function Onboarding() {
   const [code, setCode] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
   const [message, setMessage] = useState('');
+  const [params] = useSearchParams();
+
+  // invite links land here with ?code= prefilled — the joiner still taps Join
+  useEffect(() => {
+    const c = params.get('code');
+    if (c) { setCode(c); setMode('join'); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const create = async () => {
     setBusy(true); setErr(null);

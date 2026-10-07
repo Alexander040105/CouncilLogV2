@@ -292,13 +292,13 @@ app doesn't cover, the handbook is the source of truth:
 |---|---|
 | §3 Concept paper checklist | "Concept Paper Pack" template (paper track) |
 | §4–5 Signatory routing | Signatory chains: `concept_paper`, `board_resolution` |
-| §6 Activity reports | `activity_report` doc_type + questions → contacts (Ate Daphne) |
-| §7 Financial report | "Financial Report" template; submit to CHECK ≤1 week |
+| §6 Activity reports | `activity_report` doc_type + questions → contacts |
+| §7 Financial report | "Financial Report" template; submit to the audit office ≤1 week |
 | §8 Semester-end report | Paper trail: papers + journal + audit are the attachments |
-| §9 Venue reservation | Event Logistics items + hints (GSD, Coach, IHM rules) |
+| §9 Venue reservation | Event Logistics items + hints (facilities office, booking-lapse rules) |
 | §10 Events checklist | "Event Logistics" template (logistics track) |
 | §11–12 Outside events | "Outside Event Pack" template (CHED letter, consent, curriculum, medical, van) |
-| §13 CES | `ces_concept_paper` chain with the Sir Bennyl step |
+| §13 CES | `ces_concept_paper` chain with the extension coordinator step |
 | §14 Duty roster | Settings → duty schedule |
 | §15 Quick reference | Settings → contacts |
 | §2 Pending handover items | Not seeded — create them as projects/tasks yourself |

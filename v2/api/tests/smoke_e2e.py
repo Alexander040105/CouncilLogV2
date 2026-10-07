@@ -1,5 +1,6 @@
 """End-to-end smoke test: real Supabase auth + migrated DB + storage."""
 import json, os, sys, time, urllib.request, urllib.error
+from datetime import datetime, timezone
 
 SUPA = "https://ijcjzllfusxpfqqonuyk.supabase.co"
 ANON = os.environ["SUPABASE_ANON_KEY"]
@@ -11,6 +12,7 @@ EMAIL_A = "dev-owner@councilog.test"
 EMAIL_B = "dev-member@councilog.test"
 EMAIL_C = "dev-outsider@councilog.test"
 EMAIL_D = "dev-stranger@councilog.test"
+EMAIL_E = "dev-invitee@councilog.test"
 
 def call(method, url, key, body=None, token=None):
     data = json.dumps(body).encode() if body is not None else None
@@ -65,7 +67,8 @@ tok_a, uid_a = ensure_user(EMAIL_A)
 tok_b, uid_b = ensure_user(EMAIL_B)
 tok_c, uid_c = ensure_user(EMAIL_C)
 tok_d, uid_d = ensure_user(EMAIL_D)
-check("supabase auth: 4 users signed in", all([tok_a, tok_b, tok_c, tok_d]))
+tok_e, uid_e = ensure_user(EMAIL_E)
+check("supabase auth: 5 users signed in", all([tok_a, tok_b, tok_c, tok_d, tok_e]))
 
 # ── 2. Auth guards ──────────────────────────────────────────────────────
 s, _ = api("GET", "/me", token="bogus")
@@ -87,8 +90,13 @@ check("cross-org read denied (404)", s in (403, 404), f"{s}")
 # owner mints invite -> member redeems
 s, inv = api("POST", f"/orgs/{org_a}/invites", tok_a, {"role": "officer"}, org=org_a)
 check("owner mints invite", s == 201 and inv.get("code"), f"{s}")
+exp_h = ((datetime.fromisoformat(inv["expires_at"].replace("Z", "+00:00")) - datetime.now(timezone.utc))
+         .total_seconds() / 3600) if s == 201 and inv.get("expires_at") else -1
+check("invite expires in ~48h", 47 <= exp_h <= 49, f"expires_at={inv.get('expires_at')}")
 s, r = api("POST", f"/invites/{inv['code']}/redeem", tok_b)
 check("member redeems invite", s == 201 and r.get("org_id") == org_a, f"{s} {str(r)[:120]}")
+s, r = api("POST", f"/invites/{inv['code']}/redeem", tok_e)
+check("same code redeems for a second user", s == 201 and r.get("org_id") == org_a, f"{s} {str(r)[:120]}")
 
 # join request + approve
 s, r = api("POST", f"/orgs/{org_a}/join-requests", tok_c, {"message": "hi"})
@@ -204,6 +212,15 @@ s, r = api("PATCH", f"/orgs/{org_c}/checklist-templates/{tpl_id}", tok_c, {"name
 check("cross-org template patch -> 404", s == 404, f"{s}")
 s, r = api("DELETE", f"/orgs/{org_c}/checklist-templates/{tpl_id}", tok_c, org=org_c)
 check("cross-org template delete -> 404", s == 404, f"{s}")
+
+# an explicit max_uses cap is still enforced — run in org_c so tok_d stays a stranger
+# (expiry/exhaustion is checked before ALREADY_MEMBER, so tok_a's attempt 410s without joining org_c)
+s, inv1 = api("POST", f"/orgs/{org_c}/invites", tok_c, {"role": "member", "max_uses": 1}, org=org_c)
+check("owner mints capped invite", s == 201, f"{s}")
+s, r = api("POST", f"/invites/{inv1.get('code')}/redeem", tok_b)
+check("capped invite: first redeem", s == 201, f"{s} {str(r)[:120]}")
+s, r = api("POST", f"/invites/{inv1.get('code')}/redeem", tok_a)
+check("capped invite: second redeem -> 410", s == 410 and r["error"]["code"] == "INVITE_EXPIRED", f"{s} {str(r)[:120]}")
 
 # owner PATCH: rename + wholesale item replace
 s, r = api("PATCH", f"/orgs/{org_a}/checklist-templates/{tpl_id}", tok_a,

@@ -148,8 +148,8 @@ async def patch_member(org_id: uuid.UUID, user_id: uuid.UUID, body: MemberPatch,
 # ── Invites ─────────────────────────────────────────────────────────────
 class InviteCreate(BaseModel):
     role: str = Field(pattern="^(adviser|officer|member)$")
-    expires_hours: int = Field(default=168, ge=1, le=720)
-    max_uses: int = Field(default=1, ge=1, le=500)
+    expires_hours: int = Field(default=48, ge=1, le=720)
+    max_uses: int = Field(default=500, ge=1, le=500)
 
 
 @router.post("/orgs/{org_id}/invites", status_code=201)

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { Check, Copy, Plus } from 'lucide-react';
-import { get, post, put, del as delApi } from '../lib/api';
+import { get, post, put, patch, del as delApi } from '../lib/api';
 import { atLeast, currentOrgId, setCurrentOrg } from '../lib/org';
 import { collectFlagNames, describeCondition, describeItemRule } from '../lib/rules';
 import { useToast } from '../lib/toast';
@@ -520,41 +520,87 @@ function Contacts({ canWrite }) {
   const org = currentOrgId();
   const qc = useQueryClient();
   const toast = useToast();
+  const [editing, setEditing] = useState(null); // contact row being edited
+  const [deleting, setDeleting] = useState(null);
   const [label, setLabel] = useState('');
   const [value, setValue] = useState('');
+  const [category, setCategory] = useState('');
   const c = useQuery({
     queryKey: ['contacts', org],
     queryFn: () => get(`/orgs/${org}/contacts`),
     enabled: !!org,
   });
-  const add = useMutation({
-    mutationFn: () => post(`/orgs/${org}/contacts`, { label, value }),
+  const reset = () => { setEditing(null); setLabel(''); setValue(''); setCategory(''); };
+  const startEdit = (x) => {
+    setEditing(x); setLabel(x.label); setValue(x.value); setCategory(x.category ?? '');
+  };
+  const save = useMutation({
+    mutationFn: () => editing
+      ? patch(`/orgs/${org}/contacts/${editing.id}`,
+              { label, value, category: category || null })
+      : post(`/orgs/${org}/contacts`, { label, value, category: category || null }),
     onSuccess: () => {
-      toast.success('Contact added.');
-      setLabel(''); setValue('');
+      toast.success(editing ? 'Contact updated.' : 'Contact added.');
+      reset();
+      qc.invalidateQueries({ queryKey: ['contacts', org] });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const del = useMutation({
+    mutationFn: (id) => delApi(`/orgs/${org}/contacts/${id}`),
+    onSuccess: () => {
+      toast.success('Contact removed.');
+      setDeleting(null);
       qc.invalidateQueries({ queryKey: ['contacts', org] });
     },
     onError: (e) => toast.error(e.message),
   });
   return (
-    <Card className="space-y-3">
-      <div className="text-sm font-medium">Quick reference — who to ask</div>
-      {c.isLoading && <Skeleton className="h-16" />}
-      {c.isError && <ErrorState error={c.error} retry={c.refetch} />}
-      {c.data && c.data.data.length === 0 && (
-        <Empty title="No contacts" hint="e.g. Concept papers → SAS office, 2nd floor." />
-      )}
-      {c.data?.data.map((x) => (
-        <div key={x.id} className="flex justify-between border-b border-[var(--color-line)] py-1 text-sm">
-          <span>{x.label}</span><span className="text-[var(--color-ink-3)]">{x.value}</span>
+    <>
+      <Card className="space-y-3">
+        <div className="text-sm font-medium">Quick reference — who to ask</div>
+        {c.isLoading && <Skeleton className="h-16" />}
+        {c.isError && <ErrorState error={c.error} retry={c.refetch} />}
+        {c.data && c.data.data.length === 0 && (
+          <Empty title="No contacts"
+                 hint="e.g. Concept papers → your student affairs office. Owners add entries below." />
+        )}
+        {c.data?.data.map((x) => (
+          <div key={x.id} className="flex items-center justify-between gap-2 border-b border-[var(--color-line)] py-1 text-sm">
+            <div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
+              <span className="min-w-0">{x.label}</span>
+              <span className="min-w-0 text-[var(--color-ink-3)]">{x.value}</span>
+            </div>
+            {canWrite && (
+              <div className="flex shrink-0 gap-1">
+                <Button variant="ghost" className="min-h-[36px] px-2 text-xs"
+                        onClick={() => startEdit(x)}>Edit</Button>
+                <Button variant="ghost" className="min-h-[36px] px-2 text-xs text-[var(--color-status-alert)]"
+                        onClick={() => setDeleting(x)}>Delete</Button>
+              </div>
+            )}
+          </div>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          <Input className="min-w-0 flex-1" placeholder="Need" value={label} onChange={(e) => setLabel(e.target.value)} />
+          <Input className="min-w-0 flex-1" placeholder="Who / where" value={value} onChange={(e) => setValue(e.target.value)} />
+          <Input className="min-w-0 flex-1" placeholder="Category (optional)" value={category} onChange={(e) => setCategory(e.target.value)} />
+          {canWrite && editing && (
+            <Button variant="ghost" onClick={reset}>Cancel</Button>
+          )}
+          <Button onClick={() => save.mutate()} disabled={!canWrite || !label || !value || save.isPending}>
+            {editing ? 'Save' : 'Add'}
+          </Button>
         </div>
-      ))}
-      <div className="flex flex-wrap gap-2">
-        <Input className="min-w-0 flex-1" placeholder="Need" value={label} onChange={(e) => setLabel(e.target.value)} />
-        <Input className="min-w-0 flex-1" placeholder="Who / where" value={value} onChange={(e) => setValue(e.target.value)} />
-        <Button onClick={() => add.mutate()} disabled={!canWrite || !label || !value || add.isPending}>Add</Button>
-      </div>
-    </Card>
+      </Card>
+      <ConfirmDialog
+        open={!!deleting} onClose={() => setDeleting(null)}
+        onConfirm={() => del.mutate(deleting.id)} busy={del.isPending}
+        title={`Delete "${deleting?.label}"?`}
+        body="It's removed from the who-to-ask directory for every member. Nothing else references it."
+        confirmLabel="Delete contact"
+      />
+    </>
   );
 }
 
@@ -584,6 +630,14 @@ function Invites() {
     },
     onError: (e) => toast.error(e.message),
   });
+  const copyInvite = async (code) => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/onboarding?code=${code}`);
+      toast.success('Invite link copied — send it to your members.');
+    } catch {
+      toast.error('Copy failed — share the code manually instead.');
+    }
+  };
   const decide = useMutation({
     mutationFn: ({ id, approve, approveRole }) =>
       post(`/orgs/${org}/join-requests/${id}/decide`, { approve, role: approveRole || 'member' }),
@@ -627,7 +681,7 @@ function Invites() {
       <div className="space-y-2">
         <div className="text-sm font-medium">Invite links</div>
         <div className="text-xs text-[var(--color-ink-3)]">
-          Anyone with a code joins instantly at the role you pick — share carefully.
+          Anyone with the link joins instantly at the role you pick — it stops working after 2 days. Share carefully.
         </div>
         {inv.isLoading && <Skeleton className="h-12" />}
         {inv.isError && <ErrorState error={inv.error} retry={inv.refetch} />}
@@ -641,12 +695,27 @@ function Invites() {
           </select>
           <Button onClick={() => mint.mutate()} disabled={mint.isPending}>Mint invite</Button>
         </div>
-        {inv.data?.data.map((i) => (
-          <div key={i.id} className="flex items-center justify-between text-xs">
-            <code className="rounded-[var(--radius-input)] bg-[var(--color-surface-3)] px-2 py-1">{i.code}</code>
-            <span className="text-[var(--color-ink-3)]">{i.role} · {i.uses}/{i.max_uses} uses</span>
-          </div>
-        ))}
+        {inv.data?.data.map((i) => {
+          const expired = new Date(i.expires_at) < new Date();
+          const usedUp = i.uses >= i.max_uses;
+          return (
+            <div key={i.id} className={`flex items-center justify-between gap-2 text-xs ${expired || usedUp ? 'opacity-50' : ''}`}>
+              <code className="rounded-[var(--radius-input)] bg-[var(--color-surface-3)] px-2 py-1">{i.code}</code>
+              <span className="flex items-center gap-1">
+                <span className="text-[var(--color-ink-3)]">
+                  {i.role} · {i.uses} joined ·{' '}
+                  {expired ? 'expired'
+                    : usedUp ? 'used up'
+                    : `expires ${new Date(i.expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+                </span>
+                {!expired && !usedUp && (
+                  <Button variant="ghost" className="min-h-[36px] px-2 text-xs"
+                          onClick={() => copyInvite(i.code)}>Copy link</Button>
+                )}
+              </span>
+            </div>
+          );
+        })}
       </div>
       <ConfirmDialog
         open={!!rejecting}
