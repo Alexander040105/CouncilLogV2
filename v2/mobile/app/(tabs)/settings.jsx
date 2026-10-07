@@ -618,6 +618,8 @@ function Invites() {
   const [role, setRole] = useState('officer');
   const [approveRoles, setApproveRoles] = useState({});
   const [rejecting, setRejecting] = useState(null);
+  const me = useMe();
+  const active = useActiveMembership(me.data);
   const inv = useQuery({ queryKey: ['invites', org], queryFn: () => get(`/orgs/${org}/invites`), enabled: !!org });
   const reqs = useQuery({ queryKey: ['joinreqs', org], queryFn: () => get(`/orgs/${org}/join-requests`), enabled: !!org });
   const mint = useMutation({
@@ -640,8 +642,13 @@ function Invites() {
     onError: (e) => toast.error(e.message),
   });
 
-  const shareInvite = (code) =>
-    Share.share({ message: `${WEB_BASE}/onboarding?code=${code}` }).catch(() => {});
+  const shareInvite = (code) => {
+    const name = me.data?.profile?.display_name ?? me.data?.email ?? 'Someone';
+    const orgName = active?.org_name ?? 'our organization';
+    Share.share({
+      message: `${name} invited you to join ${orgName} on CounciLog — duty, papers, and tasks in one place.\nJoin here: ${WEB_BASE}/onboarding?code=${code}`,
+    }).catch(() => {});
+  };
   const [deleting, setDeleting] = useState(null);
   const delInvite = useMutation({
     mutationFn: (id) => delApi(`/orgs/${org}/invites/${id}`),

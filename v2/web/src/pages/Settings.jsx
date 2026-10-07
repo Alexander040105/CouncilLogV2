@@ -609,6 +609,7 @@ function Invites() {
   const org = currentOrgId();
   const qc = useQueryClient();
   const toast = useToast();
+  const { me, active } = useOutletContext() ?? {};
   const [role, setRole] = useState('officer');
   const [approveRoles, setApproveRoles] = useState({});
   const [rejecting, setRejecting] = useState(null);
@@ -631,9 +632,13 @@ function Invites() {
     onError: (e) => toast.error(e.message),
   });
   const copyInvite = async (code) => {
+    const name = me?.profile?.display_name ?? me?.email ?? 'Someone';
+    const orgName = active?.org_name ?? 'our organization';
+    const url = `${window.location.origin}/onboarding?code=${code}`;
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/onboarding?code=${code}`);
-      toast.success('Invite link copied — send it to your members.');
+      await navigator.clipboard.writeText(
+        `${name} invited you to join ${orgName} on CounciLog — duty, papers, and tasks in one place.\nJoin here: ${url}`);
+      toast.success('Invite copied — paste it anywhere.');
     } catch {
       toast.error('Copy failed — share the code manually instead.');
     }
