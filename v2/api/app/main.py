@@ -7,10 +7,16 @@ from .cache import CacheHeadersMiddleware
 from .config import get_settings
 from .errors import (APIError, UnhandledErrorMiddleware, api_error_handler,
                      integrity_error_handler, unhandled_error_handler)
-from .routers import (admin, audit, core, daily, documents, internal,
+from .routers import (admin, audit, core, daily, documents, finance, internal,
                       notifications, org_structure, orgs, projects, tasks)
 
 settings = get_settings()
+
+if settings.sentry_dsn:
+    # Unhandled errors report to Sentry — gated on DSN so dev/test never send.
+    import sentry_sdk
+    sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.env,
+                    traces_sample_rate=0.1, send_default_pii=False)
 
 _docs_enabled = settings.env != "prod"
 app = FastAPI(
@@ -48,5 +54,6 @@ app.add_exception_handler(Exception, unhandled_error_handler)
 
 for r in (core.router, orgs.router, org_structure.router,
           daily.router, projects.router, documents.router, tasks.router,
-          notifications.router, internal.router, audit.router, admin.router):
+          notifications.router, internal.router, audit.router, admin.router,
+          finance.router):
     app.include_router(r, prefix="/api/v1")

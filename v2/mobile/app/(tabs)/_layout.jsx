@@ -38,6 +38,8 @@ export default function TabsLayout() {
       <Tabs.Screen name="documents" options={HIDDEN} />
       <Tabs.Screen name="document/[id]" options={HIDDEN} />
       <Tabs.Screen name="project/[id]" options={HIDDEN} />
+      <Tabs.Screen name="project/financial-report/[id]" options={HIDDEN} />
+      <Tabs.Screen name="budget" options={HIDDEN} />
       <Tabs.Screen name="members" options={HIDDEN} />
       <Tabs.Screen name="guide" options={HIDDEN} />
       <Tabs.Screen name="settings" options={HIDDEN} />

@@ -9,6 +9,7 @@ import { useToast } from '../lib/toast';
 import { assigneeLabel, humanize, projectStatusLabel } from '../lib/labels';
 import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, Sheet, Skeleton } from '../components/ui';
 import { ChecklistPreview } from '../components/ChecklistPreview';
+import { BudgetSection } from '../components/BudgetSection';
 import { diagnoseChecklist, humanizeFlag } from '../lib/rules';
 
 const STATUS_ORDER = ['draft', 'active', 'done', 'archived'];
@@ -364,6 +365,8 @@ export default function ProjectDetail() {
           })}
         </div>
       </Card>
+
+      <BudgetSection org={org} projectId={id} active={active} myId={myId} />
 
       <Sheet open={!!editItem} onClose={() => setEditItem(null)}
              title={editItem === 'new' ? 'Add checklist item' : 'Edit checklist item'}>

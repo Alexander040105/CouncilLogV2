@@ -372,3 +372,66 @@ class PushToken(SQLModel, table=True):
     platform: str  # android|ios
     last_seen_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+
+
+# ── Finance (bankbook + project budgets) ─────────────────────────────────
+
+class ProjectBudget(SQLModel, table=True):
+    __tablename__ = "project_budgets"
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    org_id: uuid.UUID = Field(foreign_key="organizations.id")
+    project_id: uuid.UUID = Field(foreign_key="projects.id")
+    allocated_centavos: int
+    source_label: str | None = None            # 'TAX','CSW',… fund-source tag
+    resolution_id: uuid.UUID | None = Field(default=None, foreign_key="documents.id")
+    resolution_path: str | None = None         # uploaded scan of the signed resolution
+    resolution_mime: str | None = None
+    resolution_byte_size: int | None = None
+    status: str = "open"                       # open|closed
+    note: str | None = None
+    created_by: uuid.UUID
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+    closed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
+
+
+class FundTransaction(SQLModel, table=True):
+    __tablename__ = "fund_transactions"
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    org_id: uuid.UUID = Field(foreign_key="organizations.id")
+    kind: str                                  # deposit|withdrawal
+    amount_centavos: int
+    transacted_on: date = Field(sa_column=Column(Date))
+    source_label: str | None = None
+    note: str | None = None
+    # set only for rows the budget flow writes (withdrawal / return deposit)
+    budget_id: uuid.UUID | None = Field(default=None, foreign_key="project_budgets.id")
+    created_by: uuid.UUID
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+
+
+class BudgetExpense(SQLModel, table=True):
+    __tablename__ = "budget_expenses"
+    __table_args__ = (UniqueConstraint("org_id", "client_request_id"),)  # see projects table
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    org_id: uuid.UUID = Field(foreign_key="organizations.id")
+    budget_id: uuid.UUID = Field(foreign_key="project_budgets.id")
+    vendor: str | None = None                  # groups items in the FRF ('MR. DIY')
+    item: str
+    amount_centavos: int
+    spent_on: date = Field(sa_column=Column(Date))
+    note: str | None = None
+    recorded_by: uuid.UUID
+    client_request_id: str | None = None
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+
+
+class ExpenseReceipt(SQLModel, table=True):
+    __tablename__ = "expense_receipts"
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    org_id: uuid.UUID = Field(foreign_key="organizations.id")
+    expense_id: uuid.UUID = Field(foreign_key="budget_expenses.id")
+    storage_path: str = Field(unique=True)
+    mime: str
+    byte_size: int
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))

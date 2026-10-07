@@ -6,7 +6,7 @@ ANON = os.environ["SUPABASE_ANON_KEY"]
 SERVICE = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 API = "http://localhost:8000/api/v1"
 
-PASS = "TestPass_2026!"
+PASS = os.environ.get("SMOKE_PASSWORD", "TestPass_2026!")
 EMAIL_A = "dev-owner@councilog.test"
 EMAIL_B = "dev-member@councilog.test"
 EMAIL_C = "dev-outsider@councilog.test"

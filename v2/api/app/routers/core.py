@@ -2,7 +2,7 @@ import uuid
 
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlmodel import select
 
 from ..config import get_settings
@@ -11,12 +11,17 @@ from ..errors import APIError
 from ..models import OrgMember, Organization, Profile
 from ..services import auth_admin, storage
 from ..services.audit import audit
+from ..services.ratelimit import check_rate_limit
 
 router = APIRouter(tags=["core"])
 
 
 @router.get("/health")
-async def health() -> dict:
+async def health(session: Session, deep: int = 0) -> dict:
+    # ?deep=1 also probes the DB — a shallow pass can't see a dead pooler.
+    if deep:
+        await session.execute(text("select 1"))
+        return {"ok": True, "db": "up"}
     return {"ok": True}
 
 
@@ -131,9 +136,10 @@ class AvatarSign(BaseModel):
 
 
 @router.post("/me/avatar/sign", status_code=201)
-async def sign_avatar(body: AvatarSign, user: CurrentUser) -> dict:
+async def sign_avatar(body: AvatarSign, user: CurrentUser, session: Session) -> dict:
     """Mint a signed upload URL for a new avatar. Client PUTs bytes to
     upload_url, then PATCHes /me with public_url."""
+    await check_rate_limit(session, f"avatarsign:{user.id}", limit=20, window_seconds=3600)
     storage.validate_upload_declared(body.mime, body.byte_size)
     uid = uuid.UUID(user.id)
     path = f"{uid}/{uuid.uuid4()}"

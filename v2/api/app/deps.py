@@ -31,7 +31,7 @@ class Membership:
 async def get_current_user(authorization: Annotated[str | None, Header()] = None) -> AuthUser:
     if not authorization or not authorization.startswith("Bearer "):
         raise APIError(401, "UNAUTHENTICATED", "Missing bearer token")
-    return verify_token(authorization.removeprefix("Bearer ").strip())
+    return await verify_token(authorization.removeprefix("Bearer ").strip())
 
 
 CurrentUser = Annotated[AuthUser, Depends(get_current_user)]
