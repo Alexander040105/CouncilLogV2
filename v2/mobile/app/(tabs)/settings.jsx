@@ -642,6 +642,16 @@ function Invites() {
 
   const shareInvite = (code) =>
     Share.share({ message: `${WEB_BASE}/onboarding?code=${code}` }).catch(() => {});
+  const [deleting, setDeleting] = useState(null);
+  const delInvite = useMutation({
+    mutationFn: (id) => delApi(`/orgs/${org}/invites/${id}`),
+    onSuccess: () => {
+      toast.success('Invite deleted.');
+      setDeleting(null);
+      qc.invalidateQueries({ queryKey: ['invites', org] });
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   return (
     <Card style={{ gap: 14 }}>
@@ -702,6 +712,11 @@ function Invites() {
                 {humanize(i.role)} · {i.uses} joined · {dead ? (expired ? 'expired' : 'used up')
                   : `expires ${new Date(i.expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
               </Text>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Delete invite ${i.code}`}
+                         hitSlop={8} onPress={() => setDeleting(i)}
+                         style={{ paddingHorizontal: 6, paddingVertical: 4 }}>
+                <Text style={{ fontSize: 12, color: t.alert }}>Delete</Text>
+              </Pressable>
             </Pressable>
           );
         })}
@@ -714,6 +729,15 @@ function Invites() {
         title="Reject join request?"
         body={`${rejecting?.display_name} won't be notified automatically — tell them directly if needed.`}
         confirmLabel="Reject"
+      />
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => delInvite.mutate(deleting.id)}
+        busy={delInvite.isPending}
+        title="Delete invite?"
+        body="Anyone holding this code or link can no longer join with it. Mint a new one anytime."
+        confirmLabel="Delete invite"
       />
     </Card>
   );

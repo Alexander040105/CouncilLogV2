@@ -178,6 +178,20 @@ async def list_invites(org_id: uuid.UUID, session: Session, member: Membership =
     return {"data": rows}
 
 
+@router.delete("/orgs/{org_id}/invites/{invite_id}")
+async def delete_invite(org_id: uuid.UUID, invite_id: uuid.UUID, session: Session,
+                        member: Membership = Depends(authorize("owner"))):
+    inv = await session.get(Invite, invite_id)
+    if inv is None or inv.org_id != org_id:
+        raise not_found("invite")
+    await audit(session, org_id=org_id, actor_id=member.user_id,
+                action="invite.deleted", entity_type="invite", entity_id=inv.id,
+                metadata={"role": inv.role})
+    await session.delete(inv)
+    await session.commit()
+    return {"ok": True}
+
+
 @router.get("/invites/{code}")
 async def invite_preview(code: str, session: Session):
     """Public invite preview — powers the "you've been invited to join X"
