@@ -56,7 +56,7 @@ async def send_email(to: str, subject: str, text: str) -> bool:
         await aiosmtplib.send(
             msg, hostname=s.smtp_host, port=s.smtp_port,
             username=s.smtp_user, password=s.smtp_password,
-            start_tls=s.smtp_port == 587,
+            start_tls=s.smtp_port == 587, timeout=15,
         )
         return True
     except Exception:

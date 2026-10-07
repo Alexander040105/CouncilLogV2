@@ -29,14 +29,15 @@ _jwks_fetched_at: float = 0
 _JWKS_TTL = 3600
 
 
-def _jwks() -> PyJWKClient | None:
+async def _jwks() -> PyJWKClient | None:
     global _jwks_client, _jwks_fetched_at
     settings = get_settings()
     if _jwks_client is not None and time.time() - _jwks_fetched_at < _JWKS_TTL:
         return _jwks_client
     url = f"{settings.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
     try:
-        resp = httpx.get(url, timeout=5)
+        async with httpx.AsyncClient(timeout=5) as c:
+            resp = await c.get(url)
         resp.raise_for_status()
         keys = resp.json().get("keys", [])
         if not keys:
@@ -48,12 +49,12 @@ def _jwks() -> PyJWKClient | None:
         return None
 
 
-def verify_token(token: str) -> AuthUser:
+async def verify_token(token: str) -> AuthUser:
     settings = get_settings()
     options = {"verify_aud": False}  # supabase aud='authenticated'; checked loosely below
 
     payload: dict[str, Any] | None = None
-    client = _jwks()
+    client = await _jwks()
     if client is not None:
         try:
             signing_key = client.get_signing_key_from_jwt(token)

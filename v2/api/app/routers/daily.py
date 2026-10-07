@@ -335,8 +335,11 @@ async def attendance_summary(org_id: uuid.UUID, session: Session, member: Member
         SchoolYear.org_id == org_id, SchoolYear.is_current == True))).scalars().first()  # noqa: E712
     if sy is None:
         return {"data": []}
-    days = (await session.execute(select(AttendanceDay).where(
-        AttendanceDay.org_id == org_id))).scalars().all()
+    days_q = select(AttendanceDay).where(AttendanceDay.org_id == org_id)
+    if sy.starts_on:
+        # bound to the current school year — don't scan all history
+        days_q = days_q.where(AttendanceDay.day >= sy.starts_on)
+    days = (await session.execute(days_q.limit(20000))).scalars().all()
 
     roster_rows = (await session.execute(select(DutySchedule).where(
         DutySchedule.org_id == org_id, DutySchedule.school_year_id == sy.id))).scalars().all()
@@ -352,7 +355,7 @@ async def attendance_summary(org_id: uuid.UUID, session: Session, member: Member
 
     # compliance = filed days on scheduled weekdays / scheduled duty days elapsed
     today = org_today()
-    start = sy.starts_on or (days[0].day if days else today)
+    start = sy.starts_on or (min(d.day for d in days) if days else today)
     summary = []
     for uid, weekdays in scheduled_weekdays.items():
         elapsed = sum(

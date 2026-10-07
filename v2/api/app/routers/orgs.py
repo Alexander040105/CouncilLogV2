@@ -173,7 +173,8 @@ async def mint_invite(org_id: uuid.UUID, body: InviteCreate, session: Session, m
 @router.get("/orgs/{org_id}/invites")
 async def list_invites(org_id: uuid.UUID, session: Session, member: Membership = Depends(authorize("owner"))):
     rows = (await session.execute(
-        select(Invite).where(Invite.org_id == org_id).order_by(Invite.created_at.desc()))).scalars().all()
+        select(Invite).where(Invite.org_id == org_id).order_by(
+            Invite.created_at.desc()).limit(200))).scalars().all()
     return {"data": rows}
 
 

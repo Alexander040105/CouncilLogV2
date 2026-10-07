@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # guard. Vercel Cron (or any scheduler) sends it as x-cron-secret.
     cron_secret: str = ""
 
+    # Error tracking — unhandled 500s report to Sentry when set. Empty = off.
+    sentry_dsn: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -13,3 +13,4 @@ pytest-asyncio==1.4.0
 aiosqlite==0.22.1
 tzdata==2026.4
 aiosmtplib==5.1.3
+sentry-sdk[fastapi]==2.65.0

@@ -315,7 +315,7 @@ async def list_checklist_items(org_id: uuid.UUID, session: Session,
         q = q.where(ProjectChecklistItem.done == done)
     rows = (await session.execute(
         q.order_by(ProjectChecklistItem.due_date.asc().nulls_last(),
-                   ProjectChecklistItem.created_at))).all()
+                   ProjectChecklistItem.created_at).limit(500))).all()
     return {"data": [{**item.model_dump(), "project_title": proj_title}
                      for item, proj_title in rows]}
 

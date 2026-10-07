@@ -12,6 +12,12 @@ from .routers import (admin, audit, core, daily, documents, internal,
 
 settings = get_settings()
 
+if settings.sentry_dsn:
+    # Unhandled errors report to Sentry — gated on DSN so dev/test never send.
+    import sentry_sdk
+    sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.env,
+                    traces_sample_rate=0.1, send_default_pii=False)
+
 _docs_enabled = settings.env != "prod"
 app = FastAPI(
     title="CounciLog API",
