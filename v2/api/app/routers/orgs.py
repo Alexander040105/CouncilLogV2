@@ -178,6 +178,21 @@ async def list_invites(org_id: uuid.UUID, session: Session, member: Membership =
     return {"data": rows}
 
 
+@router.get("/invites/{code}")
+async def invite_preview(code: str, session: Session):
+    """Public invite preview — powers the "you've been invited to join X"
+    banner before a logged-out visitor can redeem. Deliberately returns only
+    the org name and role; codes are unguessable, so name+role is not a leak
+    beyond what redeeming the code would grant anyway."""
+    inv = (await session.execute(select(Invite).where(Invite.code == code))).scalars().first()
+    if inv is None:
+        raise not_found("invite")
+    org = await session.get(Organization, inv.org_id)
+    if org is None:
+        raise not_found("invite")
+    return {"org_name": org.name, "role": inv.role}
+
+
 @router.post("/invites/{code}/redeem", status_code=201)
 async def redeem_invite(code: str, user: CurrentUser, session: Session):
     await check_rate_limit(session, f"redeem:{user.id}", limit=20, window_seconds=3600)

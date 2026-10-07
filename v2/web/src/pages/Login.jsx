@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { get } from '../lib/api';
 import { Button, Card, Field, Input } from '../components/ui';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { useAuth } from '../lib/auth';
@@ -16,10 +18,26 @@ export default function Login() {
   const [notice, setNotice] = useState(null);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [params] = useSearchParams();
+
+  // ?next= carries invite links etc. through auth — internal paths only
+  const rawNext = params.get('next');
+  const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : null;
+
+  // an invite link? preview the org so the login screen says who's inviting
+  const inviteCode = next?.startsWith('/onboarding')
+    ? new URLSearchParams(next.split('?')[1] ?? '').get('code')
+    : null;
+  const invite = useQuery({
+    queryKey: ['invite-preview', inviteCode],
+    queryFn: () => get(`/invites/${encodeURIComponent(inviteCode)}`),
+    enabled: !!inviteCode,
+    retry: false,
+  });
 
   useEffect(() => {
-    if (session) nav('/', { replace: true });
-  }, [session, nav]);
+    if (session) nav(next ?? '/', { replace: true });
+  }, [session, nav, next]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -43,7 +61,7 @@ export default function Login() {
           setNotice('Account created — check your email to confirm it, then sign in.');
           setMode('in');
           setPassword('');
-        } else nav('/');
+        } else nav(next ?? '/');
       }
     } catch (ex) {
       setErr(ex.message || 'Something went wrong');
@@ -57,12 +75,22 @@ export default function Login() {
   const googleFallback = () =>
     supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${location.origin}/auth/callback` },
+      options: { redirectTo: `${location.origin}/auth/callback${next ? `?next=${encodeURIComponent(next)}` : ''}` },
     });
 
   return (
     <div className="flex min-h-dvh items-center justify-center p-4">
       <Card className="w-full max-w-sm space-y-4">
+        {invite.data && (
+          <p className="rounded-[var(--radius-input)] [border:var(--border-el)] bg-[var(--color-surface-3)] px-3 py-2 text-sm">
+            {invite.data.org_name} invited you — sign in or create an account to join.
+          </p>
+        )}
+        {invite.isError && (
+          <p className="rounded-[var(--radius-input)] [border:var(--border-el)] bg-[var(--color-surface-3)] px-3 py-2 text-sm text-[var(--color-ink-3)]">
+            This invite link isn't valid — ask the sender for a fresh one. You can still sign in.
+          </p>
+        )}
         <h1 className="heading-strong label-strong text-xl">CounciLog</h1>
         <p className="text-sm text-[var(--color-ink-3)]">
           Council ops: duty, journal, papers — logged with proof.
