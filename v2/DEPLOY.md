@@ -116,6 +116,19 @@ The API only accepts requests from the web app's URL (CORS).
 > `WEB_ORIGIN` to it — and add the domain to `connect-src` in
 > `web/vercel.json` if the *API* also gets a custom domain.
 
+### Renaming the web domain later
+
+The frontend origin lives in four places — change all of them together:
+
+- **Vercel (API project)**: `WEB_ORIGIN` + `APP_BASE_URL` → new URL; redeploy.
+- **Supabase** → Authentication → URL Configuration: Site URL + add
+  `<new>/auth/callback` and `<new>/reset-password` to Redirect URLs.
+- **Google Cloud** → Credentials → the web OAuth client → Authorized
+  JavaScript origins → add the new URL (or Google sign-in shows
+  `Error 400: origin_mismatch`).
+- **Repo**: `web`'s CTA links in `landing/links.js` and
+  `EXPO_PUBLIC_WEB_URL` in `mobile/eas.json` (rebuild the APK after).
+
 ---
 
 ## Part 4 — Supabase production settings (do these now)
