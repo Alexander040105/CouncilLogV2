@@ -13,7 +13,7 @@
  *
  * A button with an empty URL renders as a "coming soon" chip, never a dead link. */
 window.COUNCILOG_LINKS = {
-  webUrl: "https://council-log-v2.vercel.app",
+  webUrl: "https://council-log.vercel.app",
   androidUrl: "https://github.com/Alexander040105/CouncilLogV2/releases/download/v1.0.0-android/councilog.apk",
   iosUrl: "",
   expoQr: "",
