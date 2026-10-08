@@ -7,7 +7,7 @@ import { atLeast, currentOrgId } from '../lib/org';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import { assigneeLabel, humanize, projectStatusLabel } from '../lib/labels';
-import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, Sheet, Skeleton } from '../components/ui';
+import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, MemberMultiSelect, Sheet, Skeleton } from '../components/ui';
 import { ChecklistPreview } from '../components/ChecklistPreview';
 import { BudgetSection } from '../components/BudgetSection';
 import { diagnoseChecklist, humanizeFlag } from '../lib/rules';
@@ -18,9 +18,9 @@ const FILTERS = [
   { id: 'all', label: 'All', test: () => true },
   { id: 'open', label: 'Not done', test: (i) => !i.done },
   { id: 'done', label: 'Done', test: (i) => i.done },
-  { id: 'assigned', label: 'Assigned', test: (i) => !!i.assignee_id },
-  { id: 'unassigned', label: 'Unassigned', test: (i) => !i.assignee_id },
-  { id: 'mine', label: 'Mine', test: (i, myId) => i.assignee_id === myId },
+  { id: 'assigned', label: 'Assigned', test: (i) => (i.assignee_ids ?? (i.assignee_id ? [i.assignee_id] : [])).length > 0 },
+  { id: 'unassigned', label: 'Unassigned', test: (i) => (i.assignee_ids ?? (i.assignee_id ? [i.assignee_id] : [])).length === 0 },
+  { id: 'mine', label: 'Mine', test: (i, myId) => (i.assignee_ids ?? (i.assignee_id ? [i.assignee_id] : [])).includes(myId) },
 ];
 
 export default function ProjectDetail() {
@@ -59,6 +59,13 @@ export default function ProjectDetail() {
   const activeMembers = members.data?.data.filter((m) => m.status === 'active') ?? [];
   const nameOf = (id) =>
     activeMembers.find((m) => m.user_id === id)?.display_name ?? null;
+  const assigneesOf = (i) => i.assignee_ids ?? (i.assignee_id ? [i.assignee_id] : []);
+  const namesOf = (i) => {
+    const ids = assigneesOf(i);
+    if (!ids.length) return null;
+    const names = ids.map((x) => (x === myId ? 'You' : nameOf(x) ?? 'Someone'));
+    return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
+  };
 
   const reload = () => qc.invalidateQueries({ queryKey: ['project', org, id] });
   const instantiate = useMutation({
@@ -87,10 +94,10 @@ export default function ProjectDetail() {
     onError: (e) => toast.error(e.message),
   });
   const assign = useMutation({
-    mutationFn: ({ itemId, assignee_id }) =>
-      patch(`/orgs/${org}/checklist-items/${itemId}`, { assignee_id }),
+    mutationFn: ({ itemId, assignee_ids }) =>
+      patch(`/orgs/${org}/checklist-items/${itemId}`, { assignee_ids }),
     onSuccess: (_r, v) => {
-      toast.success(v.assignee_id ? 'Task assigned — they\'ll be emailed.' : 'Task unassigned.');
+      toast.success(v.assignee_ids?.length ? 'Assignees updated — new ones get notified.' : 'Task unassigned.');
       reload();
     },
     onError: (e) => toast.error(e.message),
@@ -302,7 +309,7 @@ export default function ProjectDetail() {
             </p>
           )}
           {shown.map((it) => {
-            const assignee = nameOf(it.assignee_id);
+            const assignee = namesOf(it);
             const idx = items.indexOf(it);
             return (
               <div key={it.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--radius-input)] p-2 hover:bg-[var(--color-surface-3)]">
@@ -321,25 +328,32 @@ export default function ProjectDetail() {
                 </span>
                 {it.due_date && <Chip kind="pending" label={`Due ${it.due_date}`} />}
                 {canAssign ? (
-                  <select
-                    aria-label={`Assign ${it.label}`}
-                    className="min-h-[36px] max-w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-1.5 text-xs sm:max-w-[10rem]"
-                    value={it.assignee_id ?? ''}
-                    onChange={(e) => assign.mutate({ itemId: it.id, assignee_id: e.target.value || null })}
-                  >
-                    <option value="">Unassigned</option>
-                    {activeMembers.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
-                  </select>
+                  <div className="min-w-[10rem] max-w-full">
+                    <MemberMultiSelect
+                      members={activeMembers}
+                      value={assigneesOf(it)}
+                      onChange={(ids) => assign.mutate({ itemId: it.id, assignee_ids: ids })}
+                      placeholder="Unassigned"
+                    />
+                  </div>
                 ) : assignee ? (
-                  <Chip kind="neutral" label={it.assignee_id === myId ? 'You' : assignee} />
+                  <Chip kind="neutral" label={assignee} />
                 ) : !it.done && canCheck ? (
                   <button
                     className="min-h-[36px] rounded-[var(--radius-input)] px-2 text-xs text-[var(--color-accent)]"
-                    onClick={() => assign.mutate({ itemId: it.id, assignee_id: myId })}
+                    onClick={() => assign.mutate({ itemId: it.id, assignee_ids: [myId] })}
                   >
                     Take it
                   </button>
                 ) : null}
+                {!canAssign && assignee && !assigneesOf(it).includes(myId) && !it.done && canCheck && (
+                  <button
+                    className="min-h-[36px] rounded-[var(--radius-input)] px-2 text-xs text-[var(--color-accent)]"
+                    onClick={() => assign.mutate({ itemId: it.id, assignee_ids: [...assigneesOf(it), myId] })}
+                  >
+                    + me
+                  </button>
+                )}
                 {canStructure && (
                   <span className="flex items-center">
                     {filter === 'all' && (

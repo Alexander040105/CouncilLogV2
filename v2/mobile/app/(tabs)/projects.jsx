@@ -131,7 +131,7 @@ export default function Projects() {
         signatory-routed documents, “Needs logistics” for venue/equipment steps.
       </HintBanner>
       {list.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
-      {list.isError ? <ErrorState error={list.error} retry={list.refetch} /> : null}
+      {list.isError ? <ErrorState error={list.error} retry={list.refetch} what="projects" /> : null}
     </View>
   );
 

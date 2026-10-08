@@ -609,6 +609,7 @@ function Invites() {
   const org = currentOrgId();
   const qc = useQueryClient();
   const toast = useToast();
+  const { me, active } = useOutletContext() ?? {};
   const [role, setRole] = useState('officer');
   const [approveRoles, setApproveRoles] = useState({});
   const [rejecting, setRejecting] = useState(null);
@@ -631,13 +632,27 @@ function Invites() {
     onError: (e) => toast.error(e.message),
   });
   const copyInvite = async (code) => {
+    const name = me?.profile?.display_name ?? me?.email ?? 'Someone';
+    const orgName = active?.org_name ?? 'our organization';
+    const url = `${window.location.origin}/onboarding?code=${code}`;
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/onboarding?code=${code}`);
-      toast.success('Invite link copied — send it to your members.');
+      await navigator.clipboard.writeText(
+        `${name} invited you to join ${orgName} on CounciLog — duty, papers, and tasks in one place.\nJoin here: ${url}`);
+      toast.success('Invite copied — paste it anywhere.');
     } catch {
       toast.error('Copy failed — share the code manually instead.');
     }
   };
+  const [deleting, setDeleting] = useState(null);
+  const delInvite = useMutation({
+    mutationFn: (id) => delApi(`/orgs/${org}/invites/${id}`),
+    onSuccess: () => {
+      toast.success('Invite deleted.');
+      setDeleting(null);
+      qc.invalidateQueries({ queryKey: ['invites', org] });
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const decide = useMutation({
     mutationFn: ({ id, approve, approveRole }) =>
       post(`/orgs/${org}/join-requests/${id}/decide`, { approve, role: approveRole || 'member' }),
@@ -712,6 +727,8 @@ function Invites() {
                   <Button variant="ghost" className="min-h-[36px] px-2 text-xs"
                           onClick={() => copyInvite(i.code)}>Copy link</Button>
                 )}
+                <Button variant="ghost" className="min-h-[36px] px-2 text-xs text-[var(--color-status-alert)]"
+                        onClick={() => setDeleting(i)}>Delete</Button>
               </span>
             </div>
           );
@@ -725,6 +742,15 @@ function Invites() {
         title="Reject join request?"
         body={`${rejecting?.display_name} won't be notified automatically — tell them directly if needed.`}
         confirmLabel="Reject"
+      />
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => delInvite.mutate(deleting.id)}
+        busy={delInvite.isPending}
+        title="Delete invite?"
+        body="Anyone holding this code or link can no longer join with it. Mint a new one anytime."
+        confirmLabel="Delete invite"
       />
     </Card>
   );

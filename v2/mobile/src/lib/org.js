@@ -9,12 +9,19 @@ import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEY = 'councilog.orgId';
+const PICKED_KEY = 'councilog.orgPicked';
 let cached = null;
+let picked = null;
 let hydrated = false;
 const listeners = new Set();
 
 export async function hydrateOrg() {
-  cached = await AsyncStorage.getItem(KEY).catch(() => null);
+  const [orgId, flag] = await Promise.all([
+    AsyncStorage.getItem(KEY).catch(() => null),
+    AsyncStorage.getItem(PICKED_KEY).catch(() => null),
+  ]);
+  cached = orgId;
+  picked = flag;
   hydrated = true;
   return cached;
 }
@@ -30,6 +37,15 @@ export function setCurrentOrg(id) {
   if (id) AsyncStorage.setItem(KEY, id).catch(() => {});
   else AsyncStorage.removeItem(KEY).catch(() => {});
   listeners.forEach((fn) => fn());
+}
+
+/** "Did the user pick an org since signing in?" — cleared on sign-out so the
+ *  next login with 2+ memberships lands on the picker, not a silent default. */
+export function orgPicked() { return picked === '1'; }
+export function setOrgPicked(v = true) {
+  picked = v ? '1' : null;
+  if (v) AsyncStorage.setItem(PICKED_KEY, '1').catch(() => {});
+  else AsyncStorage.removeItem(PICKED_KEY).catch(() => {});
 }
 
 /** Reactive org id — screens key their queries by this so switching orgs

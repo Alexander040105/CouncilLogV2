@@ -180,7 +180,7 @@ export default function DocumentDetail() {
   });
 
   if (q.isLoading) return <Screen><Skeleton style={{ height: 256 }} /></Screen>;
-  if (q.isError) return <Screen><ErrorState error={q.error} retry={q.refetch} /></Screen>;
+  if (q.isError) return <Screen><ErrorState error={q.error} retry={q.refetch} what="this paper" /></Screen>;
   const d = q.data;
   if (!d) return <Screen><Empty title="Document not found" /></Screen>;
 

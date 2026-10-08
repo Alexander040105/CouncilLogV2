@@ -1,5 +1,5 @@
 import { Component, useEffect, useState } from 'react';
-import { AlertTriangle, Info, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, Info, X } from 'lucide-react';
 import { useTheme, THEMES } from '../lib/theme';
 import { supabase } from '../lib/supabase';
 import { setCurrentOrg } from '../lib/org';
@@ -36,6 +36,52 @@ export function Select({ className = '', children, ...rest }) {
     >
       {children}
     </select>
+  );
+}
+
+/** Pick any number of org members — trigger shows the chosen names,
+ *  expands to a checkbox list. `members` are membership rows ({user_id,
+ *  display_name}); `value`/`onChange` are a uuid array. */
+export function MemberMultiSelect({ members, value = [], onChange, placeholder = 'Choose members…' }) {
+  const [open, setOpen] = useState(false);
+  const selected = (members ?? []).filter((m) => value.includes(m.user_id));
+  const toggle = (id) =>
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex min-h-[44px] w-full items-center justify-between gap-2 rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 text-left text-sm"
+      >
+        <span className={selected.length ? '' : 'text-[var(--color-ink-3)]'}>
+          {selected.length ? selected.map((m) => m.display_name).join(', ') : placeholder}
+        </span>
+        <ChevronDown size={15} className={`shrink-0 text-[var(--color-ink-3)] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="mt-1 max-h-48 overflow-y-auto rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)]">
+          {(members ?? []).map((m) => {
+            const on = value.includes(m.user_id);
+            return (
+              <button
+                type="button"
+                key={m.user_id}
+                onClick={() => toggle(m.user_id)}
+                aria-pressed={on}
+                className="flex min-h-[40px] w-full items-center gap-2 px-3 text-left text-sm hover:bg-[var(--color-surface-3)]"
+              >
+                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] [border:var(--border-el)] ${on ? 'bg-[var(--color-accent)] text-[var(--color-accent-fg)]' : 'bg-[var(--color-surface-2)]'}`}>
+                  {on && <Check size={11} strokeWidth={3} />}
+                </span>
+                {m.display_name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 

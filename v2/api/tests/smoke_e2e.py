@@ -98,6 +98,29 @@ check("member redeems invite", s == 201 and r.get("org_id") == org_a, f"{s} {str
 s, r = api("POST", f"/invites/{inv['code']}/redeem", tok_e)
 check("same code redeems for a second user", s == 201 and r.get("org_id") == org_a, f"{s} {str(r)[:120]}")
 
+# public invite preview: no token, names only the org + role
+req = urllib.request.Request(API + f"/invites/{inv['code']}", method="GET")
+try:
+    with urllib.request.urlopen(req) as rr:
+        s, pv = rr.status, json.loads(rr.read() or b"null")
+except urllib.error.HTTPError as e:
+    s, pv = e.code, json.loads(e.read() or b"null")
+check("public invite preview needs no token", s == 200 and pv.get("org_name") == "CCS Council" and pv.get("role") == "officer",
+      f"{s} {str(pv)[:120]}")
+check("preview leaks nothing but name+role", set(pv.keys()) <= {"org_name", "role"}, f"{str(pv)[:120]}")
+
+# owner can delete a live invite — redeeming its code then 404s
+s, inv2 = api("POST", f"/orgs/{org_a}/invites", tok_a, {"role": "member"}, org=org_a)
+check("owner mints second invite", s == 201, f"{s}")
+s, invs = api("GET", f"/orgs/{org_a}/invites", tok_a, org=org_a)
+iid = next((x["id"] for x in invs.get("data", []) if x["code"] == inv2.get("code")), None) if s == 200 else None
+s, r = api("DELETE", f"/orgs/{org_a}/invites/{iid}", tok_b, org=org_a)
+check("non-owner cannot delete invite", s == 403, f"{s}")
+s, r = api("DELETE", f"/orgs/{org_a}/invites/{iid}", tok_a, org=org_a)
+check("owner deletes live invite", s == 200, f"{s}")
+s, r = api("POST", f"/invites/{inv2['code']}/redeem", tok_d)
+check("redeeming deleted invite -> 404", s == 404, f"{s} {str(r)[:120]}")
+
 # join request + approve
 s, r = api("POST", f"/orgs/{org_a}/join-requests", tok_c, {"message": "hi"})
 check("outsider files join request", s == 201, f"{s}")
@@ -201,6 +224,31 @@ item = r["checklist"][0] if s == 200 and r["checklist"] else None
 if item:
     s, r = api("PATCH", f"/orgs/{org_a}/checklist-items/{item['id']}", tok_b, {"done": True}, org=org_a)
     check("officer checks item", s == 200 and r["data"]["done"], f"{s}")
+
+# ── 6c. Multi-assignee ──────────────────────────────────────────────────
+s, t = api("POST", f"/orgs/{org_a}/tasks", tok_a,
+           {"title": "Print programs", "assignee_ids": [uid_b, uid_e]}, org=org_a)
+check("task with two assignees", s == 201
+      and set((t.get("data") or {}).get("assignee_ids") or []) == {uid_b, uid_e},
+      f"{s} {str(t)[:150]}")
+tid = (t.get("data") or {}).get("id")
+for tag, tok in (("first", tok_b), ("second", tok_e)):
+    s, lst = api("GET", f"/orgs/{org_a}/tasks?assignee=me", tok, org=org_a)
+    check(f"mine-list finds {tag} assignee", s == 200 and any(x["id"] == tid for x in lst["data"]), f"{s}")
+s, r = api("PATCH", f"/orgs/{org_a}/tasks/{tid}", tok_e, {"status": "done"}, org=org_a)
+check("second assignee marks done", s == 200 and r["data"]["status"] == "done", f"{s}")
+s, r = api("GET", f"/orgs/{org_a}/tasks/{tid}", tok_a, org=org_a)
+check("task detail carries assignee_ids",
+      s == 200 and set(r["data"].get("assignee_ids") or []) == {uid_b, uid_e}, f"{s}")
+
+if item:
+    s, r = api("PATCH", f"/orgs/{org_a}/checklist-items/{item['id']}", tok_a,
+               {"assignee_ids": [uid_b, uid_e]}, org=org_a)
+    check("checklist item multi-assign", s == 200
+          and set(r["data"].get("assignee_ids") or []) == {uid_b, uid_e}, f"{s} {str(r)[:140]}")
+    s, lst = api("GET", f"/orgs/{org_a}/checklist-items?assignee_id={uid_e}", tok_a, org=org_a)
+    check("flat list finds second assignee",
+          s == 200 and any(x["id"] == item["id"] for x in lst["data"]), f"{s}")
 
 # ── 6b. Template PATCH/DELETE, flags, instantiate guard ────────────────
 tpl_id = tpl["data"]["id"]

@@ -46,7 +46,7 @@ export default function Admin() {
         description="Every org on this CounciLog — open one to see its roster, remove members, or archive/restore it. Everything you do lands in that org's audit log under your name."
       />
       {orgs.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
-      {orgs.isError ? <ErrorState error={orgs.error} retry={orgs.refetch} /> : null}
+      {orgs.isError ? <ErrorState error={orgs.error} retry={orgs.refetch} what="organizations" /> : null}
       {orgs.data?.data.length === 0 ? (
         <Empty title="No organizations yet" hint="Orgs appear here as they're created." />
       ) : null}
@@ -138,7 +138,7 @@ function OrgRow({ org, qc }) {
       {open ? (
         <View style={{ borderTopWidth: 1, borderTopColor: t.line, paddingHorizontal: 16, paddingBottom: 8 }}>
           {members.isLoading ? <Skeleton style={{ height: 96, marginVertical: 12 }} /> : null}
-          {members.isError ? <ErrorState error={members.error} retry={members.refetch} /> : null}
+          {members.isError ? <ErrorState error={members.error} retry={members.refetch} what="members" /> : null}
           {members.data?.data.filter((m) => m.status === 'active').length === 0 ? (
             <Text style={{ paddingVertical: 12, fontSize: 14, color: t.ink3 }}>No active members.</Text>
           ) : null}

@@ -204,7 +204,7 @@ export default function Documents() {
         every hand-off — the newest entry is where it sits now.
       </HintBanner>
       {docs.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
-      {docs.isError ? <ErrorState error={docs.error} retry={docs.refetch} /> : null}
+      {docs.isError ? <ErrorState error={docs.error} retry={docs.refetch} what="papers" /> : null}
       {(docs.data?.data.length ?? 0) > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
           {STATUS_FILTERS.map((f) => {

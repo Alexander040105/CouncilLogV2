@@ -251,6 +251,7 @@ export default function Guide() {
           <ErrorState
             error={templates.error ?? chains.error ?? contacts.error}
             retry={() => { templates.refetch(); chains.refetch(); contacts.refetch(); }}
+            what="starter settings"
           />
         ) : null}
         {templates.isSuccess && chains.isSuccess && contacts.isSuccess ? (

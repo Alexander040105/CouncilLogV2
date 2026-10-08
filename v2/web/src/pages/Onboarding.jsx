@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { get, post, patch } from '../lib/api';
@@ -15,8 +15,18 @@ export default function Onboarding() {
   const [mode, setMode] = useState('choose');
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
-  const { session } = useAuth();
+  const { session, loading } = useAuth();
   const toast = useToast();
+  const location = useLocation();
+
+  // invite links land here logged-out — send them through login first and
+  // keep ?code= intact so they come straight back to the join form
+  useEffect(() => {
+    if (!loading && !session) {
+      nav(`/login?next=${encodeURIComponent(location.pathname + location.search)}`, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, session]);
 
   // /onboarding is also reachable from the org switcher, so members may land
   // here with somewhere to go back to — org-less users get no escape link.
@@ -53,6 +63,14 @@ export default function Onboarding() {
     if (c) { setCode(c); setMode('join'); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // preview which org a pasted code joins before committing to it
+  const preview = useQuery({
+    queryKey: ['invite-preview', code],
+    queryFn: () => get(`/invites/${encodeURIComponent(code)}`),
+    enabled: mode === 'join' && code.trim().length >= 20,
+    retry: false,
+  });
 
   const create = async () => {
     setBusy(true); setErr(null);
@@ -164,6 +182,16 @@ export default function Onboarding() {
             <Field label="Your name" hint="Optional — how orgmates will see you.">
               <Input value={myName} onChange={(e) => setMyName(e.target.value)} maxLength={80} placeholder="e.g. Alex Solis" />
             </Field>
+            {preview.data && (
+              <p className="rounded-[var(--radius-input)] [border:var(--border-el)] bg-[var(--color-surface-3)] px-3 py-2 text-sm">
+                {preview.data.org_name} invited you — you'd join as {preview.data.role}.
+              </p>
+            )}
+            {preview.isError && (
+              <p className="text-sm text-[var(--color-ink-3)]">
+                This invite link isn't valid — ask the sender for a fresh one.
+              </p>
+            )}
             <Field label="Invite code" hint="Paste the code an admin gave you — instant join">
               <Input value={code} onChange={(e) => setCode(e.target.value)} />
             </Field>

@@ -178,6 +178,35 @@ async def list_invites(org_id: uuid.UUID, session: Session, member: Membership =
     return {"data": rows}
 
 
+@router.delete("/orgs/{org_id}/invites/{invite_id}")
+async def delete_invite(org_id: uuid.UUID, invite_id: uuid.UUID, session: Session,
+                        member: Membership = Depends(authorize("owner"))):
+    inv = await session.get(Invite, invite_id)
+    if inv is None or inv.org_id != org_id:
+        raise not_found("invite")
+    await audit(session, org_id=org_id, actor_id=member.user_id,
+                action="invite.deleted", entity_type="invite", entity_id=inv.id,
+                metadata={"role": inv.role})
+    await session.delete(inv)
+    await session.commit()
+    return {"ok": True}
+
+
+@router.get("/invites/{code}")
+async def invite_preview(code: str, session: Session):
+    """Public invite preview — powers the "you've been invited to join X"
+    banner before a logged-out visitor can redeem. Deliberately returns only
+    the org name and role; codes are unguessable, so name+role is not a leak
+    beyond what redeeming the code would grant anyway."""
+    inv = (await session.execute(select(Invite).where(Invite.code == code))).scalars().first()
+    if inv is None:
+        raise not_found("invite")
+    org = await session.get(Organization, inv.org_id)
+    if org is None:
+        raise not_found("invite")
+    return {"org_name": org.name, "role": inv.role}
+
+
 @router.post("/invites/{code}/redeem", status_code=201)
 async def redeem_invite(code: str, user: CurrentUser, session: Session):
     await check_rate_limit(session, f"redeem:{user.id}", limit=20, window_seconds=3600)

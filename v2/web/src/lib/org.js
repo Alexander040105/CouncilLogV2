@@ -12,6 +12,16 @@ export function setCurrentOrg(id) {
   else localStorage.removeItem(KEY);
 }
 
+/** "Did the user pick an org this visit?" — sessionStorage, so every fresh
+ *  tab/visit with multiple memberships lands on the picker instead of a
+ *  silent default. Cleared on sign-out. */
+const PICKED = 'councilog.orgPicked';
+export function orgPicked() { return sessionStorage.getItem(PICKED) === '1'; }
+export function setOrgPicked(v = true) {
+  if (v) sessionStorage.setItem(PICKED, '1');
+  else sessionStorage.removeItem(PICKED);
+}
+
 export const ROLE_RANK = { member: 0, officer: 1, adviser: 2, owner: 3 };
 export const atLeast = (role, min) => (ROLE_RANK[role] ?? -1) >= ROLE_RANK[min];
 

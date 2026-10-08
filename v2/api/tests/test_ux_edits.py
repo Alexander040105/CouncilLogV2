@@ -26,8 +26,9 @@ def _jsonb_as_json(element, compiler, **kw):
 
 from app.deps import Membership
 from app.errors import APIError
-from app.models import (AuditLog, Document, DocumentMovement, DocumentRevision,
-                        DocumentSignatoryStep, JournalEntry, JournalPhoto,
+from app.models import (AuditLog, ChecklistItemAssignee, Document,
+                        DocumentMovement, DocumentRevision, DocumentSignatoryStep,
+                        JournalEntry, JournalPhoto,
                         Notification, OrgMember, Organization, Position,
                         Profile, Project, ProjectChecklistItem, SchoolYear)
 from app.pagination import org_today
@@ -42,6 +43,7 @@ from app.routers.projects import (ChecklistItemPatch, ItemSeed, ProjectIn,
 from app.services import storage
 
 TABLES = (Project.__table__, ProjectChecklistItem.__table__,
+          ChecklistItemAssignee.__table__,
           JournalEntry.__table__, JournalPhoto.__table__,
           Document.__table__, DocumentMovement.__table__,
           DocumentSignatoryStep.__table__, DocumentRevision.__table__,
@@ -159,14 +161,14 @@ async def test_structural_edit_permission_matrix(session):
     r = await patch_item(org_id=org, item_id=it.id,
                          body=ChecklistItemPatch(label="Gym", required=False),
                          session=session, bg=_bg(), member=_member(org, lead))
-    assert r["data"].label == "Gym" and r["data"].required is False
+    assert r["data"]["label"] == "Gym" and r["data"]["required"] is False
     assert len(await _audits(session, "checklist_item.edited")) == 1
 
     # adviser+ can too
     r = await patch_item(org_id=org, item_id=it.id,
                          body=ChecklistItemPatch(hint="ask admin"),
                          session=session, bg=_bg(), member=_member(org, adviser, "adviser"))
-    assert r["data"].hint == "ask admin"
+    assert r["data"]["hint"] == "ask admin"
 
 
 async def test_tick_and_assign_permission_matrix(session):
@@ -186,13 +188,14 @@ async def test_tick_and_assign_permission_matrix(session):
     assert e.value.status_code == 403
     r = await patch_item(org_id=org, item_id=it.id, body=ChecklistItemPatch(done=True),
                          session=session, bg=_bg(), member=_member(org, officer, "officer"))
-    assert r["data"].done is True and str(r["data"].done_by) == str(officer)
+    assert r["data"]["done"] is True and str(r["data"]["done_by"]) == str(officer)
 
     # officer may self-assign but can't assign to someone else
     r = await patch_item(org_id=org, item_id=it.id,
                          body=ChecklistItemPatch(assignee_id=officer),
                          session=session, bg=_bg(), member=_member(org, officer, "officer"))
-    assert r["data"].assignee_id == officer
+    assert r["data"]["assignee_id"] == officer
+    assert r["data"]["assignee_ids"] == [officer]
     with pytest.raises(APIError) as e:
         await patch_item(org_id=org, item_id=it.id,
                          body=ChecklistItemPatch(assignee_id=target),
@@ -201,7 +204,8 @@ async def test_tick_and_assign_permission_matrix(session):
     r = await patch_item(org_id=org, item_id=it.id,
                          body=ChecklistItemPatch(assignee_id=target),
                          session=session, bg=_bg(), member=_member(org, adviser, "adviser"))
-    assert r["data"].assignee_id == target
+    assert r["data"]["assignee_id"] == target
+    assert r["data"]["assignee_ids"] == [target]
 
 
 async def test_assign_to_non_member_rejected(session):
@@ -236,19 +240,20 @@ async def test_add_reorder_delete_item(session):
     r = await add_checklist_item(org_id=org, project_id=p.id,
                                  body=ItemSeed(label="C"), session=session, member=lead_m)
     c = r["data"]
-    assert c.ord == 2
+    assert c["ord"] == 2
 
     # reorder requires exactly this project's item set
     with pytest.raises(APIError) as e:
         await reorder_checklist_items(org_id=org, project_id=p.id,
-                                      body=ReorderIn(item_ids=[c.id, b.id]),
+                                      body=ReorderIn(item_ids=[c["id"], b.id]),
                                       session=session, member=lead_m)
     assert e.value.status_code == 422
     await reorder_checklist_items(org_id=org, project_id=p.id,
-                                  body=ReorderIn(item_ids=[c.id, b.id, a.id]),
+                                  body=ReorderIn(item_ids=[c["id"], b.id, a.id]),
                                   session=session, member=lead_m)
     await session.refresh(a)
-    assert a.ord == 2 and b.ord == 1 and c.ord == 0
+    got = await session.get(ProjectChecklistItem, c["id"])
+    assert a.ord == 2 and b.ord == 1 and got.ord == 0
 
     # delete: member forbidden, lead allowed
     with pytest.raises(APIError):
@@ -298,6 +303,10 @@ async def test_list_checklist_items_filters_and_joins(session):
                                   label="Theirs", assignee_id=other)
     session.add_all([p1, p2, mine, early, undated, done_item, theirs])
     await session.flush()
+    session.add_all([
+        ChecklistItemAssignee(item_id=i.id, user_id=i.assignee_id)
+        for i in (mine, early, undated, done_item, theirs)])
+    await session.flush()
 
     m = _member(org, me)
     r = await list_checklist_items(org_id=org, session=session,
@@ -315,9 +324,12 @@ async def test_list_checklist_items_filters_and_joins(session):
     # org scoping: a foreign org's items never leak in
     other_org = uuid.uuid4()
     fp = _project(other_org)
-    session.add_all([fp, ProjectChecklistItem(
+    foreign = ProjectChecklistItem(
         org_id=other_org, project_id=fp.id, ord=0, label="Foreign",
-        assignee_id=me)])
+        assignee_id=me)
+    session.add_all([fp, foreign])
+    await session.flush()
+    session.add(ChecklistItemAssignee(item_id=foreign.id, user_id=me))
     await session.flush()
     r = await list_checklist_items(org_id=org, session=session,
                                    assignee_id=me, done=None, member=m)

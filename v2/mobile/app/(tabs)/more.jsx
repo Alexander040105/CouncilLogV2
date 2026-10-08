@@ -3,15 +3,16 @@
 import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { BookOpen, CalendarDays, ChevronRight, FileText, ListTodo, LogOut, RefreshCw, Settings, ShieldCheck, Sparkles, Users, Wallet } from 'lucide-react-native';
+import { BookOpen, CalendarDays, Check, ChevronDown, ChevronRight, FileText, ListTodo, LogOut, RefreshCw, Settings, ShieldCheck, Sparkles, Users, Wallet } from 'lucide-react-native';
 import { supabase } from '../../src/lib/supabase';
 import { queueCounts, subscribeOutbox } from '../../src/lib/offline';
 import { unregisterPushToken } from '../../src/lib/push';
 import { useEffect, useState } from 'react';
-import { atLeast, setCurrentOrg } from '../../src/lib/org';
+import { atLeast, setCurrentOrg, setOrgPicked } from '../../src/lib/org';
 import { useMe, useActiveMembership } from '../../src/lib/me';
 import { useTheme } from '../../src/lib/theme';
-import { Avatar, Card, ErrorState, Screen, Select, ThemePicker } from '../../src/components/ui';
+import { humanize } from '../../src/lib/labels';
+import { Avatar, Card, ErrorState, Screen, Sheet, ThemePicker } from '../../src/components/ui';
 
 const ROWS = [
   { path: '/documents', label: 'Papers', Icon: FileText },
@@ -35,6 +36,7 @@ export default function More() {
   const memberships = me.data?.memberships ?? [];
   const isAdmin = active ? atLeast(active.role, 'adviser') : false;
   const rows = ROWS.filter((r) => (!r.admin || isAdmin) && (!r.platform || me.data?.is_admin));
+  const [orgSheet, setOrgSheet] = useState(false);
   const [queued, setQueued] = useState(() => queueCounts());
   useEffect(() => subscribeOutbox(() => setQueued({ ...queueCounts() })), []);
   const pendingN = queued.pending + queued.sending + queued.dead;
@@ -43,6 +45,7 @@ export default function More() {
     await unregisterPushToken();
     await supabase.auth.signOut();
     setCurrentOrg(null);
+    setOrgPicked(false);
     qc.clear();
     router.replace('/login');
   };
@@ -52,21 +55,22 @@ export default function More() {
       <Text style={{ fontSize: 28, fontWeight: t.headingWeight, color: t.ink }}>More</Text>
 
       {me.isError ? (
-        <Card><ErrorState error={me.error} retry={me.refetch} /></Card>
+        <Card><ErrorState error={me.error} retry={me.refetch} what="your organizations" /></Card>
       ) : null}
 
       <Card style={{ gap: 10 }}>
         <Text style={{ fontSize: 12, fontWeight: '600', color: t.ink3 }}>Organization</Text>
-        <Select
-          value={active?.org_id ?? ''}
-          accessibilityLabel="Organization"
-          onChange={(v) => { if (v === '__new') router.push('/onboarding'); else { setCurrentOrg(v); qc.invalidateQueries(); } }}
-          options={[
-            ...memberships.map((m) => ({ value: m.org_id, label: m.org_name })),
-            ...(memberships.length === 0 ? [{ value: '', label: 'no org' }] : []),
-            { value: '__new', label: '+ create or join…' },
-          ]}
-        />
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setOrgSheet(true)}
+          style={{
+            minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10,
+            borderRadius: t.radiusInput, borderWidth: t.boxWidth, borderColor: t.boxColor, backgroundColor: t.surface3,
+          }}
+        >
+          <Text style={{ flex: 1, fontSize: 14, color: t.ink }} numberOfLines={1}>{active?.org_name ?? 'No org'}</Text>
+          <ChevronDown size={14} color={t.ink3} />
+        </Pressable>
       </Card>
 
       <Card style={{ gap: 2, padding: 8 }}>
@@ -112,6 +116,32 @@ export default function More() {
           <Text style={{ fontSize: 13, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, color: t.ink2 }}>Sign out</Text>
         </Pressable>
       </Card>
+
+      <Sheet open={orgSheet} onClose={() => setOrgSheet(false)} title="Switch organization">
+        <View style={{ gap: 2 }}>
+          {memberships.map((m) => (
+            <Pressable
+              key={m.org_id}
+              accessibilityRole="button"
+              onPress={() => { setCurrentOrg(m.org_id); setOrgPicked(); qc.invalidateQueries(); setOrgSheet(false); }}
+              style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 10, borderRadius: t.radiusInput }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }} numberOfLines={1}>{m.org_name}</Text>
+                <Text style={{ fontSize: 12, color: t.ink3 }}>{humanize(m.role)}</Text>
+              </View>
+              {m.org_id === active?.org_id ? <Check size={16} color={t.accent} /> : null}
+            </Pressable>
+          ))}
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => { setOrgSheet(false); router.push('/onboarding'); }}
+            style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: 10 }}
+          >
+            <Text style={{ fontSize: 14, color: t.ink3 }}>+ Create or join another organization</Text>
+          </Pressable>
+        </View>
+      </Sheet>
     </Screen>
   );
 }

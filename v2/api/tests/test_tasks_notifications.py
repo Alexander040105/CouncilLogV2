@@ -25,12 +25,14 @@ def _jsonb_as_json(element, compiler, **kw):
 from app.config import get_settings
 from app.deps import Membership
 from app.errors import APIError
-from app.models import (AttendanceDay, AuditLog, ChecklistTemplate, Document,
+from app.models import (AttendanceDay, AuditLog, ChecklistItemAssignee,
+                        ChecklistTemplate, Document,
                         DocumentMovement, DocumentRevision, DocumentSignatoryStep,
                         DutySchedule, JoinRequest, JournalEntry, Notification,
                         OrgMember, Organization, Position, Profile, Project,
                         ProjectChecklistItem, PushToken, RateLimit, SchoolYear,
-                        SignatoryChain, SignatoryStep, Task, TaskComment)
+                        SignatoryChain, SignatoryStep, Task, TaskAssignee,
+                        TaskComment)
 from app.pagination import org_today
 from app.routers.daily import EntryIn, create_entry
 from app.routers.documents import (DocIn, MovementIn, StepAdvance, add_movement,
@@ -56,6 +58,7 @@ TABLES = (Organization.__table__, Profile.__table__, OrgMember.__table__,
           SignatoryChain.__table__, SignatoryStep.__table__,
           DocumentSignatoryStep.__table__, DocumentMovement.__table__,
           JournalEntry.__table__, Task.__table__, TaskComment.__table__,
+          TaskAssignee.__table__, ChecklistItemAssignee.__table__,
           DocumentRevision.__table__, JoinRequest.__table__, Position.__table__,
           RateLimit.__table__,
           Notification.__table__, PushToken.__table__, AuditLog.__table__)
@@ -118,22 +121,23 @@ async def test_create_assign_and_patch_status(session):
                           body=TaskIn(title="Print tarp", assignee_id=assignee,
                                       priority="high"))
     t = r["data"]
-    assert t.status == "open" and t.priority == "high"
+    assert t["status"] == "open" and t["priority"] == "high"
+    assert t["assignee_ids"] == [assignee]
 
     # assignment wrote the assignee an inbox row in the same transaction
     notifs = await _notifs(session, assignee, "assigned")
     assert len(notifs) == 1
     assert notifs[0].payload["entity_type"] == "task"
-    assert notifs[0].payload["entity_id"] == str(t.id)
+    assert notifs[0].payload["entity_id"] == str(t["id"])
 
     # assignee can flip status — nothing else
     am = _member(org.id, assignee)
-    r = await patch_task(org_id=org.id, task_id=t.id, session=session, bg=_bg(),
+    r = await patch_task(org_id=org.id, task_id=t["id"], session=session, bg=_bg(),
                          member=am, body=TaskPatch(status="done"))
-    assert r["data"].status == "done" and r["data"].completed_by == assignee
+    assert r["data"]["status"] == "done" and r["data"]["completed_by"] == assignee
 
     with pytest.raises(APIError) as e:
-        await patch_task(org_id=org.id, task_id=t.id, session=session, bg=_bg(),
+        await patch_task(org_id=org.id, task_id=t["id"], session=session, bg=_bg(),
                          member=am, body=TaskPatch(title="renamed by assignee"))
     assert e.value.status_code == 403
 
@@ -156,7 +160,7 @@ async def test_task_edit_permission_matrix(session):
     r = await patch_task(org_id=org.id, task_id=t.id, session=session, bg=_bg(),
                          member=_member(org.id, owner, "owner"),
                          body=TaskPatch(title="owner rename", status="cancelled"))
-    assert r["data"].title == "owner rename"
+    assert r["data"]["title"] == "owner rename"
 
     # delete: creator or owner only
     with pytest.raises(APIError):
@@ -206,6 +210,8 @@ async def test_comments_ping_assignee_and_creator_not_commenter(session):
     t = Task(org_id=org.id, title="T", creator_id=creator, assignee_id=assignee)
     session.add(t)
     await session.flush()
+    session.add(TaskAssignee(task_id=t.id, user_id=assignee))
+    await session.flush()
 
     await add_comment(org_id=org.id, task_id=t.id, session=session, bg=_bg(),
                     member=_member(org.id, rando), body=CommentIn(body="any update?"))
@@ -231,7 +237,7 @@ async def test_task_create_replay_returns_original(session):
                            member=_member(org.id, uid))
     assert getattr(r2, "status_code", None) == 200  # JSONResponse, not a 201 dict
     rows = (await session.execute(select(Task).where(Task.org_id == org.id))).scalars().all()
-    assert len(rows) == 1 and rows[0].id == r1["data"].id
+    assert len(rows) == 1 and rows[0].id == r1["data"]["id"]
 
 
 async def test_journal_and_movement_and_project_replays(session):
@@ -445,8 +451,11 @@ async def test_reminders_requires_secret_and_dedupes(session, monkeypatch):
     org = await _org(session)
     uid = uuid.uuid4()
     tomorrow = org_today() + timedelta(days=1)
-    session.add(Task(org_id=org.id, title="Print proposals", creator_id=uid,
-                     assignee_id=uid, due_date=tomorrow))
+    t_due = Task(org_id=org.id, title="Print proposals", creator_id=uid,
+                 assignee_id=uid, due_date=tomorrow)
+    session.add(t_due)
+    await session.flush()
+    session.add(TaskAssignee(task_id=t_due.id, user_id=uid))
     await session.flush()
 
     s = get_settings()
@@ -620,6 +629,8 @@ async def test_task_done_pings_creator_and_project_done_pings_lead(session):
              assignee_id=assignee)
     p = Project(org_id=org.id, title="Fair", owner_id=lead, status="active")
     session.add_all([t, p])
+    await session.flush()
+    session.add(TaskAssignee(task_id=t.id, user_id=assignee))
     await session.flush()
 
     await patch_task(org_id=org.id, task_id=t.id, session=session, bg=_bg(),

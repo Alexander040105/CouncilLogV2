@@ -10,7 +10,7 @@ import { AppShell } from './components/AppShell';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { setAuthFailureHandler } from './lib/api';
 import { supabase } from './lib/supabase';
-import { setCurrentOrg } from './lib/org';
+import { setCurrentOrg, setOrgPicked } from './lib/org';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import ResetPassword from './pages/ResetPassword';
@@ -33,6 +33,7 @@ const Guide = lazy(() => import('./pages/Guide'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Account = lazy(() => import('./pages/Account'));
 const Admin = lazy(() => import('./pages/Admin'));
+const OrgPicker = lazy(() => import('./pages/OrgPicker'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 // Lazy pages suspend inside AppShell's Outlet — the shell stays mounted.
@@ -44,6 +45,7 @@ const P = (Page) => (
 setAuthFailureHandler(() => {
   supabase.auth.signOut();
   setCurrentOrg(null);
+  setOrgPicked(false);
   location.assign('/login');
 });
 
@@ -84,6 +86,7 @@ createRoot(document.getElementById('root')).render(
             <Route path="/onboarding" element={<Onboarding />} />
             <Route element={<AppShell />}>
               <Route index element={P(Dashboard)} />
+              <Route path="orgs" element={P(OrgPicker)} />
               <Route path="journal" element={P(Journal)} />
               <Route path="attendance" element={P(Attendance)} />
               <Route path="projects" element={P(Projects)} />

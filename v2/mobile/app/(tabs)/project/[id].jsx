@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowLeft, ArrowUp, Pencil, Plus, Trash2, UserCheck } from 'lucide-react-native';
+import { ArrowDown, ArrowLeft, ArrowUp, Check, Pencil, Plus, Trash2, UserCheck } from 'lucide-react-native';
 import { del, get, isQueued, patch, post, queuedMsg } from '../../../src/lib/api';
 import { atLeast, useOrgId } from '../../../src/lib/org';
 import { useAuth } from '../../../src/lib/auth';
@@ -23,9 +23,9 @@ const FILTERS = [
   { id: 'all', label: 'All', test: () => true },
   { id: 'open', label: 'Not done', test: (i) => !i.done },
   { id: 'done', label: 'Done', test: (i) => i.done },
-  { id: 'assigned', label: 'Assigned', test: (i) => !!i.assignee_id },
-  { id: 'unassigned', label: 'Unassigned', test: (i) => !i.assignee_id },
-  { id: 'mine', label: 'Mine', test: (i, myId) => i.assignee_id === myId },
+  { id: 'assigned', label: 'Assigned', test: (i) => (i.assignee_ids ?? (i.assignee_id ? [i.assignee_id] : [])).length > 0 },
+  { id: 'unassigned', label: 'Unassigned', test: (i) => (i.assignee_ids ?? (i.assignee_id ? [i.assignee_id] : [])).length === 0 },
+  { id: 'mine', label: 'Mine', test: (i, myId) => (i.assignee_ids ?? (i.assignee_id ? [i.assignee_id] : [])).includes(myId) },
 ];
 
 export default function ProjectDetail() {
@@ -68,6 +68,13 @@ export default function ProjectDetail() {
   const activeMembers = members.data?.data.filter((m) => m.status === 'active') ?? [];
   const nameOf = (uid) =>
     activeMembers.find((m) => m.user_id === uid)?.display_name ?? null;
+  const assigneesOf = (i) => i.assignee_ids ?? (i.assignee_id ? [i.assignee_id] : []);
+  const namesOf = (i) => {
+    const ids = assigneesOf(i);
+    if (!ids.length) return null;
+    const names = ids.map((x) => (x === myId ? 'You' : nameOf(x) ?? 'Someone'));
+    return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
+  };
 
   const reload = () => qc.invalidateQueries({ queryKey: ['project', org, id] });
   const instantiate = useMutation({
@@ -98,11 +105,10 @@ export default function ProjectDetail() {
     onError: (e) => toast.error(e.message),
   });
   const assign = useMutation({
-    mutationFn: ({ itemId, assignee_id }) =>
-      patch(`/orgs/${org}/checklist-items/${itemId}`, { assignee_id }),
+    mutationFn: ({ itemId, assignee_ids }) =>
+      patch(`/orgs/${org}/checklist-items/${itemId}`, { assignee_ids }),
     onSuccess: (r, v) => {
-      setAssignItem(null);
-      toast.success(queuedMsg(r, v.assignee_id ? "Task assigned — they'll be emailed." : 'Task unassigned.'));
+      toast.success(queuedMsg(r, v.assignee_ids?.length ? 'Assignees updated — new ones get notified.' : 'Task unassigned.'));
       reload();
     },
     onError: (e) => toast.error(e.message),
@@ -153,7 +159,7 @@ export default function ProjectDetail() {
   });
 
   if (q.isLoading) return <Screen><Skeleton style={{ height: 256 }} /></Screen>;
-  if (q.isError) return <Screen><ErrorState error={q.error} retry={q.refetch} /></Screen>;
+  if (q.isError) return <Screen><ErrorState error={q.error} retry={q.refetch} what="this project" /></Screen>;
   const p = q.data?.data;
   if (!p) return <Screen><Empty title="Project not found" /></Screen>;
 
@@ -305,8 +311,8 @@ export default function ProjectDetail() {
             </Text>
           ) : null}
           {shown.map((it) => {
-            const assignee = nameOf(it.assignee_id);
-            const mine = it.assignee_id === myId;
+            const assignee = namesOf(it);
+            const mine = assigneesOf(it).includes(myId);
             const idx = items.indexOf(it);
             return (
               <View key={it.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 8, borderRadius: t.radiusInput }}>
@@ -337,11 +343,18 @@ export default function ProjectDetail() {
                         <Text style={{ fontSize: 11, color: t.ink2 }}>{assignee ? `→ ${assignee}` : 'Assign…'}</Text>
                       </Pressable>
                     ) : assignee ? (
-                      <Chip kind="neutral" label={mine ? 'You' : assignee} />
+                      <Chip kind="neutral" label={assignee} />
                     ) : !it.done && canCheck ? (
-                      <Pressable accessibilityRole="button" onPress={() => assign.mutate({ itemId: it.id, assignee_id: myId })}
+                      <Pressable accessibilityRole="button" onPress={() => assign.mutate({ itemId: it.id, assignee_ids: [myId] })}
                                  style={{ minHeight: 32, justifyContent: 'center', paddingHorizontal: 8 }}>
                         <Text style={{ fontSize: 12, color: t.brand }}>Take it</Text>
+                      </Pressable>
+                    ) : null}
+                    {!canAssign && assignee && !mine && !it.done && canCheck ? (
+                      <Pressable accessibilityRole="button"
+                                 onPress={() => assign.mutate({ itemId: it.id, assignee_ids: [...assigneesOf(it), myId] })}
+                                 style={{ minHeight: 32, justifyContent: 'center', paddingHorizontal: 8 }}>
+                        <Text style={{ fontSize: 12, color: t.brand }}>+ me</Text>
                       </Pressable>
                     ) : null}
                     {canStructure ? (
@@ -382,21 +395,42 @@ export default function ProjectDetail() {
 
       <BudgetSection org={org} projectId={id} active={active} myId={myId} />
 
-      {/* assign picker sheet */}
+      {/* assign picker sheet — checkboxes; every tap saves */}
       <Sheet open={!!assignItem} onClose={() => setAssignItem(null)} title={assignItem ? `Assign: ${assignItem.label}` : 'Assign'}>
-        <View style={{ gap: 2 }}>
-          <Pressable accessibilityRole="button" onPress={() => assign.mutate({ itemId: assignItem.id, assignee_id: null })}
-                     style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 }}>
-            <Text style={{ fontSize: 14, color: t.ink3 }}>Unassigned</Text>
-          </Pressable>
-          {activeMembers.map((m) => (
-            <Pressable key={m.user_id} accessibilityRole="button"
-                       onPress={() => assign.mutate({ itemId: assignItem.id, assignee_id: m.user_id })}
-                       style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: t.radiusInput }}>
-              <Text style={{ fontSize: 14, color: t.ink }}>{m.display_name}</Text>
-            </Pressable>
-          ))}
-        </View>
+        {(() => {
+          const live = items.find((x) => x.id === assignItem?.id) ?? assignItem;
+          const current = assigneesOf(live ?? {});
+          return (
+            <View style={{ gap: 8 }}>
+              <Pressable accessibilityRole="button"
+                         onPress={() => assign.mutate({ itemId: assignItem.id, assignee_ids: [] })}
+                         style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 }}>
+                <Text style={{ fontSize: 14, color: current.length ? t.ink : t.ink3 }}>Unassigned</Text>
+              </Pressable>
+              {activeMembers.map((m) => {
+                const on = current.includes(m.user_id);
+                return (
+                  <Pressable key={m.user_id} accessibilityRole="checkbox" accessibilityState={{ checked: on }}
+                             onPress={() => assign.mutate({
+                               itemId: assignItem.id,
+                               assignee_ids: on ? current.filter((x) => x !== m.user_id) : [...current, m.user_id],
+                             })}
+                             style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, borderRadius: t.radiusInput }}>
+                    <View style={{
+                      width: 18, height: 18, borderWidth: Math.max(t.elWidth, 1), borderColor: t.elColor,
+                      borderRadius: t.chipRadius, backgroundColor: on ? t.accent : t.surface2,
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {on ? <Check size={12} color={t.accentFg} /> : null}
+                    </View>
+                    <Text style={{ fontSize: 14, color: t.ink }}>{m.display_name}</Text>
+                  </Pressable>
+                );
+              })}
+              <Button variant="secondary" onPress={() => setAssignItem(null)}>Done</Button>
+            </View>
+          );
+        })()}
       </Sheet>
 
       {/* item create/edit sheet */}

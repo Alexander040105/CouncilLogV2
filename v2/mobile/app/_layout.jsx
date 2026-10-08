@@ -17,7 +17,7 @@ import { ErrorBoundary } from '../src/components/ui';
 import { UpdateBanner } from '../src/components/UpdateBanner';
 import { setAuthFailureHandler } from '../src/lib/api';
 import { supabase } from '../src/lib/supabase';
-import { currentOrgId, hydrateOrg, orgHydrated, setCurrentOrg } from '../src/lib/org';
+import { currentOrgId, hydrateOrg, orgHydrated, orgPicked, setCurrentOrg, setOrgPicked } from '../src/lib/org';
 import { useMe } from '../src/lib/me';
 import { startConnectivity } from '../src/lib/connectivity';
 import { hydrateQueryCache, persistQueryCache } from '../src/lib/qcache';
@@ -32,6 +32,7 @@ const qc = new QueryClient();
 setAuthFailureHandler(() => {
   supabase.auth.signOut();
   setCurrentOrg(null);
+  setOrgPicked(false);
 });
 
 function Gate() {
@@ -50,11 +51,15 @@ function Gate() {
     if (session && me.isSuccess) registerPushToken(currentOrgId());
   }, [session, me.isSuccess, me.data]);
 
-  // Keep the selected org valid — same fallback rule as web's AppShell.
+  // Keep the selected org valid — same fallback rule as web's AppShell, but a
+  // multi-org session without an explicit pick must not silently default.
   useEffect(() => {
     const memberships = me.data?.memberships ?? [];
     const active = memberships.find((m) => m.org_id === currentOrgId()) ?? memberships[0];
-    if (active && active.org_id !== currentOrgId()) setCurrentOrg(active.org_id);
+    if (active && active.org_id !== currentOrgId()
+        && (memberships.length <= 1 || orgPicked())) {
+      setCurrentOrg(active.org_id);
+    }
   }, [me.data]);
 
   useEffect(() => {
@@ -69,6 +74,16 @@ function Gate() {
     const path = segments.join('/');
     const orglessOk = path.includes('onboarding') || path.includes('account') || path.includes('admin');
     if ((me.data?.memberships?.length ?? 0) === 0 && !orglessOk) router.replace('/onboarding');
+  }, [session, me.isSuccess, me.data, segments, router]);
+
+  // 2+ orgs and no explicit pick yet this login → the picker, not a default.
+  useEffect(() => {
+    if (!session || !me.isSuccess) return;
+    const count = me.data?.memberships?.length ?? 0;
+    const exempt = segments.join('/').includes('pick-org')
+      || segments.join('/').includes('onboarding')
+      || segments.join('/').includes('login');
+    if (count > 1 && !orgPicked() && !exempt) router.replace('/pick-org');
   }, [session, me.isSuccess, me.data, segments, router]);
 
   return (
