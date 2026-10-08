@@ -16,7 +16,7 @@ import { useTheme } from '../../src/lib/theme';
 import { taskStatusLabel } from '../../src/lib/labels';
 import {
   Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input,
-  PageHeader, Screen, Select, Sheet, Skeleton,
+  MemberMultiSelect, PageHeader, Screen, Select, Sheet, Skeleton,
 } from '../../src/components/ui';
 
 const FILTERS = [
@@ -57,17 +57,20 @@ function LinkChips({ t: task, projects, router }) {
   );
 }
 
-const BLANK = { title: '', description: '', assignee_id: '', due_date: '', priority: 'normal', project_id: '', document_id: '', journal_entry_id: '' };
+const BLANK = { title: '', description: '', assignee_ids: [], due_date: '', priority: 'normal', project_id: '', document_id: '', journal_entry_id: '' };
 
 function payloadFrom(form) {
   return {
     title: form.title, description: form.description || null,
-    assignee_id: form.assignee_id || null, due_date: form.due_date || null,
+    assignee_ids: form.assignee_ids, due_date: form.due_date || null,
     priority: form.priority, project_id: form.project_id || null,
     document_id: form.document_id || null,
     journal_entry_id: form.journal_entry_id || null,
   };
 }
+
+/** assignee_ids from the API, with the legacy single column as fallback. */
+const assigneesOf = (x) => x?.assignee_ids ?? (x?.assignee_id ? [x.assignee_id] : []);
 
 /** Create/edit form — shared between the new-task sheet and detail edit. */
 function TaskForm({ form, setForm, members, projects, documents, journals, t }) {
@@ -80,14 +83,13 @@ function TaskForm({ form, setForm, members, projects, documents, journals, t }) 
         <Input value={form.description} onChangeText={(v) => setForm({ ...form, description: v })} multiline
                placeholder="What done looks like, where the files are…" />
       </Field>
-      <Field label="Assign to" hint="They get an in-app notification, an email, and a push ping.">
-        <Select
-          value={form.assignee_id}
-          onChange={(v) => setForm({ ...form, assignee_id: v })}
+      <Field label="Assign to" hint="Pick one or more people — each gets an in-app notification, an email, and a push ping.">
+        <MemberMultiSelect
+          members={members}
+          value={form.assignee_ids}
+          onChange={(ids) => setForm({ ...form, assignee_ids: ids })}
           placeholder="Unassigned"
           accessibilityLabel="Assign to"
-          options={[{ value: '', label: 'Unassigned' },
-                    ...members.map((m) => ({ value: m.user_id, label: m.display_name }))]}
         />
       </Field>
       <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -143,7 +145,7 @@ function TaskForm({ form, setForm, members, projects, documents, journals, t }) 
 }
 
 /** One task row — memoized; filter switches shouldn't re-render every card. */
-const TaskRow = memo(function TaskRow({ x, projects, router, nameOf, onPress }) {
+const TaskRow = memo(function TaskRow({ x, projects, router, namesOf, onPress }) {
   const { t } = useTheme();
   return (
     <Pressable accessibilityRole="button" onPress={onPress}>
@@ -159,7 +161,7 @@ const TaskRow = memo(function TaskRow({ x, projects, router, nameOf, onPress }) 
             <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink, flexShrink: 1 }}>{x.title}</Text>
           </View>
           <Text style={{ fontSize: 12, color: t.ink3 }}>
-            → {nameOf(x.assignee_id)}
+            → {namesOf(assigneesOf(x))}
             {x.due_date ? `  ·  Due ${x.due_date}${overdue(x) ? ' — overdue' : ''}` : ''}
           </Text>
           <LinkChips t={x} projects={projects} router={router} />
@@ -231,6 +233,11 @@ export default function Tasks() {
     !id ? 'Unassigned'
       : id === myId ? 'You'
       : members.data?.data.find((m) => m.user_id === id)?.display_name ?? 'Someone';
+  const namesOf = (ids) => {
+    if (!ids?.length) return 'Unassigned';
+    const names = ids.map(nameOf);
+    return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
+  };
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['tasks', org] });
@@ -272,11 +279,11 @@ export default function Tasks() {
   const closeDetail = () => router.setParams({ task: undefined });
   const task = detail.data?.data;
   const canEditTask = task ? (String(task.creator_id) === myId || isOwner) : false;
-  const isAssignee = task ? String(task.assignee_id) === myId : false;
+  const isAssignee = task ? assigneesOf(task).includes(myId) : false;
 
   const list = tasks.data?.data ?? [];
   const filtered = list.filter((x) => {
-    if (filter === 'mine') return String(x.assignee_id) === myId && x.status === 'open';
+    if (filter === 'mine') return assigneesOf(x).includes(myId) && x.status === 'open';
     if (filter === 'by-me') return String(x.creator_id) === myId;
     if (filter === 'open') return x.status === 'open';
     if (filter === 'done') return x.status === 'done';
@@ -287,7 +294,7 @@ export default function Tasks() {
     // prefill the edit form from the list row — it already carries every field
     setForm({
       title: row.title, description: row.description ?? '',
-      assignee_id: row.assignee_id ?? '', due_date: row.due_date ?? '',
+      assignee_ids: assigneesOf(row), due_date: row.due_date ?? '',
       priority: row.priority, project_id: row.project_id ?? '',
       document_id: row.document_id ?? '', journal_entry_id: row.journal_entry_id ?? '',
     });
@@ -344,7 +351,7 @@ export default function Tasks() {
         keyExtractor={(x) => x.id}
         renderItem={({ item: x }) => (
           <TaskRow x={x} projects={projects.data?.data} router={router}
-                   nameOf={nameOf} onPress={() => openDetail(x)} />
+                   namesOf={namesOf} onPress={() => openDetail(x)} />
         )}
         ListHeaderComponent={header}
         ListEmptyComponent={tasks.isSuccess ? (
@@ -390,7 +397,7 @@ export default function Tasks() {
               <View style={{ gap: 6 }}>
                 <Text style={{ fontSize: 14, color: t.ink }}>{task.description || task.title}</Text>
                 <Text style={{ fontSize: 12, color: t.ink3 }}>
-                  {nameOf(task.creator_id)} → {nameOf(task.assignee_id)}
+                  {nameOf(task.creator_id)} → {namesOf(assigneesOf(task))}
                   {task.due_date ? ` · Due ${task.due_date}${overdue(task) ? ' (overdue)' : ''}` : ''}
                 </Text>
                 <LinkChips t={task} projects={projects.data?.data} router={router} />

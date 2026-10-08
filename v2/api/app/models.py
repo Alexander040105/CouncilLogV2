@@ -184,6 +184,13 @@ class ProjectChecklistItem(SQLModel, table=True):
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
 
+class ChecklistItemAssignee(SQLModel, table=True):
+    """checklist item ↔ member junction — same lead/truth split as TaskAssignee."""
+    __tablename__ = "checklist_item_assignees"
+    item_id: uuid.UUID = Field(foreign_key="project_checklist_items.id", primary_key=True)
+    user_id: uuid.UUID = Field(primary_key=True)
+
+
 class Document(SQLModel, table=True):
     __tablename__ = "documents"
     __table_args__ = (UniqueConstraint("org_id", "client_request_id"),)
@@ -339,6 +346,14 @@ class Task(SQLModel, table=True):
     client_request_id: str | None = None
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
     updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+
+
+class TaskAssignee(SQLModel, table=True):
+    """task ↔ member junction — assignee_id on Task stays as the lead
+    (first assignee) for old clients; rows here are the truth."""
+    __tablename__ = "task_assignees"
+    task_id: uuid.UUID = Field(foreign_key="tasks.id", primary_key=True)
+    user_id: uuid.UUID = Field(primary_key=True)
 
 
 class TaskComment(SQLModel, table=True):

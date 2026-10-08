@@ -12,7 +12,7 @@ import { useToast } from '../lib/toast';
 import { assigneeLabel, taskStatusLabel } from '../lib/labels';
 import {
   Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input,
-  PageHeader, Sheet, Skeleton,
+  MemberMultiSelect, PageHeader, Sheet, Skeleton,
 } from '../components/ui';
 
 const FILTERS = [
@@ -69,12 +69,10 @@ function TaskForm({ form, setForm, members, projects, documents, journals }) {
                   rows={3} placeholder="What done looks like, where the files are…"
                   className="w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]" />
       </Field>
-      <Field label="Assign to" hint="They get an in-app notification, an email, and a push ping.">
-        <select className={sel} value={form.assignee_id}
-                onChange={(e) => setForm({ ...form, assignee_id: e.target.value || null })}>
-          <option value="">Unassigned</option>
-          {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
-        </select>
+      <Field label="Assign to" hint="Pick one or more people — each gets an in-app notification, an email, and a push ping.">
+        <MemberMultiSelect members={members} value={form.assignee_ids}
+                           onChange={(ids) => setForm({ ...form, assignee_ids: ids })}
+                           placeholder="Unassigned" />
       </Field>
       <div className="grid grid-cols-2 gap-2">
         <Field label="Due (optional)"><Input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} /></Field>
@@ -113,7 +111,7 @@ function TaskForm({ form, setForm, members, projects, documents, journals }) {
   );
 }
 
-const BLANK = { title: '', description: '', assignee_id: '', due_date: '', priority: 'normal', project_id: '', document_id: '', journal_entry_id: '' };
+const BLANK = { title: '', description: '', assignee_ids: [], due_date: '', priority: 'normal', project_id: '', document_id: '', journal_entry_id: '' };
 
 export default function Tasks() {
   const org = currentOrgId();
@@ -169,6 +167,11 @@ export default function Tasks() {
   const nameOf = (id) =>
     assigneeLabel(id, myId,
       (x) => members.data?.data.find((m) => m.user_id === x)?.display_name);
+  const namesOf = (ids) => {
+    if (!ids?.length) return 'Unassigned';
+    const names = ids.map(nameOf);
+    return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
+  };
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['tasks', org] });
@@ -178,13 +181,13 @@ export default function Tasks() {
   const create = useMutation({
     mutationFn: () => post(`/orgs/${org}/tasks`, {
       title: form.title, description: form.description || null,
-      assignee_id: form.assignee_id || null, due_date: form.due_date || null,
+      assignee_ids: form.assignee_ids, due_date: form.due_date || null,
       priority: form.priority, project_id: form.project_id || null,
       document_id: form.document_id || null,
       journal_entry_id: form.journal_entry_id || null,
     }),
     onSuccess: () => {
-      toast.success('Task created — assignee notified.');
+      toast.success(form.assignee_ids.length ? 'Task created — assignees notified.' : 'Task created.');
       setCreateOpen(false); setForm(BLANK); invalidate();
     },
     onError: (e) => toast.error(e.message),
@@ -214,14 +217,15 @@ export default function Tasks() {
   const closeDetail = () => { params.delete('task'); setParams(params, { replace: true }); };
   const t = detail.data?.data;
   const canEditTask = t ? (String(t.creator_id) === myId || isOwner) : false;
-  const isAssignee = t ? String(t.assignee_id) === myId : false;
+  const assigneesOf = (x) => x?.assignee_ids ?? (x?.assignee_id ? [x.assignee_id] : []);
+  const isAssignee = t ? assigneesOf(t).includes(myId) : false;
 
   // prefill the edit form from the opened task
   useEffect(() => {
     if (!t) return;
     setForm({
       title: t.title, description: t.description ?? '',
-      assignee_id: t.assignee_id ?? '', due_date: t.due_date ?? '',
+      assignee_ids: assigneesOf(t), due_date: t.due_date ?? '',
       priority: t.priority, project_id: t.project_id ?? '',
       document_id: t.document_id ?? '', journal_entry_id: t.journal_entry_id ?? '',
     });
@@ -229,7 +233,7 @@ export default function Tasks() {
 
   const list = tasks.data?.data ?? [];
   const filtered = list.filter((x) => {
-    if (filter === 'mine') return String(x.assignee_id) === myId && x.status === 'open';
+    if (filter === 'mine') return assigneesOf(x).includes(myId) && x.status === 'open';
     if (filter === 'by-me') return String(x.creator_id) === myId;
     if (filter === 'open') return x.status === 'open';
     if (filter === 'done') return x.status === 'done';
@@ -281,7 +285,7 @@ export default function Tasks() {
                   <span className="text-sm font-medium">{x.title}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--color-ink-3)]">
-                  <span>→ {nameOf(x.assignee_id)}</span>
+                  <span>→ {namesOf(assigneesOf(x))}</span>
                   {x.due_date && (
                     <span className={overdue(x) ? 'font-semibold text-[var(--color-status-alert)]' : ''}>
                       Due {x.due_date}{overdue(x) ? ' — overdue' : ''}
@@ -327,7 +331,7 @@ export default function Tasks() {
               <div className="space-y-2">
                 <p className="text-sm">{t.description || t.title}</p>
                 <div className="text-xs text-[var(--color-ink-3)]">
-                  {nameOf(t.creator_id)} → {nameOf(t.assignee_id)}
+                  {nameOf(t.creator_id)} → {namesOf(assigneesOf(t))}
                   {t.due_date && <> · Due {t.due_date}{overdue(t) ? ' (overdue)' : ''}</>}
                 </div>
               </div>
@@ -403,7 +407,7 @@ export default function Tasks() {
 function payloadFrom(form) {
   return {
     title: form.title, description: form.description || null,
-    assignee_id: form.assignee_id || null, due_date: form.due_date || null,
+    assignee_ids: form.assignee_ids, due_date: form.due_date || null,
     priority: form.priority, project_id: form.project_id || null,
     document_id: form.document_id || null,
     journal_entry_id: form.journal_entry_id || null,

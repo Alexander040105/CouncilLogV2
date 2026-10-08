@@ -18,7 +18,7 @@ from ..deps import Session
 from ..errors import forbidden
 from ..models import (AttendanceDay, Document, DocumentSignatoryStep,
                       DutySchedule, Notification, Organization, SchoolYear,
-                      Task)
+                      Task, TaskAssignee)
 from ..pagination import org_today
 from ..services.notify import (notify_duty_reminder, notify_task_due_soon,
                                record_notification, step_holder)
@@ -64,25 +64,25 @@ async def reminders(session: Session,
     tomorrow = today + timedelta(days=1)
     sent = {"task_due_soon": 0, "duty_reminder": 0, "desk_stale": 0}
 
-    # tasks due tomorrow → ping the assignee
-    due = (await session.execute(select(Task, Organization).join(
-        Organization, Organization.id == Task.org_id).where(
-        Task.status == "open", Task.due_date == tomorrow,
-        Task.assignee_id != None))).all()  # noqa: E711
-    for t, org in due:
+    # tasks due tomorrow → ping every assignee
+    due = (await session.execute(select(Task, Organization, TaskAssignee.user_id)
+        .join(Organization, Organization.id == Task.org_id)
+        .join(TaskAssignee, TaskAssignee.task_id == Task.id)
+        .where(Task.status == "open", Task.due_date == tomorrow))).all()
+    for t, org, uid in due:
         ref = f"task_due:{t.id}:{today}"
-        if await _already_sent(session, t.assignee_id, "task_due_soon", ref, today):
+        if await _already_sent(session, uid, "task_due_soon", ref, today):
             continue
-        record_notification(session, org_id=t.org_id, user_id=t.assignee_id,
+        record_notification(session, org_id=t.org_id, user_id=uid,
                             kind="task_due_soon",
                             payload={"ref": ref, "entity_type": "task",
                                      "entity_id": str(t.id), "title": t.title})
-        await send_push(session, t.assignee_id,
+        await send_push(session, uid,
                         title=f"{org.name} · due tomorrow", body=t.title,
                         data={"entity_type": "task", "entity_id": str(t.id),
                               "kind": "task_due_soon"})
         await notify_task_due_soon(org_name=org.name, title=t.title,
-                                   user_id=t.assignee_id)
+                                   user_id=uid)
         sent["task_due_soon"] += 1
 
     # duty roster members with no filing today → ping

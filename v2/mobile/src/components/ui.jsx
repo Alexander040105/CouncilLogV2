@@ -180,6 +180,66 @@ export function Select({ value, onChange, options = [], placeholder = 'Select…
   );
 }
 
+/** Multi-select version of Select — trigger shows chosen names, opens a
+ *  Sheet of checkbox rows. `members` are membership rows ({user_id,
+ *  display_name}); `value`/`onChange` are a uuid array. */
+export function MemberMultiSelect({ members = [], value = [], onChange, placeholder = 'Choose members…', accessibilityLabel = 'Choose members' }) {
+  const { t } = useTheme();
+  const [open, setOpen] = useState(false);
+  const selected = members.filter((m) => value.includes(m.user_id));
+  const toggle = (id) =>
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+  return (
+    <>
+      <Pressable
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        style={{
+          minHeight: 44, borderRadius: t.radiusInput, borderWidth: t.boxWidth, borderColor: t.boxColor,
+          backgroundColor: t.surface2, paddingHorizontal: 12, flexDirection: 'row',
+          alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        }}
+      >
+        <Text style={{ color: selected.length ? t.ink : t.ink3, fontSize: 14, flex: 1 }} numberOfLines={1}>
+          {selected.length ? selected.map((m) => m.display_name).join(', ') : placeholder}
+        </Text>
+        <ChevronDown size={16} color={t.ink3} />
+      </Pressable>
+      <Sheet open={open} onClose={() => setOpen(false)} title={accessibilityLabel}>
+        <View style={{ gap: 8 }}>
+          {members.map((m) => {
+            const on = value.includes(m.user_id);
+            return (
+              <Pressable
+                key={m.user_id}
+                onPress={() => toggle(m.user_id)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: on }}
+                style={{
+                  minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10,
+                  paddingHorizontal: 12, paddingVertical: 10, borderRadius: t.radiusInput,
+                  borderWidth: t.boxWidth, borderColor: t.boxColor, backgroundColor: t.surface2,
+                }}
+              >
+                <View style={{
+                  width: 18, height: 18, borderWidth: Math.max(t.elWidth, 1), borderColor: t.elColor,
+                  borderRadius: t.chipRadius, backgroundColor: on ? t.accent : t.surface2,
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {on ? <Check size={12} color={t.accentFg} /> : null}
+                </View>
+                <Text style={{ flex: 1, color: t.ink, fontSize: 14 }}>{m.display_name}</Text>
+              </Pressable>
+            );
+          })}
+          <Button variant="secondary" onPress={() => setOpen(false)}>Done</Button>
+        </View>
+      </Sheet>
+    </>
+  );
+}
+
 export function Field({ label, hint, children }) {
   const { t } = useTheme();
   return (

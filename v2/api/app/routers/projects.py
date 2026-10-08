@@ -8,10 +8,12 @@ from sqlmodel import delete, select
 
 from ..deps import Membership, Session, authorize, require_user_in_org
 from ..errors import APIError, not_found
-from ..models import (ChecklistTemplate, ChecklistTemplateItem, Project,
-                      ProjectChecklistItem)
+from ..models import (ChecklistItemAssignee, ChecklistTemplate,
+                      ChecklistTemplateItem, Project, ProjectChecklistItem)
 from ..pagination import envelope, page_params
 from ..services import instantiate
+from ..services.assignees import (assignee_map, assignees_of,
+                                  requested_assignees, set_assignees)
 from ..services.audit import audit
 from ..services.idempotent import add_deduped, deduped_response
 from ..services.notify import fan_out_assignment, fan_out_progress
@@ -24,6 +26,7 @@ class ItemSeed(BaseModel):
     hint: str | None = None
     required: bool = True
     due_date: date | None = None
+    assignee_ids: list[uuid.UUID] | None = Field(default=None, max_length=50)
 
 
 class ProjectIn(BaseModel):
@@ -68,11 +71,18 @@ async def create_project(org_id: uuid.UUID, body: ProjectIn, session: Session, b
     if deduped:
         return deduped_response(p)
     if body.checklist_items is not None:
+        seeded_ids = {u for it in body.checklist_items for u in (it.assignee_ids or [])}
+        for uid in seeded_ids:
+            await require_user_in_org(session, org_id, str(uid))
         for idx, it in enumerate(body.checklist_items):
-            session.add(ProjectChecklistItem(
+            item = ProjectChecklistItem(
                 org_id=org_id, project_id=p.id, ord=idx,
                 label=it.label, hint=it.hint, required=it.required,
-                due_date=it.due_date))
+                due_date=it.due_date,
+                assignee_id=it.assignee_ids[0] if it.assignee_ids else None)
+            session.add(item)
+            for uid in dict.fromkeys(it.assignee_ids or []):
+                session.add(ChecklistItemAssignee(item_id=item.id, user_id=uid))
     await audit(session, org_id=org_id, actor_id=member.user_id, action="project.created",
                 entity_type="project", entity_id=p.id, metadata={"title": p.title})
     # inbox row must commit with the assign — fan-out runs before commit
@@ -91,7 +101,9 @@ async def get_project(org_id: uuid.UUID, project_id: uuid.UUID, session: Session
         raise not_found("project")
     items = (await session.execute(select(ProjectChecklistItem).where(
         ProjectChecklistItem.project_id == project_id).order_by(ProjectChecklistItem.ord))).scalars().all()
-    return {"data": p, "checklist": items}
+    amap = await assignee_map(session, "checklist_item", [i.id for i in items])
+    return {"data": p,
+            "checklist": [{**i.model_dump(), "assignee_ids": amap[i.id]} for i in items]}
 
 
 class ProjectPatch(BaseModel):
@@ -310,19 +322,24 @@ async def list_checklist_items(org_id: uuid.UUID, session: Session,
          .join(Project, Project.id == ProjectChecklistItem.project_id)
          .where(ProjectChecklistItem.org_id == org_id))
     if assignee_id:
-        q = q.where(ProjectChecklistItem.assignee_id == assignee_id)
+        q = q.where(ProjectChecklistItem.id.in_(
+            select(ChecklistItemAssignee.item_id).where(
+                ChecklistItemAssignee.user_id == assignee_id)))
     if done is not None:
         q = q.where(ProjectChecklistItem.done == done)
     rows = (await session.execute(
         q.order_by(ProjectChecklistItem.due_date.asc().nulls_last(),
                    ProjectChecklistItem.created_at).limit(500))).all()
-    return {"data": [{**item.model_dump(), "project_title": proj_title}
+    amap = await assignee_map(session, "checklist_item", [i.id for i, _ in rows])
+    return {"data": [{**item.model_dump(), "project_title": proj_title,
+                      "assignee_ids": amap[item.id]}
                      for item, proj_title in rows]}
 
 
 class ChecklistItemPatch(BaseModel):
     done: bool | None = None
     assignee_id: uuid.UUID | None = None  # send explicit null to unassign
+    assignee_ids: list[uuid.UUID] | None = None  # explicit [] unassigns all
     label: str | None = Field(default=None, min_length=1, max_length=300)
     hint: str | None = None            # tri-state: absent → leave, null → clear
     required: bool | None = None
@@ -362,28 +379,36 @@ async def patch_item(org_id: uuid.UUID, item_id: uuid.UUID, body: ChecklistItemP
                     action="checklist_item.edited",
                     entity_type="project_checklist_item", entity_id=it.id,
                     metadata={"fields": sorted(structural)})
-    if not structural or ({"done", "assignee_id"} & set(body.model_fields_set)):
+    if not structural or ({"done", "assignee_id", "assignee_ids"}
+                          & set(body.model_fields_set)):
         if not member.at_least("officer"):
             raise APIError(403, "FORBIDDEN",
                            "Only officers can tick or assign checklist items")
 
-    assigned = None
-    if "assignee_id" in body.model_fields_set:
-        target = body.assignee_id
-        # officers may (un)assign themselves; assigning someone else needs adviser+
-        self_change = (str(target) == member.user_id
-                       or (target is None and str(it.assignee_id) == member.user_id))
+    new_ids = requested_assignees(body, set(body.model_fields_set))
+    current = await assignees_of(session, "checklist_item", it.id)
+    if new_ids is not None:
+        added = [u for u in new_ids if u not in set(current)]
+        removed = [u for u in current if u not in set(new_ids)]
+        # officers may (un)assign only themselves; touching others needs adviser+
+        self_change = {str(u) for u in (*added, *removed)} <= {member.user_id}
         if not self_change and not member.at_least("adviser"):
             raise APIError(403, "FORBIDDEN", "Only adviser+ can assign items to other members")
-        if target is not None:
-            await require_user_in_org(session, org_id, str(target))
-        if it.assignee_id != target:
-            it.assignee_id = target
-            assigned = target
+        for uid in added:
+            await require_user_in_org(session, org_id, str(uid))
+        if added or removed:
+            new_ids = await set_assignees(session, "checklist_item", it.id, new_ids)
+            it.assignee_id = new_ids[0] if new_ids else None
             await audit(session, org_id=org_id, actor_id=member.user_id,
-                        action="checklist_item.assigned" if target else "checklist_item.unassigned",
+                        action="checklist_item.assigned" if new_ids else "checklist_item.unassigned",
                         entity_type="project_checklist_item", entity_id=it.id,
-                        metadata={"assignee_id": str(target) if target else None})
+                        metadata={"assignee_ids": [str(u) for u in new_ids]})
+            for uid in added:
+                await fan_out_assignment(
+                    bg=bg, session=session, org_id=org_id,
+                    actor_id=member.user_id, kind="checklist_item",
+                    title=it.label, assignee_id=uid,
+                    entity_type="project", entity_id=it.project_id)
 
     if body.done is not None:
         it.done = body.done
@@ -393,13 +418,9 @@ async def patch_item(org_id: uuid.UUID, item_id: uuid.UUID, body: ChecklistItemP
                     action="checklist_item.checked" if body.done else "checklist_item.unchecked",
                     entity_type="project_checklist_item", entity_id=it.id)
 
-    if assigned is not None:
-        await fan_out_assignment(bg=bg, session=session, org_id=org_id,
-                                 actor_id=member.user_id, kind="checklist_item",
-                                 title=it.label, assignee_id=assigned,
-                                 entity_type="project", entity_id=it.project_id)
     await session.commit()
-    return {"data": it}
+    return {"data": {**it.model_dump(),
+                     "assignee_ids": new_ids if new_ids is not None else current}}
 
 
 # ── Checklist item structure: add / edit fields / reorder / delete ──────
@@ -425,16 +446,22 @@ async def add_checklist_item(org_id: uuid.UUID, project_id: uuid.UUID, body: Ite
     p = await _require_structural(session, org_id, project_id, member)
     top = (await session.execute(select(func.max(ProjectChecklistItem.ord)).where(
         ProjectChecklistItem.project_id == p.id))).scalar_one() or -1
+    ids = list(dict.fromkeys(body.assignee_ids or []))
+    for uid in ids:
+        await require_user_in_org(session, org_id, str(uid))
     it = ProjectChecklistItem(org_id=org_id, project_id=p.id, ord=top + 1,
                               label=body.label, hint=body.hint,
-                              required=body.required, due_date=body.due_date)
+                              required=body.required, due_date=body.due_date,
+                              assignee_id=ids[0] if ids else None)
     session.add(it)
+    for uid in ids:
+        session.add(ChecklistItemAssignee(item_id=it.id, user_id=uid))
     await audit(session, org_id=org_id, actor_id=member.user_id,
                 action="checklist_item.added",
                 entity_type="project_checklist_item", entity_id=it.id,
                 metadata={"label": it.label})
     await session.commit()
-    return {"data": it}
+    return {"data": {**it.model_dump(), "assignee_ids": ids}}
 
 
 class ReorderIn(BaseModel):
@@ -467,6 +494,8 @@ async def delete_checklist_item(org_id: uuid.UUID, item_id: uuid.UUID,
     if it is None or it.org_id != org_id:
         raise not_found("checklist item")
     await _require_structural(session, org_id, it.project_id, member)
+    await session.execute(delete(ChecklistItemAssignee).where(
+        ChecklistItemAssignee.item_id == it.id))
     await session.delete(it)
     await audit(session, org_id=org_id, actor_id=member.user_id,
                 action="checklist_item.deleted",
