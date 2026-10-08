@@ -79,7 +79,7 @@ export default function Members() {
       {tab === 'chart' ? (
         <Card style={{ gap: 8 }}>
           {chart.isLoading ? <Skeleton style={{ height: 160 }} /> : null}
-          {chart.isError ? <ErrorState error={chart.error} retry={chart.refetch} /> : null}
+          {chart.isError ? <ErrorState error={chart.error} retry={chart.refetch} what="members" /> : null}
           {chart.data ? (
             <>
               <Text style={{ fontSize: 12, color: t.ink3 }}>{chart.data.school_year}</Text>

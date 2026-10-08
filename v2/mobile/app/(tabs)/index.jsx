@@ -152,7 +152,7 @@ export default function Dashboard() {
       <Card style={{ gap: 8 }}>
         <Text style={{ fontSize: 13, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink2 }}>Duty roster today</Text>
         {att.isLoading ? <Skeleton style={{ height: 64 }} /> : null}
-        {att.isError ? <ErrorState error={att.error} retry={att.refetch} /> : null}
+        {att.isError ? <ErrorState error={att.error} retry={att.refetch} what="today" /> : null}
         {att.data && att.data.data.length === 0 && att.data.unaccounted_member_ids.length === 0 ? (
           <Empty icon={<CalendarCheck size={24} color={t.ink3} />} title="No duty entries yet" hint="Be the first to file today." />
         ) : null}

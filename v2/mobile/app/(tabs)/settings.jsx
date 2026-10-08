@@ -186,7 +186,7 @@ function Positions({ canWrite }) {
       <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>Positions (current school year)</Text>
       <Text style={{ fontSize: 12, color: t.ink3 }}>The org chart — who holds which office this year.</Text>
       {pos.isLoading ? <Skeleton style={{ height: 96 }} /> : null}
-      {pos.isError ? <ErrorState error={pos.error} retry={pos.refetch} /> : null}
+      {pos.isError ? <ErrorState error={pos.error} retry={pos.refetch} what="positions" /> : null}
       {pos.data && pos.data.data.length === 0 ? (
         <Empty title="No positions yet" hint="Add your first office — e.g. President, Secretary." />
       ) : null}
@@ -223,7 +223,7 @@ function Duty({ canWrite }) {
   });
 
   if (duty.isLoading || members.isLoading) return <Card><Skeleton style={{ height: 192 }} /></Card>;
-  if (duty.isError) return <Card><ErrorState error={duty.error} retry={duty.refetch} /></Card>;
+  if (duty.isError) return <Card><ErrorState error={duty.error} retry={duty.refetch} what="the duty schedule" /></Card>;
   const schedule = duty.data?.data ?? {};
   const activeM = members.data?.data.filter((m) => m.status === 'active') ?? [];
 
@@ -349,7 +349,7 @@ function Templates({ canWrite }) {
           match — or the template has no event type.
         </Text>
         {q.isLoading ? <Skeleton style={{ height: 96 }} /> : null}
-        {q.isError ? <ErrorState error={q.error} retry={q.refetch} /> : null}
+        {q.isError ? <ErrorState error={q.error} retry={q.refetch} what="templates" /> : null}
         {q.data && q.data.data.length === 0 ? (
           <Empty title="No templates"
                  hint={canWrite
@@ -451,7 +451,7 @@ function Chains({ canWrite }) {
           automatically. The doc type must match exactly.
         </Text>
         {c.isLoading ? <Skeleton style={{ height: 96 }} /> : null}
-        {c.isError ? <ErrorState error={c.error} retry={c.refetch} /> : null}
+        {c.isError ? <ErrorState error={c.error} retry={c.refetch} what="signatory chains" /> : null}
         {c.data && c.data.data.length === 0 ? (
           <Empty title="No chains"
                  hint={canWrite
@@ -557,7 +557,7 @@ function Contacts({ canWrite }) {
       <Card style={{ gap: 10 }}>
         <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>Quick reference — who to ask</Text>
         {c.isLoading ? <Skeleton style={{ height: 64 }} /> : null}
-        {c.isError ? <ErrorState error={c.error} retry={c.refetch} /> : null}
+        {c.isError ? <ErrorState error={c.error} retry={c.refetch} what="contacts" /> : null}
         {c.data && c.data.data.length === 0 ? (
           <Empty title="No contacts"
                  hint="e.g. Concept papers → your student affairs office. Owners add entries below." />
@@ -665,7 +665,7 @@ function Invites() {
       <View style={{ gap: 8 }}>
         <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>Pending join requests</Text>
         {reqs.isLoading ? <Skeleton style={{ height: 48 }} /> : null}
-        {reqs.isError ? <ErrorState error={reqs.error} retry={reqs.refetch} /> : null}
+        {reqs.isError ? <ErrorState error={reqs.error} retry={reqs.refetch} what="join requests" /> : null}
         {reqs.data?.data.length === 0 ? <Text style={{ fontSize: 12, color: t.ink3 }}>none</Text> : null}
         {reqs.data?.data.map((r) => (
           <View key={r.id} style={{ gap: 6, borderRadius: t.radiusCard, borderWidth: t.boxWidth, borderColor: t.boxColor, padding: 8 }}>
@@ -694,7 +694,7 @@ function Invites() {
           Anyone with the link joins instantly at the role you pick — it stops working after 2 days. Share carefully.
         </Text>
         {inv.isLoading ? <Skeleton style={{ height: 48 }} /> : null}
-        {inv.isError ? <ErrorState error={inv.error} retry={inv.refetch} /> : null}
+        {inv.isError ? <ErrorState error={inv.error} retry={inv.refetch} what="invites" /> : null}
         {inv.data && inv.data.data.length === 0 ? (
           <Text style={{ fontSize: 12, color: t.ink3 }}>no active invites</Text>
         ) : null}

@@ -241,7 +241,7 @@ export default function Journal() {
         filings count as extra duty.
       </HintBanner>
       {feed.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
-      {feed.isError ? <ErrorState error={feed.error} retry={feed.refetch} /> : null}
+      {feed.isError ? <ErrorState error={feed.error} retry={feed.refetch} what="the journal" /> : null}
     </View>
   );
 

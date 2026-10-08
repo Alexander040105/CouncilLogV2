@@ -97,7 +97,7 @@ export default function Attendance() {
           />
         </View>
         {week.isLoading ? <Skeleton style={{ height: 160 }} /> : null}
-        {week.isError ? <ErrorState error={week.error} retry={week.refetch} /> : null}
+        {week.isError ? <ErrorState error={week.error} retry={week.refetch} what="attendance" /> : null}
         {week.data && memberIds.length === 0 ? (
           <Empty icon={<CalendarCheck size={24} color={t.ink3} />} title="Nothing filed this week"
                  hint="Once members post journal entries or declare no-tasks, they'll show up here." />
@@ -152,7 +152,7 @@ export default function Attendance() {
           Assigned-day filing rate{summary.data ? ` · ${summary.data.school_year}` : ''}
         </Text>
         {summary.isLoading ? <Skeleton style={{ height: 128 }} /> : null}
-        {summary.isError ? <ErrorState error={summary.error} retry={summary.refetch} /> : null}
+        {summary.isError ? <ErrorState error={summary.error} retry={summary.refetch} what="the summary" /> : null}
         {summary.data && summary.data.data.length === 0 ? (
           <Empty title="No duty data yet" hint="Assigned days appear once an owner sets the duty schedule in Settings." />
         ) : null}

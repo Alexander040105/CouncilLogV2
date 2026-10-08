@@ -55,7 +55,7 @@ export function Screen({ children, refresh, pad = 16, scroll = true }) {
     <View style={{ flex: 1, padding: pad, gap: 14 }}>{children}</View>
   );
   return (
-    <View style={{ flex: 1, backgroundColor: t.surface }}>
+    <View style={{ flex: 1, backgroundColor: t.surface, paddingTop: insets.top }}>
       <SyncBanner />
       {body}
     </View>
@@ -334,13 +334,13 @@ export function Empty({ icon, title, hint, action }) {
   );
 }
 
-export function ErrorState({ error, retry }) {
+export function ErrorState({ error, retry, what }) {
   const { t } = useTheme();
   return (
     <Empty
       icon={<AlertTriangle size={24} color={t.alert} />}
-      title="Couldn't load this"
-      hint={error?.message ?? 'Something went wrong — check your connection.'}
+      title={what ? `Couldn't load ${what}` : "Couldn't load this"}
+      hint={error?.message ?? 'Something went wrong — check your connection and try again.'}
       action={retry ? <Button variant="secondary" onPress={retry}>Try again</Button> : undefined}
     />
   );

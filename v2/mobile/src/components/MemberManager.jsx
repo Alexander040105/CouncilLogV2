@@ -50,7 +50,7 @@ export function MemberManager() {
   });
 
   if (members.isLoading) return <Skeleton style={{ height: 160 }} />;
-  if (members.isError) return <ErrorState error={members.error} retry={members.refetch} />;
+  if (members.isError) return <ErrorState error={members.error} retry={members.refetch} what="members" />;
   const rows = members.data?.data.filter((m) => m.status === 'active') ?? [];
 
   if (rows.length === 0) {

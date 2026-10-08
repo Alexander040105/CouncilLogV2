@@ -62,7 +62,7 @@ export default function Agenda() {
         description="Everything with a date — task deadlines, checklist items, project targets — in order."
       />
       {loading ? <Skeleton style={{ height: 192 }} /> : null}
-      {failed ? <ErrorState error={failed} /> : null}
+      {failed ? <ErrorState error={failed} what="your agenda" /> : null}
       {!loading && days.length === 0 ? (
         <Empty icon={<CalendarDays size={24} color={t.ink3} />} title="Nothing scheduled"
                hint="Due dates on tasks and checklist items, and project target dates, land here." />

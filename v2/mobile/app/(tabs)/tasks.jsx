@@ -339,7 +339,7 @@ export default function Tasks() {
         ))}
       </View>
       {tasks.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
-      {tasks.isError ? <ErrorState error={tasks.error} retry={tasks.refetch} /> : null}
+      {tasks.isError ? <ErrorState error={tasks.error} retry={tasks.refetch} what="tasks" /> : null}
     </View>
   );
 
@@ -386,7 +386,7 @@ export default function Tasks() {
       <Sheet open={!!focusId} onClose={closeDetail}
              title={canEditTask ? 'Edit task' : 'Task'}>
         {detail.isLoading ? <Skeleton style={{ height: 160 }} /> : null}
-        {detail.isError ? <ErrorState error={detail.error} retry={detail.refetch} /> : null}
+        {detail.isError ? <ErrorState error={detail.error} retry={detail.refetch} what="this task" /> : null}
         {task ? (
           <View style={{ gap: 14 }}>
             {canEditTask ? (

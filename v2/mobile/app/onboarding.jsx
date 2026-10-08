@@ -2,6 +2,7 @@
  *  join, with the signed-in footer escape (org-less users have nowhere else). */
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react-native';
@@ -24,6 +25,7 @@ export default function Onboarding() {
   const { session } = useAuth();
   const toast = useToast();
   const { t } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const me = useMe();
   const memberships = me.data?.memberships ?? [];
@@ -94,7 +96,7 @@ export default function Onboarding() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: t.surface }}
-      contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 16, paddingTop: 16 + insets.top, paddingBottom: 16 + insets.bottom }}
       keyboardShouldPersistTaps="handled"
     >
       <Card style={{ width: '100%', maxWidth: 430, gap: 16 }}>

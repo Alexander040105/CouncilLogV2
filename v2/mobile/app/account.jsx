@@ -183,7 +183,7 @@ export default function Account() {
     return (
       <Screen>
         <PageHeader title="Account" description="Your name, photo, security, and what you can do." />
-        <ErrorState error={meQ.error} retry={meQ.refetch} />
+        <ErrorState error={meQ.error} retry={meQ.refetch} what="your account" />
       </Screen>
     );
   }

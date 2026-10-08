@@ -159,7 +159,7 @@ export default function ProjectDetail() {
   });
 
   if (q.isLoading) return <Screen><Skeleton style={{ height: 256 }} /></Screen>;
-  if (q.isError) return <Screen><ErrorState error={q.error} retry={q.refetch} /></Screen>;
+  if (q.isError) return <Screen><ErrorState error={q.error} retry={q.refetch} what="this project" /></Screen>;
   const p = q.data?.data;
   if (!p) return <Screen><Empty title="Project not found" /></Screen>;
 

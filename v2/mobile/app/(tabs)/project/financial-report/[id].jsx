@@ -31,7 +31,7 @@ export default function FinancialReport() {
   });
 
   if (q.isLoading) return <Screen><Skeleton style={{ height: 320 }} /></Screen>;
-  if (q.isError) return <Screen><ErrorState error={q.error} retry={q.refetch} /></Screen>;
+  if (q.isError) return <Screen><ErrorState error={q.error} retry={q.refetch} what="this report" /></Screen>;
   const d = q.data;
   const sig = d.signatories;
   const label = { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, color: t.ink3 };

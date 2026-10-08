@@ -80,7 +80,7 @@ export default function Budget() {
       </View>
 
       {fund.isLoading ? <Skeleton style={{ height: 140 }} /> : null}
-      {fund.isError ? <Card><ErrorState error={fund.error} retry={fund.refetch} /></Card> : null}
+      {fund.isError ? <Card><ErrorState error={fund.error} retry={fund.refetch} what="the fund" /></Card> : null}
       {fund.isSuccess ? (
         <Card style={{ gap: 4 }}>
           <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, color: t.ink3 }}>Bankbook balance</Text>

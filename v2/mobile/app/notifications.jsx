@@ -121,7 +121,7 @@ export default function Notifications() {
         ) : null}
       />
       {notifs.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
-      {notifs.isError ? <ErrorState error={notifs.error} retry={notifs.refetch} /> : null}
+      {notifs.isError ? <ErrorState error={notifs.error} retry={notifs.refetch} what="notifications" /> : null}
     </View>
   );
 

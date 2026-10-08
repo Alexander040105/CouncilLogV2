@@ -4,6 +4,7 @@
  *  redirect URLs); in a dev build it's councilog:// — see mobile/README.md. */
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
@@ -19,6 +20,7 @@ export default function Login() {
   const { session } = useAuth();
   const router = useRouter();
   const { t } = useTheme();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   // 'in' sign-in | 'up' sign-up | 'forgot' password reset
@@ -95,7 +97,7 @@ export default function Login() {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: t.surface }}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 16, paddingTop: 16 + insets.top, paddingBottom: 16 + insets.bottom }} keyboardShouldPersistTaps="handled">
         <Card style={{ width: '100%', maxWidth: 380, gap: 16 }}>
           <Text style={{ fontSize: 20, fontWeight: t.headingWeight, color: t.ink, textTransform: 'uppercase', letterSpacing: 0.8 }}>CounciLog</Text>
           <Text style={{ fontSize: 14, color: t.ink3 }}>
