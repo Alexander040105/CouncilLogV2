@@ -1,6 +1,16 @@
 {
   "updates": [
     {
+      "date": "2026-10-08",
+      "level": "notable",
+      "notes": [
+        "Invite links work for anyone you share them with — they last 2 days, and owners can delete one early",
+        "Tasks and checklist items can be assigned to several people — first to finish closes it for everyone",
+        "Belong to more than one organization? You now pick which one to open when you sign in — no more guessing",
+        "Screens no longer hide under your phone's status bar, and errors now say what failed with a retry"
+      ]
+    },
+    {
       "date": "2026-10-05",
       "level": "notable",
       "notes": [
