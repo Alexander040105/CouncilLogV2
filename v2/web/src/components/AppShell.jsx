@@ -3,11 +3,12 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useEffect, useState } from 'react';
 import {
   BookOpen, CalendarCheck, CalendarDays, FileText, FolderKanban, ListTodo, LogOut,
-  MoreHorizontal, ChevronRight, NotebookPen, Settings, ShieldCheck, Sun, Users,
+  MoreHorizontal, Check, ChevronDown, ChevronRight, NotebookPen, Settings, ShieldCheck, Sun, Users,
   Wallet,
 } from 'lucide-react';
 import { get } from '../lib/api';
-import { atLeast, currentOrgId, setCurrentOrg } from '../lib/org';
+import { atLeast, currentOrgId, orgPicked, setCurrentOrg, setOrgPicked } from '../lib/org';
+import { humanize } from '../lib/labels';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
 import { Avatar, ErrorState, Sheet, ThemePicker } from './ui';
@@ -36,6 +37,7 @@ export function AppShell() {
   const nav = useNavigate();
   const { pathname } = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [orgSheet, setOrgSheet] = useState(false);
   const me = useQuery({
     queryKey: ['me'],
     queryFn: () => get('/me'),
@@ -50,8 +52,13 @@ export function AppShell() {
   const orgId = currentOrgId();
   const active = memberships.find((m) => m.org_id === orgId) ?? memberships[0];
   useEffect(() => {
-    if (active && active.org_id !== currentOrgId()) setCurrentOrg(active.org_id);
-  }, [active]);
+    // Multi-org sessions must not silently default — only persist the fallback
+    // once the user has explicitly picked (or has a single membership anyway).
+    if (active && active.org_id !== currentOrgId()
+        && (memberships.length <= 1 || orgPicked())) {
+      setCurrentOrg(active.org_id);
+    }
+  }, [active, memberships.length]);
   const isAdmin = active ? atLeast(active.role, 'adviser') : false;
   const visible = NAV.filter((n) => (!n.admin || isAdmin) && (!n.platform || me.data?.is_admin));
   const tabs = visible.slice(0, TAB_COUNT);
@@ -64,30 +71,27 @@ export function AppShell() {
     if (me.isSuccess && memberships.length === 0 && !orglessOk) nav('/onboarding');
   }, [me.isSuccess, memberships.length, pathname, nav]);
 
+  useEffect(() => {
+    // 2+ orgs and no explicit pick yet this visit → the picker, not a default.
+    if (me.isSuccess && memberships.length > 1 && !orgPicked() && pathname !== '/orgs') {
+      nav('/orgs', { replace: true });
+    }
+  }, [me.isSuccess, memberships.length, pathname, nav]);
+
   if (loading || !session) return null;
 
-  const signOut = () => { supabase.auth.signOut(); setCurrentOrg(null); };
+  const signOut = () => { supabase.auth.signOut(); setCurrentOrg(null); setOrgPicked(false); };
 
   const orgSwitcher = (
     <div>
-      <label htmlFor="org-switcher" className="mb-1 block text-xs font-medium text-[var(--color-ink-3)]">
-        Organization
-      </label>
-      <select
-        id="org-switcher"
-        className="w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-3)] p-2 text-sm"
-        value={active?.org_id ?? ''}
-        onChange={(e) => {
-          if (e.target.value === '__new') nav('/onboarding');
-          else setCurrentOrg(e.target.value);
-        }}
+      <span className="label-strong mb-1 block text-[10px] text-[var(--color-ink-3)]">Organization</span>
+      <button
+        onClick={() => setOrgSheet(true)}
+        className="flex w-full items-center justify-between gap-2 rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-3)] p-2 text-left text-sm hover:bg-[var(--color-surface)]"
       >
-        {memberships.map((m) => (
-          <option key={m.org_id} value={m.org_id}>{m.org_name}</option>
-        ))}
-        {memberships.length === 0 && <option value="">no org</option>}
-        <option value="__new">+ create or join…</option>
-      </select>
+        <span className="min-w-0 flex-1 truncate">{active?.org_name ?? 'No org'}</span>
+        <ChevronDown size={14} className="shrink-0 text-[var(--color-ink-3)]" aria-hidden />
+      </button>
     </div>
   );
 
@@ -190,6 +194,31 @@ export function AppShell() {
             ))}
           </nav>
           {accountFooter}
+        </div>
+      </Sheet>
+
+      {/* Org switcher — shared by the sidebar button and the More sheet */}
+      <Sheet open={orgSheet} onClose={() => setOrgSheet(false)} title="Switch organization">
+        <div className="space-y-1">
+          {memberships.map((m) => (
+            <button
+              key={m.org_id}
+              onClick={() => { setCurrentOrg(m.org_id); setOrgSheet(false); setMoreOpen(false); }}
+              className="flex w-full items-center gap-3 rounded-[var(--radius-input)] px-3 py-3 text-left hover:bg-[var(--color-surface-3)]"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">{m.org_name}</span>
+                <span className="text-xs text-[var(--color-ink-3)]">{humanize(m.role)}</span>
+              </span>
+              {m.org_id === active?.org_id && <Check size={16} className="shrink-0 text-[var(--color-accent)]" aria-hidden />}
+            </button>
+          ))}
+          <button
+            onClick={() => { setOrgSheet(false); setMoreOpen(false); nav('/onboarding'); }}
+            className="w-full rounded-[var(--radius-input)] px-3 py-3 text-left text-sm text-[var(--color-ink-3)] hover:bg-[var(--color-surface-3)]"
+          >
+            + Create or join another organization
+          </button>
         </div>
       </Sheet>
     </div>
