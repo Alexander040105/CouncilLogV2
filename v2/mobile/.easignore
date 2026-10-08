@@ -1,0 +1,5 @@
+# Never ship local env files in the EAS build archive — they hold
+# server-side secrets, and `expo prebuild` refuses to load the `ENV` key
+# anyway. Build-time values come from eas.json's `env` block.
+.env
+.env.*
