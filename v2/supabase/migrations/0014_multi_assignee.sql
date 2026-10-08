@@ -25,3 +25,14 @@ insert into checklist_item_assignees (item_id, user_id)
 -- "tasks/items assigned to me" lookups
 create index if not exists task_assignees_by_user on task_assignees (user_id);
 create index if not exists checklist_item_assignees_by_user on checklist_item_assignees (user_id);
+
+-- ── RLS (defense-in-depth; service role bypasses) ──────────────────────
+alter table task_assignees            enable row level security;
+alter table checklist_item_assignees  enable row level security;
+
+create policy task_assignees_select on task_assignees
+  for select using (exists (select 1 from tasks t
+                            where t.id = task_id and is_org_member(t.org_id)));
+create policy cia_select on checklist_item_assignees
+  for select using (exists (select 1 from project_checklist_items i
+                            where i.id = item_id and is_org_member(i.org_id)));
