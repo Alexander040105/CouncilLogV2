@@ -176,6 +176,11 @@ export default function Journal() {
   // same scoping rule for tasks — the API rejects a task from another project
   const taskOptions = (tasks.data?.data ?? [])
     .filter((x) => !projectId || !x.project_id || x.project_id === projectId);
+  // editing an entry whose task closed since: it's not in the open list —
+  // show it so the link reads true instead of displaying "No task"
+  if (taskId && !taskOptions.some((x) => x.id === taskId) && editing?.task_id === taskId) {
+    taskOptions.push({ id: taskId, title: editing.task_title ?? 'Linked task' });
+  }
   const pickProjectId = (pid) => {
     setProjectId(pid);
     // a paper/task tied to another project can't stay selected under this one
