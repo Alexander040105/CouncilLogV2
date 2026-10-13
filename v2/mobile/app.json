@@ -18,6 +18,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.councilog.app",
+      "versionCode": 3,
       "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
