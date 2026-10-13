@@ -24,15 +24,18 @@ def _jsonb_as_json(element, compiler, **kw):
 from app.deps import Membership
 from app.errors import APIError
 from app.models import (AttendanceDay, AuditLog, Document, DocumentMovement,
-                        DutySchedule, JournalEntry, JournalPhoto, OrgMember,
-                        Organization, Profile, Project, SchoolYear)
+                        DutySchedule, JournalEntry, JournalEntryComment,
+                        JournalPhoto, OrgMember, Organization, Profile,
+                        Project, SchoolYear, Task)
 from app.routers.daily import EntryIn, EntryPatch, create_entry, feed, patch_entry
 from app.routers.documents import list_documents
 
 TABLES = (Organization.__table__, Profile.__table__, OrgMember.__table__,
           SchoolYear.__table__, DutySchedule.__table__, AttendanceDay.__table__,
           Project.__table__, Document.__table__, DocumentMovement.__table__,
-          JournalEntry.__table__, JournalPhoto.__table__, AuditLog.__table__)
+          Task.__table__, JournalEntry.__table__,
+          JournalEntryComment.__table__, JournalPhoto.__table__,
+          AuditLog.__table__)
 
 
 @pytest_asyncio.fixture

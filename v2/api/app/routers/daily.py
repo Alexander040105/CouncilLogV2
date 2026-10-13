@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlmodel import select
@@ -9,11 +9,13 @@ from sqlmodel import select
 from ..deps import Membership, Session, authorize, require_user_in_org
 from ..errors import APIError, not_found
 from ..models import (AttendanceDay, Document, DutySchedule, JournalEntry,
-                      JournalPhoto, OrgMember, Profile, Project, SchoolYear)
+                      JournalEntryComment, JournalPhoto, OrgMember, Organization,
+                      Profile, Project, SchoolYear, Task)
 from ..pagination import envelope, org_today, page_params
 from ..services.audit import audit
 from ..services.idempotent import add_deduped, deduped_response
 from ..services import storage
+from ..services.notify import push_to_user, record_notification
 from ..services.ratelimit import check_rate_limit
 
 router = APIRouter(tags=["daily"])
@@ -71,6 +73,7 @@ class EntryIn(BaseModel):
     description: str = Field(min_length=1, max_length=4000)
     project_id: uuid.UUID | None = None
     document_id: uuid.UUID | None = None
+    task_id: uuid.UUID | None = None
     photos: list[dict] = []  # [{storage_path, mime, byte_size}]
     client_request_id: str | None = Field(default=None, max_length=64)
 
@@ -88,6 +91,19 @@ async def _linked_doc(session, org_id: uuid.UUID, document_id: uuid.UUID,
     return doc
 
 
+async def _linked_task(session, org_id: uuid.UUID, task_id: uuid.UUID,
+                       project_id: uuid.UUID | None) -> Task:
+    """The task a daily reports progress on — same org + project rules as
+    _linked_doc: same-org only, no contradicting project."""
+    task = await session.get(Task, task_id)
+    if task is None or task.org_id != org_id:
+        raise not_found("task")
+    if project_id is not None and task.project_id is not None and task.project_id != project_id:
+        raise APIError(422, "TASK_PROJECT_MISMATCH",
+                       "That task belongs to a different project")
+    return task
+
+
 @router.post("/orgs/{org_id}/journal", status_code=201)
 async def create_entry(org_id: uuid.UUID, body: EntryIn, session: Session, member: Membership = Depends(authorize("member"))):
     day = body.entry_date or org_today()
@@ -99,11 +115,15 @@ async def create_entry(org_id: uuid.UUID, body: EntryIn, session: Session, membe
     doc = None
     if body.document_id:
         doc = await _linked_doc(session, org_id, body.document_id, body.project_id)
-    # tagging a paper without naming a project still counts as project work
-    project_id = body.project_id or (doc.project_id if doc else None)
+    task = None
+    if body.task_id:
+        task = await _linked_task(session, org_id, body.task_id, body.project_id)
+    # tagging a paper/task without naming a project still counts as project work
+    project_id = body.project_id or (doc.project_id if doc else None) \
+        or (task.project_id if task else None)
     entry = JournalEntry(org_id=org_id, member_id=uid, entry_date=day,
                          description=body.description, project_id=project_id,
-                         document_id=body.document_id,
+                         document_id=body.document_id, task_id=body.task_id,
                          client_request_id=body.client_request_id)
     entry, deduped = await add_deduped(
         session, entry, JournalEntry, org_id=org_id,
@@ -130,7 +150,7 @@ async def create_entry(org_id: uuid.UUID, body: EntryIn, session: Session, membe
 
 
 @router.get("/orgs/{org_id}/journal")
-async def feed(org_id: uuid.UUID, session: Session, day: date | None = None, member_id: uuid.UUID | None = None, project_id: uuid.UUID | None = None, document_id: uuid.UUID | None = None, page: int = 1, pageSize: int = 20, member: Membership = Depends(authorize())):
+async def feed(org_id: uuid.UUID, session: Session, day: date | None = None, member_id: uuid.UUID | None = None, project_id: uuid.UUID | None = None, document_id: uuid.UUID | None = None, task_id: uuid.UUID | None = None, page: int = 1, pageSize: int = 20, member: Membership = Depends(authorize())):
     page, page_size = page_params(page, pageSize)
     q = select(JournalEntry).where(JournalEntry.org_id == org_id)
     if day:
@@ -138,14 +158,19 @@ async def feed(org_id: uuid.UUID, session: Session, day: date | None = None, mem
     if member_id:
         q = q.where(JournalEntry.member_id == member_id)
     if project_id:
-        # a daily counts as project work when it tags the project directly
-        # or one of the project's papers
+        # a daily counts as project work when it tags the project directly,
+        # one of the project's papers, or one of its tasks
         project_docs = select(Document.id).where(
             Document.org_id == org_id, Document.project_id == project_id)
+        project_tasks = select(Task.id).where(
+            Task.org_id == org_id, Task.project_id == project_id)
         q = q.where(or_(JournalEntry.project_id == project_id,
-                        JournalEntry.document_id.in_(project_docs)))
+                        JournalEntry.document_id.in_(project_docs),
+                        JournalEntry.task_id.in_(project_tasks)))
     if document_id:
         q = q.where(JournalEntry.document_id == document_id)
+    if task_id:
+        q = q.where(JournalEntry.task_id == task_id)
     total = (await session.execute(
         select(func.count()).select_from(q.subquery()))).scalar_one()
     rows = (await session.execute(
@@ -156,8 +181,24 @@ async def feed(org_id: uuid.UUID, session: Session, day: date | None = None, mem
     pmap: dict[uuid.UUID, list[JournalPhoto]] = {}
     for p in photos:
         pmap.setdefault(p.entry_id, []).append(p)
+    # batched enrichments — comment counts + linked task titles, no N+1
+    ids = [e.id for e in rows]
+    counts: dict[uuid.UUID, int] = {}
+    if ids:
+        for eid, n in (await session.execute(
+                select(JournalEntryComment.entry_id, func.count())
+                .where(JournalEntryComment.entry_id.in_(ids))
+                .group_by(JournalEntryComment.entry_id))).all():
+            counts[eid] = n
+    task_ids = {e.task_id for e in rows if e.task_id}
+    titles: dict[uuid.UUID, str] = {}
+    if task_ids:
+        titles = {t.id: t.title for t in (await session.execute(
+            select(Task).where(Task.id.in_(task_ids)))).scalars().all()}
     return envelope(
-        [{**e.model_dump(), "photos": [p.model_dump() for p in pmap.get(e.id, [])]} for e in rows],
+        [{**e.model_dump(), "photos": [p.model_dump() for p in pmap.get(e.id, [])],
+          "comment_count": counts.get(e.id, 0),
+          "task_title": titles.get(e.task_id)} for e in rows],
         page, page_size, total)
 
 
@@ -165,6 +206,7 @@ class EntryPatch(BaseModel):
     description: str | None = Field(default=None, min_length=1, max_length=4000)
     project_id: uuid.UUID | None = None
     document_id: uuid.UUID | None = None
+    task_id: uuid.UUID | None = None
     # photo edits: same validation as create — paths must be org-scoped and
     # already uploaded; removals must be photos of this entry
     add_photos: list[dict] | None = None      # [{storage_path, mime, byte_size}]
@@ -205,6 +247,16 @@ async def patch_entry(org_id: uuid.UUID, entry_id: uuid.UUID, body: EntryPatch, 
         else:
             await _linked_doc(session, org_id, body.document_id, e.project_id)
             e.document_id = body.document_id
+    # task_id too — linking a task whose project differs is a 422; when the
+    # entry has no project yet it inherits the task's, matching create
+    if "task_id" in body.model_fields_set:
+        if body.task_id is None:
+            e.task_id = None
+        else:
+            task = await _linked_task(session, org_id, body.task_id, e.project_id)
+            e.task_id = body.task_id
+            if e.project_id is None and task.project_id is not None:
+                e.project_id = task.project_id
     e.updated_at = datetime.now(timezone.utc)
 
     removed_paths: list[str] = []
@@ -281,6 +333,54 @@ async def delete_entry(org_id: uuid.UUID, entry_id: uuid.UUID, session: Session,
         except Exception:
             pass
     return {"data": {"deleted": True, "id": str(entry_id)}}
+
+
+# ── Journal comments — members discuss each other's dailies ─────────────
+class JournalCommentIn(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+@router.get("/orgs/{org_id}/journal/{entry_id}/comments")
+async def list_entry_comments(org_id: uuid.UUID, entry_id: uuid.UUID, session: Session,
+                              member: Membership = Depends(authorize())):
+    e = await session.get(JournalEntry, entry_id)
+    if e is None or e.org_id != org_id:
+        raise not_found("entry")
+    rows = (await session.execute(
+        select(JournalEntryComment, Profile)
+        .outerjoin(Profile, Profile.id == JournalEntryComment.author_id)
+        .where(JournalEntryComment.entry_id == entry_id)
+        .order_by(JournalEntryComment.created_at.asc()))).all()
+    return {"data": [{**c.model_dump(), "author_name": p.display_name if p else "Someone"}
+                     for c, p in rows]}
+
+
+@router.post("/orgs/{org_id}/journal/{entry_id}/comments", status_code=201)
+async def add_entry_comment(org_id: uuid.UUID, entry_id: uuid.UUID, body: JournalCommentIn,
+                            session: Session, bg: BackgroundTasks,
+                            member: Membership = Depends(authorize())):
+    e = await session.get(JournalEntry, entry_id)
+    if e is None or e.org_id != org_id:
+        raise not_found("entry")
+    c = JournalEntryComment(entry_id=e.id, body=body.body,
+                            author_id=uuid.UUID(member.user_id))
+    session.add(c)
+    # inbox + push for the entry's author — a comment isn't worth an email
+    if str(e.member_id) != member.user_id:
+        org = await session.get(Organization, org_id)
+        actor = await session.get(Profile, uuid.UUID(member.user_id))
+        by = actor.display_name if actor else "someone"
+        record_notification(session, org_id=org_id, user_id=e.member_id,
+                            kind="journal_commented",
+                            payload={"entity_type": "journal_entry",
+                                     "entity_id": str(e.id), "by": by})
+        bg.add_task(push_to_user, e.member_id,
+                    title=f"{org.name if org else 'CounciLog'} · {by} commented on your log",
+                    body=body.body[:120],
+                    data={"entity_type": "journal_entry", "entity_id": str(e.id),
+                          "kind": "journal_commented"})
+    await session.commit()
+    return {"data": c}
 
 
 @router.get("/orgs/{org_id}/photos/{photo_id}/url")
