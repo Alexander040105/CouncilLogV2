@@ -372,6 +372,14 @@ eas update --channel preview --message "short description"  # JS-only fixes, OTA
 eas build -p android --profile preview                      # native changes → new APK
 ```
 
+`eas update` reaches every installed phone silently — no APK, no reinstall —
+but it can only carry JavaScript/UI changes. The update must match the app's
+`runtimeVersion` (app.json `version` — `appVersion` policy), so bumping the
+app version or adding a native module (e.g. `expo-image-manipulator`, which
+powered v1.2.0's upload compression) forces a new APK first; after that,
+later JS changes land OTA again. Upload compression, org colors, and the
+Activity feed shipped this way in 1.2.0.
+
 **Every release needs release notes** — the update banner and More →
 What's new both read `web/public/updates.json`. Before shipping:
 
