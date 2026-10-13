@@ -128,6 +128,7 @@ class JournalEntry(SQLModel, table=True):
     entry_date: date = Field(sa_column=Column(Date))
     description: str
     project_id: uuid.UUID | None = Field(default=None, foreign_key="projects.id")
+    document_id: uuid.UUID | None = Field(default=None, foreign_key="documents.id")
     client_request_id: str | None = None
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
     updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))

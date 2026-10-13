@@ -3,13 +3,13 @@ from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import select
 
 from ..deps import Membership, Session, authorize, require_user_in_org
 from ..errors import APIError, not_found
-from ..models import (AttendanceDay, DutySchedule, JournalEntry, JournalPhoto,
-                      OrgMember, Profile, Project, SchoolYear)
+from ..models import (AttendanceDay, Document, DutySchedule, JournalEntry,
+                      JournalPhoto, OrgMember, Profile, Project, SchoolYear)
 from ..pagination import envelope, org_today, page_params
 from ..services.audit import audit
 from ..services.idempotent import add_deduped, deduped_response
@@ -70,8 +70,22 @@ class EntryIn(BaseModel):
     entry_date: date | None = None
     description: str = Field(min_length=1, max_length=4000)
     project_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
     photos: list[dict] = []  # [{storage_path, mime, byte_size}]
     client_request_id: str | None = Field(default=None, max_length=64)
+
+
+async def _linked_doc(session, org_id: uuid.UUID, document_id: uuid.UUID,
+                      project_id: uuid.UUID | None) -> Document:
+    """The paper a daily tags: must live in this org, and when both a project
+    and a paper are named they can't point at different projects."""
+    doc = await session.get(Document, document_id)
+    if doc is None or doc.org_id != org_id:
+        raise not_found("document")
+    if project_id is not None and doc.project_id is not None and doc.project_id != project_id:
+        raise APIError(422, "PAPER_PROJECT_MISMATCH",
+                       "That paper belongs to a different project")
+    return doc
 
 
 @router.post("/orgs/{org_id}/journal", status_code=201)
@@ -82,8 +96,14 @@ async def create_entry(org_id: uuid.UUID, body: EntryIn, session: Session, membe
         proj = await session.get(Project, body.project_id)
         if proj is None or proj.org_id != org_id:
             raise not_found("project")
+    doc = None
+    if body.document_id:
+        doc = await _linked_doc(session, org_id, body.document_id, body.project_id)
+    # tagging a paper without naming a project still counts as project work
+    project_id = body.project_id or (doc.project_id if doc else None)
     entry = JournalEntry(org_id=org_id, member_id=uid, entry_date=day,
-                         description=body.description, project_id=body.project_id,
+                         description=body.description, project_id=project_id,
+                         document_id=body.document_id,
                          client_request_id=body.client_request_id)
     entry, deduped = await add_deduped(
         session, entry, JournalEntry, org_id=org_id,
@@ -110,7 +130,7 @@ async def create_entry(org_id: uuid.UUID, body: EntryIn, session: Session, membe
 
 
 @router.get("/orgs/{org_id}/journal")
-async def feed(org_id: uuid.UUID, session: Session, day: date | None = None, member_id: uuid.UUID | None = None, project_id: uuid.UUID | None = None, page: int = 1, pageSize: int = 20, member: Membership = Depends(authorize())):
+async def feed(org_id: uuid.UUID, session: Session, day: date | None = None, member_id: uuid.UUID | None = None, project_id: uuid.UUID | None = None, document_id: uuid.UUID | None = None, page: int = 1, pageSize: int = 20, member: Membership = Depends(authorize())):
     page, page_size = page_params(page, pageSize)
     q = select(JournalEntry).where(JournalEntry.org_id == org_id)
     if day:
@@ -118,7 +138,14 @@ async def feed(org_id: uuid.UUID, session: Session, day: date | None = None, mem
     if member_id:
         q = q.where(JournalEntry.member_id == member_id)
     if project_id:
-        q = q.where(JournalEntry.project_id == project_id)
+        # a daily counts as project work when it tags the project directly
+        # or one of the project's papers
+        project_docs = select(Document.id).where(
+            Document.org_id == org_id, Document.project_id == project_id)
+        q = q.where(or_(JournalEntry.project_id == project_id,
+                        JournalEntry.document_id.in_(project_docs)))
+    if document_id:
+        q = q.where(JournalEntry.document_id == document_id)
     total = (await session.execute(
         select(func.count()).select_from(q.subquery()))).scalar_one()
     rows = (await session.execute(
@@ -137,6 +164,7 @@ async def feed(org_id: uuid.UUID, session: Session, day: date | None = None, mem
 class EntryPatch(BaseModel):
     description: str | None = Field(default=None, min_length=1, max_length=4000)
     project_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
     # photo edits: same validation as create — paths must be org-scoped and
     # already uploaded; removals must be photos of this entry
     add_photos: list[dict] | None = None      # [{storage_path, mime, byte_size}]
@@ -169,6 +197,14 @@ async def patch_entry(org_id: uuid.UUID, entry_id: uuid.UUID, body: EntryPatch, 
             if proj is None or proj.org_id != org_id:
                 raise not_found("project")
             e.project_id = body.project_id
+    # document_id is tri-state the same way; the paper's project must not
+    # contradict the entry's project
+    if "document_id" in body.model_fields_set:
+        if body.document_id is None:
+            e.document_id = None
+        else:
+            await _linked_doc(session, org_id, body.document_id, e.project_id)
+            e.document_id = body.document_id
     e.updated_at = datetime.now(timezone.utc)
 
     removed_paths: list[str] = []

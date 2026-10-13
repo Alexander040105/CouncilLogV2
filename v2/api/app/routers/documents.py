@@ -121,11 +121,14 @@ class DocIn(BaseModel):
 @router.get("/orgs/{org_id}/documents")
 async def list_documents(org_id: uuid.UUID, session: Session, status: str | None = None,
                          held_by: str | None = None,
+                         project_id: uuid.UUID | None = None,
                          page: int = 1, pageSize: int = 20, member: Membership = Depends(authorize())):
     page, page_size = page_params(page, pageSize)
     q = select(Document).where(Document.org_id == org_id)
     if status:
         q = q.where(Document.status == status)
+    if project_id:
+        q = q.where(Document.project_id == project_id)
     if held_by == "me":
         # papers physically with me = my movement is the newest on the doc.
         # "Newest" = max(created_at), ties broken by id so equal timestamps
@@ -148,7 +151,22 @@ async def list_documents(org_id: uuid.UUID, session: Session, status: str | None
     rows = (await session.execute(
         q.order_by(Document.created_at.desc()).offset((page - 1) * page_size).limit(page_size))
     ).scalars().all()
-    return envelope(rows, page, page_size, total)
+    # last hand-off per paper — "where it sits now + who moved it" without a
+    # detail fetch per row. Ordered ascending, so the last write per doc wins.
+    moves = (await session.execute(
+        select(DocumentMovement)
+        .where(DocumentMovement.document_id.in_([d.id for d in rows]))
+        .order_by(DocumentMovement.created_at))).scalars().all() if rows else []
+    latest: dict[uuid.UUID, DocumentMovement] = {}
+    for mv in moves:
+        latest[mv.document_id] = mv
+    return envelope(
+        [{**d.model_dump(),
+          "current_location": latest[d.id].location_text if d.id in latest else None,
+          "last_moved_by": latest[d.id].moved_by if d.id in latest else None,
+          "last_moved_at": latest[d.id].created_at if d.id in latest else None}
+         for d in rows],
+        page, page_size, total)
 
 
 @router.post("/orgs/{org_id}/documents", status_code=201)

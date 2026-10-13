@@ -363,6 +363,31 @@ s, d = api("GET", f"/orgs/{org_a}/documents/{did}", tok_a, org=org_a)
 check("location falls back to previous movement",
       d.get("current_location") == "SD office — corrected", f"got {d.get('current_location')!r}")
 
+# project-scoped papers list carries the last hand-off for the project page
+s, r = api("GET", f"/orgs/{org_a}/documents?project_id={pid}", tok_b, org=org_a)
+row = next((x for x in r.get("data", []) if x["id"] == did), None)
+check("documents?project_id= finds the linked paper",
+      s == 200 and row is not None, f"{s} {str(r)[:140]}")
+check("paper row carries last hand-off",
+      row is not None and row.get("current_location") == "SD office — corrected"
+      and row.get("last_moved_by") == uid_a,
+      str(row)[:160] if row else "missing row")
+
+# a daily tagged to the paper shows up under the project's feed and
+# inherits the paper's project
+s, r = api("POST", f"/orgs/{org_a}/journal", tok_b,
+           {"description": "Chased the concept paper to the SD office",
+            "document_id": did}, org=org_a)
+check("daily tags a paper", s == 201 and r["data"].get("document_id") == did
+      and r["data"].get("project_id") == pid, f"{s} {str(r)[:160]}")
+s, r = api("GET", f"/orgs/{org_a}/journal?project_id={pid}", tok_a, org=org_a)
+check("paper-tagged daily surfaces under the project",
+      s == 200 and any(x.get("document_id") == did for x in r["data"]), f"{s}")
+s, r = api("GET", f"/orgs/{org_a}/journal?document_id={did}", tok_a, org=org_a)
+check("daily filters by paper",
+      s == 200 and all(x.get("document_id") == did for x in r["data"])
+      and len(r["data"]) >= 1, f"{s}")
+
 # ── 7b. Revision rounds ─────────────────────────────────────────────────
 s, ch2 = api("POST", f"/orgs/{org_a}/signatory-chains", tok_a,
              {"name": "Three-desk route", "doc_type": "board_resolution",
