@@ -68,14 +68,17 @@ function EditPhotoThumb({ org, photo, onRemove }) {
 
 /** One journal entry — memoized so toggling one row doesn't re-mount every
  *  PhotoThumb in the feed (each thumb runs its own signed-URL query). */
-const JournalCard = memo(function JournalCard({ e, org, canModify, onEdit, onDelete }) {
+const JournalCard = memo(function JournalCard({ e, org, canModify, onEdit, onDelete, projectLabel, paperLabel }) {
   const { t } = useTheme();
   return (
     <Card style={{ gap: 8 }}>
       {e.photos.map((p) => <PhotoThumb key={p.id} org={org} photo={p} />)}
       <Text style={{ fontSize: 14, color: t.ink }}>{e.description}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <View>{e.project_id ? <Chip kind="neutral" label="Project" /> : null}</View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, flexShrink: 1 }}>
+          {projectLabel ? <Chip kind="neutral" label={projectLabel} /> : null}
+          {paperLabel ? <Chip kind="extra" label={paperLabel} /> : null}
+        </View>
         {canModify ? (
           <View style={{ flexDirection: 'row', gap: 4 }}>
             <Pressable accessibilityRole="button" accessibilityLabel="Edit entry"
@@ -108,21 +111,30 @@ export default function Journal() {
   const [editing, setEditing] = useState(null);   // entry being edited
   const [deleting, setDeleting] = useState(null); // entry pending confirm
   const [desc, setDesc] = useState('');
-  const [projectId, setProjectId] = useState('');
+  const [projectId, setProjectId] = useState(params.project ?? '');
+  const [docId, setDocId] = useState('');
   const [photos, setPhotos] = useState([]);
   const [removedIds, setRemovedIds] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const { t } = useTheme();
 
+  // ?project=<id> scopes the feed and pre-picks it in the compose sheet —
+  // the "see all" / "log work" links on a project page land here.
+  const projParam = params.project ?? null;
   const feed = useQuery({
-    queryKey: ['journal', org],
-    queryFn: () => get(`/orgs/${org}/journal?pageSize=50`),
+    queryKey: ['journal', org, projParam ?? ''],
+    queryFn: () => get(`/orgs/${org}/journal?pageSize=50${projParam ? `&project_id=${projParam}` : ''}`),
     enabled: !!org,
   });
   const projects = useQuery({
     queryKey: ['projects', org],
     queryFn: () => get(`/orgs/${org}/projects?pageSize=100`),
+    enabled: !!org,
+  });
+  const documents = useQuery({
+    queryKey: ['documents', org],
+    queryFn: () => get(`/orgs/${org}/documents?pageSize=100`),
     enabled: !!org,
   });
 
@@ -139,6 +151,7 @@ export default function Journal() {
   const [handledCompose, setHandledCompose] = useState(false);
   if (params.compose === '1' && !handledCompose) {
     setHandledCompose(true);
+    if (params.project) setProjectId(params.project);
     setComposeOpen(true);
   }
   useEffect(() => {
@@ -150,14 +163,28 @@ export default function Journal() {
     (e.member_id === session?.user?.id && e.entry_date === todayOrg()) ||
     active?.role === 'owner';
 
+  const projTitle = (pid) => (projects.data?.data ?? []).find((p) => p.id === pid)?.title ?? 'a project';
+  const docTitle = (did) => (documents.data?.data ?? []).find((d) => d.id === did)?.title ?? 'a paper';
+  // with a project picked, only its papers are valid targets — the API
+  // rejects a paper that belongs to a different project
+  const paperOptions = (documents.data?.data ?? [])
+    .filter((d) => !projectId || d.project_id === projectId);
+  const pickProjectId = (pid) => {
+    setProjectId(pid);
+    // a paper tied to another project can't stay selected under this one
+    const cur = (documents.data?.data ?? []).find((d) => d.id === docId);
+    if (cur?.project_id && cur.project_id !== pid) setDocId('');
+  };
+
   const openCompose = () => {
-    setEditing(null); setDesc(''); setPhotos([]); setProjectId('');
-    setRemovedIds(new Set()); setErr(null);
+    setEditing(null); setDesc(''); setPhotos([]); setProjectId(projParam ?? '');
+    setDocId(''); setRemovedIds(new Set()); setErr(null);
     setComposeOpen(true);
   };
 
   const openEdit = (e) => {
     setEditing(e); setDesc(e.description); setProjectId(e.project_id ?? '');
+    setDocId(e.document_id ?? '');
     setPhotos([]); setRemovedIds(new Set()); setErr(null); setComposeOpen(true);
   };
 
@@ -175,6 +202,7 @@ export default function Journal() {
         await patch(`/orgs/${org}/journal/${editing.id}`, {
           description: desc,
           project_id: projectId || null,
+          document_id: docId || null,
           add_photos: uploaded.length ? uploaded : null,
           remove_photo_ids: removedIds.size ? [...removedIds] : null,
         });
@@ -188,6 +216,7 @@ export default function Journal() {
           recordBody: {
             description: desc,
             project_id: projectId || null,
+            document_id: docId || null,
             photos: '{{photos}}',
           },
         });
@@ -196,7 +225,7 @@ export default function Journal() {
           : 'Entry posted — day documented.');
       }
       setComposeOpen(false); setEditing(null); setDesc(''); setPhotos([]); setProjectId('');
-      setRemovedIds(new Set());
+      setDocId(''); setRemovedIds(new Set());
       qc.invalidateQueries({ queryKey: ['journal', org] });
       qc.invalidateQueries({ queryKey: ['attendance'] });
     } catch (e) {
@@ -240,6 +269,23 @@ export default function Journal() {
         Entries here prove your duty day — a photo is optional but encouraged. Off-day
         filings count as extra duty.
       </HintBanner>
+      {projParam ? (
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+          borderWidth: Math.max(t.boxWidth, 1), borderColor: t.boxColor,
+          backgroundColor: t.surface2, borderRadius: t.radiusInput,
+          paddingHorizontal: 12, paddingVertical: 8,
+        }}>
+          <Text style={{ flex: 1, fontSize: 12, color: t.ink2 }}>
+            Showing entries for <Text style={{ fontWeight: '700' }}>{projects.data ? projTitle(projParam) : 'this project'}</Text>
+          </Text>
+          <Pressable accessibilityRole="button"
+                     onPress={() => router.setParams({ project: undefined })}
+                     style={{ minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <X size={12} color={t.brand} /><Text style={{ fontSize: 12, color: t.brand, fontWeight: '700' }}>Show everything</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {feed.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
       {feed.isError ? <ErrorState error={feed.error} retry={feed.refetch} what="the journal" /> : null}
     </View>
@@ -256,6 +302,8 @@ export default function Journal() {
         )}
         renderItem={({ item: e }) => (
           <JournalCard e={e} org={org} canModify={canModify(e)}
+                       projectLabel={e.project_id ? projTitle(e.project_id) : null}
+                       paperLabel={e.document_id ? docTitle(e.document_id) : null}
                        onEdit={() => openEdit(e)} onDelete={() => setDeleting(e)} />
         )}
         ListHeaderComponent={header}
@@ -303,10 +351,22 @@ export default function Journal() {
         <Field label="Project (optional)">
           <Select
             value={projectId}
-            onChange={setProjectId}
+            onChange={pickProjectId}
             placeholder="—"
             accessibilityLabel="Project"
             options={[{ value: '', label: 'No project' }, ...(projects.data?.data ?? []).map((p) => ({ value: p.id, label: p.title }))]}
+          />
+        </Field>
+        <Field label="Paper (optional)"
+               hint={projectId
+                 ? 'Only papers registered to that project are listed.'
+                 : 'Tagging a paper counts the entry under its project too.'}>
+          <Select
+            value={docId}
+            onChange={setDocId}
+            placeholder="—"
+            accessibilityLabel="Paper"
+            options={[{ value: '', label: 'No paper' }, ...paperOptions.map((d) => ({ value: d.id, label: d.title }))]}
           />
         </Field>
         {err ? <Text style={{ fontSize: 13, color: t.alert }}>{err}</Text> : null}
