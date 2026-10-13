@@ -12,9 +12,11 @@ import { useTheme } from '../lib/theme';
 import { peso, toCentavos } from '../lib/money';
 import { Button, Card, Chip, ConfirmDialog, Field, Input, Select, Sheet } from './ui';
 import { DocPicker } from './DocPicker';
+import { compressImageUri } from '../lib/images';
 import { putToSignedUrl } from './PhotoPicker';
 
 async function uploadSigned(signPath, f) {
+  f = await compressImageUri(f); // images shrink before upload; PDFs pass through
   const sign = await post(signPath, { mime: f.type, byte_size: f.size });
   if (isQueued(sign)) throw new Error("You're offline — file uploads need a connection.");
   await putToSignedUrl(sign.upload_url, { uri: f.uri, type: f.type });

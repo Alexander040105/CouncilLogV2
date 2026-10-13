@@ -7,7 +7,7 @@ import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { NotebookPen, Pencil, Plus, Trash2, X } from 'lucide-react-native';
+import { MessageSquare, NotebookPen, Pencil, Plus, Trash2, X } from 'lucide-react-native';
 import { del, get, isQueued, patch, post, queuedMsg } from '../../src/lib/api';
 import { submitPhotoRecord } from '../../src/lib/offline';
 import { todayOrg, useOrgId } from '../../src/lib/org';
@@ -66,9 +66,72 @@ function EditPhotoThumb({ org, photo, onRemove }) {
   );
 }
 
+/** Expandable comment thread under a daily — lazy-loads on first open. */
+function EntryComments({ org, entry }) {
+  const { t } = useTheme();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const q = useQuery({
+    queryKey: ['journal-comments', org, entry.id],
+    queryFn: () => get(`/orgs/${org}/journal/${entry.id}/comments`),
+    enabled: open,
+  });
+  const add = useMutation({
+    mutationFn: () => post(`/orgs/${org}/journal/${entry.id}/comments`, { body: text }),
+    onSuccess: () => {
+      setText('');
+      q.refetch();
+      qc.invalidateQueries({ queryKey: ['journal', org] }); // count chip updates
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <View>
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }}
+                 onPress={() => setOpen((o) => !o)}
+                 style={{ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}>
+        <MessageSquare size={13} color={t.ink2} />
+        <Text style={{ fontSize: 12, color: t.ink2 }}>
+          {entry.comment_count ? `${entry.comment_count} comment${entry.comment_count === 1 ? '' : 's'}` : 'Comment'}
+        </Text>
+      </Pressable>
+      {open ? (
+        <View style={{ gap: 8, borderWidth: t.dashWidth, borderColor: t.dashColor, borderStyle: 'dashed',
+                       borderRadius: t.radiusInput, padding: 8 }}>
+          {(q.data?.data ?? []).map((c) => (
+            <View key={c.id}>
+              <Text style={{ fontSize: 11, color: t.ink3 }}>
+                <Text style={{ fontWeight: '600', color: t.ink2 }}>{c.author_name}</Text>
+                {` · ${new Date(c.created_at).toLocaleString()}`}
+              </Text>
+              <Text style={{ fontSize: 13, color: t.ink }}>{c.body}</Text>
+            </View>
+          ))}
+          {(q.data?.data ?? []).length === 0 ? (
+            <Text style={{ fontSize: 12, color: t.ink3 }}>
+              No comments yet — the author gets pinged when one lands.
+            </Text>
+          ) : null}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Input value={text} onChangeText={setText} placeholder="Say something helpful…" />
+            </View>
+            <Button variant="secondary" onPress={() => add.mutate()}
+                    disabled={!text.trim() || add.isPending}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: t.ink }}>Send</Text>
+            </Button>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 /** One journal entry — memoized so toggling one row doesn't re-mount every
  *  PhotoThumb in the feed (each thumb runs its own signed-URL query). */
-const JournalCard = memo(function JournalCard({ e, org, canModify, onEdit, onDelete, projectLabel, paperLabel }) {
+const JournalCard = memo(function JournalCard({ e, org, canModify, onEdit, onDelete, projectLabel, paperLabel, taskLabel }) {
   const { t } = useTheme();
   return (
     <Card style={{ gap: 8 }}>
@@ -78,6 +141,7 @@ const JournalCard = memo(function JournalCard({ e, org, canModify, onEdit, onDel
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, flexShrink: 1 }}>
           {projectLabel ? <Chip kind="neutral" label={projectLabel} /> : null}
           {paperLabel ? <Chip kind="extra" label={paperLabel} /> : null}
+          {taskLabel ? <Chip kind="pending" label={taskLabel} /> : null}
         </View>
         {canModify ? (
           <View style={{ flexDirection: 'row', gap: 4 }}>
@@ -94,6 +158,7 @@ const JournalCard = memo(function JournalCard({ e, org, canModify, onEdit, onDel
           </View>
         ) : null}
       </View>
+      <EntryComments org={org} entry={e} />
     </Card>
   );
 });
@@ -113,18 +178,20 @@ export default function Journal() {
   const [desc, setDesc] = useState('');
   const [projectId, setProjectId] = useState(params.project ?? '');
   const [docId, setDocId] = useState('');
+  const [taskId, setTaskId] = useState(params.task ?? '');
   const [photos, setPhotos] = useState([]);
   const [removedIds, setRemovedIds] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const { t } = useTheme();
 
-  // ?project=<id> scopes the feed and pre-picks it in the compose sheet —
-  // the "see all" / "log work" links on a project page land here.
+  // ?project=<id> / ?task=<id> scope the feed and pre-pick them in the
+  // compose sheet — the "see all" / "log work" links elsewhere land here.
   const projParam = params.project ?? null;
+  const taskParam = params.task ?? null;
   const feed = useQuery({
-    queryKey: ['journal', org, projParam ?? ''],
-    queryFn: () => get(`/orgs/${org}/journal?pageSize=50${projParam ? `&project_id=${projParam}` : ''}`),
+    queryKey: ['journal', org, projParam ?? '', taskParam ?? ''],
+    queryFn: () => get(`/orgs/${org}/journal?pageSize=50${projParam ? `&project_id=${projParam}` : ''}${taskParam ? `&task_id=${taskParam}` : ''}`),
     enabled: !!org,
   });
   const projects = useQuery({
@@ -135,6 +202,11 @@ export default function Journal() {
   const documents = useQuery({
     queryKey: ['documents', org],
     queryFn: () => get(`/orgs/${org}/documents?pageSize=100`),
+    enabled: !!org,
+  });
+  const tasks = useQuery({
+    queryKey: ['tasks-open', org],
+    queryFn: () => get(`/orgs/${org}/tasks?status=open&pageSize=100`),
     enabled: !!org,
   });
 
@@ -169,22 +241,27 @@ export default function Journal() {
   // rejects a paper that belongs to a different project
   const paperOptions = (documents.data?.data ?? [])
     .filter((d) => !projectId || d.project_id === projectId);
+  // same scoping rule for tasks — the API rejects a task from another project
+  const taskOptions = (tasks.data?.data ?? [])
+    .filter((x) => !projectId || !x.project_id || x.project_id === projectId);
   const pickProjectId = (pid) => {
     setProjectId(pid);
-    // a paper tied to another project can't stay selected under this one
+    // a paper/task tied to another project can't stay selected under this one
     const cur = (documents.data?.data ?? []).find((d) => d.id === docId);
     if (cur?.project_id && cur.project_id !== pid) setDocId('');
+    const curTask = (tasks.data?.data ?? []).find((x) => x.id === taskId);
+    if (curTask?.project_id && curTask.project_id !== pid) setTaskId('');
   };
 
   const openCompose = () => {
     setEditing(null); setDesc(''); setPhotos([]); setProjectId(projParam ?? '');
-    setDocId(''); setRemovedIds(new Set()); setErr(null);
+    setDocId(''); setTaskId(taskParam ?? ''); setRemovedIds(new Set()); setErr(null);
     setComposeOpen(true);
   };
 
   const openEdit = (e) => {
     setEditing(e); setDesc(e.description); setProjectId(e.project_id ?? '');
-    setDocId(e.document_id ?? '');
+    setDocId(e.document_id ?? ''); setTaskId(e.task_id ?? '');
     setPhotos([]); setRemovedIds(new Set()); setErr(null); setComposeOpen(true);
   };
 
@@ -203,6 +280,7 @@ export default function Journal() {
           description: desc,
           project_id: projectId || null,
           document_id: docId || null,
+          task_id: taskId || null,
           add_photos: uploaded.length ? uploaded : null,
           remove_photo_ids: removedIds.size ? [...removedIds] : null,
         });
@@ -217,6 +295,7 @@ export default function Journal() {
             description: desc,
             project_id: projectId || null,
             document_id: docId || null,
+            task_id: taskId || null,
             photos: '{{photos}}',
           },
         });
@@ -225,7 +304,7 @@ export default function Journal() {
           : 'Entry posted — day documented.');
       }
       setComposeOpen(false); setEditing(null); setDesc(''); setPhotos([]); setProjectId('');
-      setDocId(''); setRemovedIds(new Set());
+      setDocId(''); setTaskId(''); setRemovedIds(new Set());
       qc.invalidateQueries({ queryKey: ['journal', org] });
       qc.invalidateQueries({ queryKey: ['attendance'] });
     } catch (e) {
@@ -286,6 +365,23 @@ export default function Journal() {
           </Pressable>
         </View>
       ) : null}
+      {taskParam ? (
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+          borderWidth: Math.max(t.boxWidth, 1), borderColor: t.boxColor,
+          backgroundColor: t.surface2, borderRadius: t.radiusInput,
+          paddingHorizontal: 12, paddingVertical: 8,
+        }}>
+          <Text style={{ flex: 1, fontSize: 12, color: t.ink2 }}>
+            Showing entries logged against <Text style={{ fontWeight: '700' }}>this task</Text>
+          </Text>
+          <Pressable accessibilityRole="button"
+                     onPress={() => router.setParams({ task: undefined })}
+                     style={{ minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <X size={12} color={t.brand} /><Text style={{ fontSize: 12, color: t.brand, fontWeight: '700' }}>Show everything</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {feed.isLoading ? <Skeleton style={{ height: 192 }} /> : null}
       {feed.isError ? <ErrorState error={feed.error} retry={feed.refetch} what="the journal" /> : null}
     </View>
@@ -304,6 +400,7 @@ export default function Journal() {
           <JournalCard e={e} org={org} canModify={canModify(e)}
                        projectLabel={e.project_id ? projTitle(e.project_id) : null}
                        paperLabel={e.document_id ? docTitle(e.document_id) : null}
+                       taskLabel={e.task_id ? (e.task_title ?? 'a task') : null}
                        onEdit={() => openEdit(e)} onDelete={() => setDeleting(e)} />
         )}
         ListHeaderComponent={header}
@@ -367,6 +464,16 @@ export default function Journal() {
             placeholder="—"
             accessibilityLabel="Paper"
             options={[{ value: '', label: 'No paper' }, ...paperOptions.map((d) => ({ value: d.id, label: d.title }))]}
+          />
+        </Field>
+        <Field label="Task (optional)"
+               hint="Which task this work moved forward — it shows on the task’s page.">
+          <Select
+            value={taskId}
+            onChange={setTaskId}
+            placeholder="—"
+            accessibilityLabel="Task"
+            options={[{ value: '', label: 'No task' }, ...taskOptions.map((x) => ({ value: x.id, label: x.title }))]}
           />
         </Field>
         {err ? <Text style={{ fontSize: 13, color: t.alert }}>{err}</Text> : null}

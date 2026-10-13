@@ -113,24 +113,73 @@ export const PALETTES = {
   },
 };
 
-const ThemeCtx = createContext({ t: PALETTES['brutalist-light'], theme: 'brutalist-light', choice: 'system', setChoice: () => {} });
+const ThemeCtx = createContext({ t: PALETTES['brutalist-light'], theme: 'brutalist-light', choice: 'system', setChoice: () => {}, setOrgTheme: () => {} });
 
 function resolve(choice, scheme) {
   if (choice === 'system') return scheme === 'dark' ? 'brutalist-dark' : 'brutalist-light';
   return PALETTES[choice] ? choice : 'brutalist-light';
 }
 
+/** Org color presets — mirrored in api/app/routers/orgs.py + web orgTheme.js.
+ *  Presets pick accent+brand only; light/dark stays each member's choice. */
+export const ORG_PRESETS = {
+  default: { label: 'CounciLog', accent: '#f4be04', brand: '#27146e' },
+  maroon:  { label: 'Maroon',    accent: '#f4be04', brand: '#7b1e2b' },
+  forest:  { label: 'Forest',    accent: '#a3e635', brand: '#14532d' },
+  sky:     { label: 'Sky',       accent: '#fde047', brand: '#1d4ed8' },
+  plum:    { label: 'Plum',      accent: '#f0abfc', brand: '#6b21a8' },
+  slate:   { label: 'Slate',     accent: '#94a3b8', brand: '#0f172a' },
+};
+
+/** black or white foreground, whichever reads better on the hex fill */
+export function contrastFg(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const lum = (0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 0xff) + 0.0722 * (n & 0xff)) / 255;
+  return lum > 0.45 ? '#000000' : '#ffffff';
+}
+
+/** Custom hexes win over the preset's colors. Returns null when nothing applies. */
+export function resolveOrgTheme(theme) {
+  if (!theme || typeof theme !== 'object') return null;
+  const preset = ORG_PRESETS[theme.preset] ?? null;
+  const accent = theme.accent ?? preset?.accent ?? null;
+  const brand = theme.brand ?? preset?.brand ?? null;
+  if (!accent && !brand) return null;
+  return { accent, brand };
+}
+
+/** Overlay org accent/brand on the resolved palette — same token list the web
+ *  overrides via CSS vars, so both platforms color identically. */
+function withOrgTheme(t, theme) {
+  const r = resolveOrgTheme(theme);
+  if (!r) return t;
+  const o = {};
+  if (r.accent) {
+    o.accent = r.accent;
+    o.accentFg = contrastFg(r.accent);
+    o.navActiveBg = r.accent;
+    o.navActiveFg = contrastFg(r.accent);
+  }
+  if (r.brand) {
+    o.brand = r.brand;
+    o.brandFg = contrastFg(r.brand);
+    o.focus = r.brand;
+  }
+  return { ...t, ...o };
+}
+
 export function ThemeProvider({ children }) {
   const scheme = useColorScheme();
   const [choice, setChoiceState] = useState('system');
+  const [orgTheme, setOrgTheme] = useState(null);
   useEffect(() => {
     AsyncStorage.getItem(THEME_KEY).then((v) => { if (v && THEME_CHOICES.includes(v)) setChoiceState(v); }).catch(() => {});
   }, []);
   const setChoice = (c) => { setChoiceState(c); AsyncStorage.setItem(THEME_KEY, c).catch(() => {}); };
   const value = useMemo(() => {
     const name = resolve(choice, scheme);
-    return { t: PALETTES[name], theme: name, choice, setChoice };
-  }, [choice, scheme]);
+    return { t: withOrgTheme(PALETTES[name], orgTheme), theme: name, choice, setChoice, setOrgTheme };
+  }, [choice, scheme, orgTheme]);
   return <ThemeCtx.Provider value={value}>{children}</ThemeCtx.Provider>;
 }
 
