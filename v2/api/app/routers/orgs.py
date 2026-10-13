@@ -1,9 +1,10 @@
+import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlmodel import select
 
@@ -24,9 +25,39 @@ class OrgCreate(BaseModel):
     school_year_label: str = Field(min_length=4, max_length=40)
 
 
+# Org color presets — kept in sync with web/lib/orgTheme.js + mobile theme.jsx.
+# Owners pick one of these or supply custom accent/brand hexes on top.
+ORG_PRESETS = {
+    "default": {"accent": "#f4be04", "brand": "#27146e"},
+    "maroon":  {"accent": "#f4be04", "brand": "#7b1e2b"},
+    "forest":  {"accent": "#a3e635", "brand": "#14532d"},
+    "sky":     {"accent": "#fde047", "brand": "#1d4ed8"},
+    "plum":    {"accent": "#f0abfc", "brand": "#6b21a8"},
+    "slate":   {"accent": "#94a3b8", "brand": "#0f172a"},
+}
+_HEX = r"^#[0-9a-fA-F]{6}$"
+_THEME_KEYS = {"preset", "accent", "brand"}
+
+
 class OrgPatch(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
     logo_url: str | None = None
+    theme: dict | None = None
+
+    @field_validator("theme")
+    @classmethod
+    def _theme_ok(cls, v):
+        if v is None:
+            return v
+        unknown = set(v) - _THEME_KEYS
+        if unknown:
+            raise ValueError(f"unknown theme keys: {sorted(unknown)}")
+        if "preset" in v and v["preset"] not in ORG_PRESETS:
+            raise ValueError(f"preset must be one of {sorted(ORG_PRESETS)}")
+        for k in ("accent", "brand"):
+            if k in v and not re.match(_HEX, str(v[k])):
+                raise ValueError(f"{k} must be a #RRGGBB hex color")
+        return v
 
 
 @router.post("/orgs", status_code=201)
@@ -68,6 +99,8 @@ async def patch_org(org_id: uuid.UUID, body: OrgPatch, session: Session, member:
         org.name = body.name
     if body.logo_url is not None:
         org.logo_url = body.logo_url
+    if "theme" in body.model_fields_set:
+        org.theme_json = body.theme or None  # {} or null clears back to default
     await audit(session, org_id=org_id, actor_id=member.user_id, action="org.updated",
                 entity_type="organization", entity_id=org_id, metadata=body.model_dump(exclude_none=True))
     await session.commit()

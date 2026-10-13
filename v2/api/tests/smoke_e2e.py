@@ -250,6 +250,42 @@ if item:
     check("flat list finds second assignee",
           s == 200 and any(x["id"] == item["id"] for x in lst["data"]), f"{s}")
 
+# ── 6d. Journal activity (task links + comments) + org theme ────────────
+s, r = api("POST", f"/orgs/{org_a}/journal", tok_b,
+           {"description": "Printed the programs at the shop", "task_id": tid}, org=org_a)
+check("journal entry linked to task", s == 201 and r["data"].get("task_id") == tid, f"{s} {str(r)[:150]}")
+jtid = (r.get("data") or {}).get("id")
+
+s, rows = api("GET", f"/orgs/{org_a}/journal?task_id={tid}", tok_a, org=org_a)
+check("feed ?task_id= zooms to the task's logs",
+      s == 200 and any(x["id"] == jtid for x in rows["data"]), f"{s}")
+row = next((x for x in rows["data"] if x["id"] == jtid), {})
+check("feed row carries task_title + comment_count",
+      row.get("task_title") == "Print programs" and row.get("comment_count") == 0, f"{str(row)[:140]}")
+
+s, r = api("POST", f"/orgs/{org_a}/journal/{jtid}/comments", tok_a,
+           {"body": "Nice work — grab the receipt next."}, org=org_a)
+check("owner comments on member's log", s == 201, f"{s} {str(r)[:140]}")
+s, rows = api("GET", f"/orgs/{org_a}/journal/{jtid}/comments", tok_b, org=org_a)
+check("comments list back with author name",
+      s == 200 and rows["data"] and rows["data"][0]["body"].startswith("Nice work")
+      and rows["data"][0].get("author_name"), f"{s}")
+s, rows = api("GET", f"/orgs/{org_a}/journal?task_id={tid}", tok_a, org=org_a)
+check("comment_count lands on the feed row",
+      s == 200 and rows["data"][0].get("comment_count") == 1, f"{s}")
+
+s, r = api("PATCH", f"/orgs/{org_a}", tok_a,
+           {"theme": {"preset": "forest", "accent": "#123456"}}, org=org_a)
+check("owner sets org colors", s == 200
+      and (r.get("data") or {}).get("theme_json", {}).get("accent") == "#123456", f"{s} {str(r)[:140]}")
+s, r = api("PATCH", f"/orgs/{org_a}", tok_b, {"theme": {"preset": "plum"}}, org=org_a)
+check("member cannot set org colors", s == 403, f"{s}")
+s, r = api("PATCH", f"/orgs/{org_a}", tok_a, {"theme": {"accent": "purple"}}, org=org_a)
+check("bad hex rejected", s == 422, f"{s}")
+s, r = api("GET", f"/orgs/{org_a}", tok_b, org=org_a)
+check("theme readable by members",
+      s == 200 and (r.get("data") or {}).get("theme_json", {}).get("preset") == "forest", f"{s}")
+
 # ── 6b. Template PATCH/DELETE, flags, instantiate guard ────────────────
 tpl_id = tpl["data"]["id"]
 s, r2 = api("POST", "/orgs", tok_c, {"name": "Other Dept", "slug": f"{SLUG}-other", "school_year_label": "SY 2025-2026"})
@@ -362,6 +398,31 @@ check("newest movement deleted", s == 200 and r["data"]["deleted"], f"{s}")
 s, d = api("GET", f"/orgs/{org_a}/documents/{did}", tok_a, org=org_a)
 check("location falls back to previous movement",
       d.get("current_location") == "SD office — corrected", f"got {d.get('current_location')!r}")
+
+# project-scoped papers list carries the last hand-off for the project page
+s, r = api("GET", f"/orgs/{org_a}/documents?project_id={pid}", tok_b, org=org_a)
+row = next((x for x in r.get("data", []) if x["id"] == did), None)
+check("documents?project_id= finds the linked paper",
+      s == 200 and row is not None, f"{s} {str(r)[:140]}")
+check("paper row carries last hand-off",
+      row is not None and row.get("current_location") == "SD office — corrected"
+      and row.get("last_moved_by") == uid_a,
+      str(row)[:160] if row else "missing row")
+
+# a daily tagged to the paper shows up under the project's feed and
+# inherits the paper's project
+s, r = api("POST", f"/orgs/{org_a}/journal", tok_b,
+           {"description": "Chased the concept paper to the SD office",
+            "document_id": did}, org=org_a)
+check("daily tags a paper", s == 201 and r["data"].get("document_id") == did
+      and r["data"].get("project_id") == pid, f"{s} {str(r)[:160]}")
+s, r = api("GET", f"/orgs/{org_a}/journal?project_id={pid}", tok_a, org=org_a)
+check("paper-tagged daily surfaces under the project",
+      s == 200 and any(x.get("document_id") == did for x in r["data"]), f"{s}")
+s, r = api("GET", f"/orgs/{org_a}/journal?document_id={did}", tok_a, org=org_a)
+check("daily filters by paper",
+      s == 200 and all(x.get("document_id") == did for x in r["data"])
+      and len(r["data"]) >= 1, f"{s}")
 
 # ── 7b. Revision rounds ─────────────────────────────────────────────────
 s, ch2 = api("POST", f"/orgs/{org_a}/signatory-chains", tok_a,

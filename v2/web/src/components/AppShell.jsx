@@ -2,12 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import {
-  BookOpen, CalendarCheck, CalendarDays, FileText, FolderKanban, ListTodo, LogOut,
+  Activity, BookOpen, CalendarCheck, CalendarDays, FileText, FolderKanban, ListTodo, LogOut,
   MoreHorizontal, Check, ChevronDown, ChevronRight, NotebookPen, Settings, ShieldCheck, Sun, Users,
   Wallet,
 } from 'lucide-react';
 import { get } from '../lib/api';
 import { atLeast, currentOrgId, orgPicked, setCurrentOrg, setOrgPicked } from '../lib/org';
+import { applyOrgTheme, clearOrgTheme } from '../lib/orgTheme';
 import { humanize } from '../lib/labels';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/auth';
@@ -17,6 +18,7 @@ import { NotificationBell } from './NotificationBell';
 const NAV = [
   { to: '/', label: 'Today', Icon: Sun },
   { to: '/journal', label: 'Journal', Icon: NotebookPen },
+  { to: '/activity', label: 'Activity', Icon: Activity },
   { to: '/attendance', label: 'Attendance', Icon: CalendarCheck },
   { to: '/projects', label: 'Projects', Icon: FolderKanban },
   { to: '/budget', label: 'Budget', Icon: Wallet },
@@ -60,6 +62,20 @@ export function AppShell() {
     }
   }, [active, memberships.length]);
   const isAdmin = active ? atLeast(active.role, 'adviser') : false;
+
+  // Org colors — every member sees the org's accent/brand on top of their own
+  // light/dark choice; cleared when the org has none or the user switches out.
+  const orgDetail = useQuery({
+    queryKey: ['org', active?.org_id],
+    queryFn: () => get(`/orgs/${active.org_id}`),
+    enabled: !!session && !!active,
+  });
+  const themeJson = orgDetail.data?.data?.theme_json;
+  useEffect(() => {
+    applyOrgTheme(themeJson);
+    return clearOrgTheme;
+  }, [themeJson, active?.org_id]);
+
   const visible = NAV.filter((n) => (!n.admin || isAdmin) && (!n.platform || me.data?.is_admin));
   const tabs = visible.slice(0, TAB_COUNT);
   const overflow = visible.slice(TAB_COUNT);

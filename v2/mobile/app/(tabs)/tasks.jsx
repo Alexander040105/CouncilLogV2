@@ -255,8 +255,28 @@ export default function Tasks() {
 
   const update = useMutation({
     mutationFn: (patchBody) => patch(`/orgs/${org}/tasks/${focusId}`, patchBody),
+    // status flips feel instant — optimistic write to both the open sheet and
+    // the list; rolled back on error, server/outbox wins on settle
+    onMutate: (patchBody) => {
+      if (!('status' in patchBody)) return undefined;
+      qc.cancelQueries({ queryKey: ['task', org, focusId] });
+      qc.cancelQueries({ queryKey: ['tasks', org] });
+      const prevDetail = qc.getQueryData(['task', org, focusId]);
+      const prevList = qc.getQueryData(['tasks', org]);
+      qc.setQueryData(['task', org, focusId], (d) => d && {
+        ...d, data: { ...d.data, status: patchBody.status },
+      });
+      qc.setQueryData(['tasks', org], (d) => d && {
+        ...d, data: (d.data ?? []).map((x) => x.id === focusId ? { ...x, status: patchBody.status } : x),
+      });
+      return { prevDetail, prevList };
+    },
     onSuccess: (r) => { toast.success(queuedMsg(r, 'Saved.')); invalidate(); detail.refetch(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e, _v, ctx) => {
+      if (ctx?.prevDetail) qc.setQueryData(['task', org, focusId], ctx.prevDetail);
+      if (ctx?.prevList) qc.setQueryData(['tasks', org], ctx.prevList);
+      toast.error(e.message);
+    },
   });
 
   const remove = useMutation({
@@ -431,6 +451,8 @@ export default function Tasks() {
               ) : null}
             </View>
 
+            <TaskDailies org={org} taskId={focusId} nameOf={nameOf} />
+
             <View style={{ gap: 8, borderTopWidth: Math.max(t.boxWidth, 1), borderTopColor: t.boxColor, paddingTop: 12 }}>
               <Text style={{ fontSize: 13, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink2 }}>
                 Comments
@@ -470,5 +492,41 @@ export default function Tasks() {
         confirmLabel="Delete task"
       />
     </Screen>
+  );
+}
+
+/** Dailies logged against this task — who did what, tapping opens the
+ *  Journal filtered to this task (web counterpart lives in Tasks.jsx). */
+function TaskDailies({ org, taskId, nameOf }) {
+  const { t } = useTheme();
+  const router = useRouter();
+  const q = useQuery({
+    queryKey: ['journal', org, 'task', taskId],
+    queryFn: () => get(`/orgs/${org}/journal?task_id=${taskId}&pageSize=20`),
+    enabled: !!taskId,
+  });
+  const rows = q.data?.data ?? [];
+  return (
+    <View style={{ gap: 8, borderTopWidth: Math.max(t.boxWidth, 1), borderTopColor: t.boxColor, paddingTop: 12 }}>
+      <Text style={{ fontSize: 13, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink2 }}>
+        Daily logs
+      </Text>
+      {rows.map((e) => (
+        <Pressable key={e.id} accessibilityRole="button"
+                   onPress={() => router.push(`/journal?task=${taskId}`)}
+                   style={{ borderRadius: t.radiusInput, backgroundColor: t.surface3, paddingHorizontal: 12, paddingVertical: 8 }}>
+          <Text style={{ fontSize: 11, fontWeight: '600', color: t.ink3 }}>
+            {nameOf(e.member_id)} · {e.entry_date}
+          </Text>
+          <Text style={{ fontSize: 14, color: t.ink }}>{e.description}</Text>
+        </Pressable>
+      ))}
+      {rows.length === 0 ? (
+        <Text style={{ fontSize: 12, color: t.ink3 }}>
+          No dailies reference this task yet — when someone logs work against it
+          (the “Task” field in Log work), it shows here.
+        </Text>
+      ) : null}
+    </View>
   );
 }

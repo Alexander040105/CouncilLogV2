@@ -11,7 +11,7 @@ import { atLeast, setCurrentOrg, useOrgId } from '../../src/lib/org';
 import { collectFlagNames, describeCondition, describeItemRule } from '../../src/lib/rules';
 import { docTypeLabel, humanize } from '../../src/lib/labels';
 import { useToast } from '../../src/lib/toast';
-import { useTheme } from '../../src/lib/theme';
+import { useTheme, ORG_PRESETS, contrastFg } from '../../src/lib/theme';
 import { useMe, useActiveMembership } from '../../src/lib/me';
 import { Button, Card, ConfirmDialog, Empty, ErrorState, HintBanner, Input, PageHeader, Screen, Select, Skeleton, ThemePicker } from '../../src/components/ui';
 import { MemberManager } from '../../src/components/MemberManager';
@@ -76,6 +76,8 @@ export default function Settings() {
         </Text>
       </Card>
 
+      <OrgColors canWrite={canWrite} org={org} />
+
       <View style={{
         flexDirection: 'row', flexWrap: 'wrap', gap: 2,
         borderRadius: t.radiusInput, borderWidth: t.boxWidth, borderColor: t.boxColor, padding: 2,
@@ -112,6 +114,114 @@ export default function Settings() {
 
       {canWrite ? <DangerZone orgName={active?.org_name} /> : null}
     </Screen>
+  );
+}
+
+// ── Org colors ──────────────────────────────────────────────────────────
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+function OrgColors({ canWrite, org }) {
+  const { t } = useTheme();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const detail = useQuery({
+    queryKey: ['org', org],
+    queryFn: () => get(`/orgs/${org}`),
+    enabled: !!org,
+  });
+  const saved = detail.data?.data?.theme_json ?? null;
+  const [preset, setPreset] = useState(null);   // null = untouched → mirrors saved
+  const [accent, setAccent] = useState('');
+  const [brand, setBrand] = useState('');
+  const cur = preset === null
+    ? { preset: saved?.preset ?? 'default', accent: saved?.accent ?? '', brand: saved?.brand ?? '' }
+    : { preset, accent, brand };
+  const eff = {
+    accent: HEX_RE.test(cur.accent) ? cur.accent : ORG_PRESETS[cur.preset]?.accent,
+    brand: HEX_RE.test(cur.brand) ? cur.brand : ORG_PRESETS[cur.preset]?.brand,
+  };
+  const hexOk = (v) => v === '' || HEX_RE.test(v);
+  const dirty = preset !== null;
+  const save = useMutation({
+    mutationFn: () => patch(`/orgs/${org}`, {
+      theme: { preset: cur.preset === 'default' ? undefined : cur.preset,
+               accent: cur.accent || undefined, brand: cur.brand || undefined },
+    }),
+    onSuccess: () => {
+      toast.success('Org colors saved — everyone sees them on their next load.');
+      setPreset(null);
+      qc.invalidateQueries({ queryKey: ['org', org] });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <Card style={{ gap: 10 }}>
+      <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>Organization colors</Text>
+      <Text style={{ fontSize: 12, color: t.ink3 }}>
+        Accent (buttons &amp; highlights) and brand (headings &amp; nav) everyone sees
+        in this org — on top of each member’s own light/dark choice.
+        {!canWrite ? ' Only owners can change these.' : ''}
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {Object.entries(ORG_PRESETS).map(([id, p]) => (
+          <Pressable key={id} accessibilityRole="button"
+                     accessibilityState={{ selected: cur.preset === id }}
+                     disabled={!canWrite}
+                     onPress={() => { setPreset(id); setAccent(cur.accent); setBrand(cur.brand); }}
+                     style={{
+                       flexDirection: 'row', alignItems: 'center', gap: 6,
+                       paddingHorizontal: 8, paddingVertical: 6, borderRadius: t.radiusInput,
+                       borderWidth: t.elWidth, borderColor: t.elColor,
+                       backgroundColor: cur.preset === id ? t.surface3 : 'transparent',
+                       opacity: canWrite ? 1 : 0.6,
+                     }}>
+            <View style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: p.accent, borderWidth: 1, borderColor: 'rgba(0,0,0,0.3)' }} />
+            <View style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: p.brand, borderWidth: 1, borderColor: 'rgba(0,0,0,0.3)' }} />
+            <Text style={{ fontSize: 12, color: t.ink }}>{p.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {canWrite ? (
+        <View style={{ gap: 10 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            <View style={{ flex: 1, minWidth: 120 }}>
+              <Text style={labelOf(t)}>Custom accent</Text>
+              <Input placeholder="#f4be04" value={cur.accent} autoCapitalize="none"
+                     onChangeText={(v) => { setPreset(cur.preset); setAccent(v); setBrand(cur.brand); }} />
+              <Text style={{ fontSize: 11, color: t.ink3 }}>#RRGGBB — overrides the preset</Text>
+            </View>
+            <View style={{ flex: 1, minWidth: 120 }}>
+              <Text style={labelOf(t)}>Custom brand</Text>
+              <Input placeholder="#27146e" value={cur.brand} autoCapitalize="none"
+                     onChangeText={(v) => { setPreset(cur.preset); setBrand(v); setAccent(cur.accent); }} />
+            </View>
+          </View>
+          {/* live preview before anything is saved */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: t.radiusInput,
+                           backgroundColor: eff.accent, borderWidth: 2, borderColor: '#000' }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: contrastFg(eff.accent) }}>Preview button</Text>
+            </View>
+            <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: t.radiusInput,
+                           backgroundColor: eff.brand, borderWidth: 2, borderColor: '#000' }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: contrastFg(eff.brand) }}>Brand</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Button onPress={() => save.mutate()}
+                    disabled={!dirty || !hexOk(cur.accent) || !hexOk(cur.brand) || save.isPending}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: t.accentFg }}>Save colors</Text>
+            </Button>
+            {saved ? (
+              <Button variant="secondary" disabled={save.isPending}
+                      onPress={() => { setPreset('default'); setAccent(''); setBrand(''); }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: t.ink }}>Reset</Text>
+              </Button>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+    </Card>
   );
 }
 

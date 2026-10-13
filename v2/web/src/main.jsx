@@ -18,6 +18,7 @@ import Onboarding from './pages/Onboarding';
 import './index.css';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Activity = lazy(() => import('./pages/Activity'));
 const Journal = lazy(() => import('./pages/Journal'));
 const Attendance = lazy(() => import('./pages/Attendance'));
 const Projects = lazy(() => import('./pages/Projects'));
@@ -88,6 +89,7 @@ createRoot(document.getElementById('root')).render(
               <Route index element={P(Dashboard)} />
               <Route path="orgs" element={P(OrgPicker)} />
               <Route path="journal" element={P(Journal)} />
+              <Route path="activity" element={P(Activity)} />
               <Route path="attendance" element={P(Attendance)} />
               <Route path="projects" element={P(Projects)} />
               <Route path="projects/:id" element={P(ProjectDetail)} />

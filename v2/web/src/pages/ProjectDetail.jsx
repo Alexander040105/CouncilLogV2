@@ -6,7 +6,7 @@ import { del, get, patch, post } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
-import { assigneeLabel, humanize, projectStatusLabel } from '../lib/labels';
+import { assigneeLabel, docStatusLabel, docTypeLabel, humanize, projectStatusLabel } from '../lib/labels';
 import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, MemberMultiSelect, Sheet, Skeleton } from '../components/ui';
 import { ChecklistPreview } from '../components/ChecklistPreview';
 import { BudgetSection } from '../components/BudgetSection';
@@ -49,9 +49,19 @@ export default function ProjectDetail() {
     queryFn: () => get(`/orgs/${org}/checklist-templates`),
     enabled: !!org,
   });
+  const docs = useQuery({
+    queryKey: ['project-docs', org, id],
+    queryFn: () => get(`/orgs/${org}/documents?project_id=${id}&pageSize=100`),
+    enabled: !!org && !!id,
+  });
+  const logs = useQuery({
+    queryKey: ['project-journal', org, id],
+    queryFn: () => get(`/orgs/${org}/journal?project_id=${id}&pageSize=50`),
+    enabled: !!org && !!id,
+  });
   const [pickTemplate, setPickTemplate] = useState('');
   const [confirmPick, setConfirmPick] = useState(false);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('open');
   const [editItem, setEditItem] = useState(null);     // item object, or 'new'
   const [delItem, setDelItem] = useState(null);
   const [pendingStatus, setPendingStatus] = useState(null);
@@ -68,6 +78,17 @@ export default function ProjectDetail() {
   };
 
   const reload = () => qc.invalidateQueries({ queryKey: ['project', org, id] });
+  /** Optimistically patch one checklist row in the cached project; returns the
+   *  snapshot for rollback. The server response still wins on settle. */
+  const optimisticItem = (itemId, fn) => {
+    qc.cancelQueries({ queryKey: ['project', org, id] });
+    const prev = qc.getQueryData(['project', org, id]);
+    qc.setQueryData(['project', org, id], (d) => d && {
+      ...d,
+      data: { ...d.data, checklist: (d.data.checklist ?? []).map((i) => i.id === itemId ? fn(i) : i) },
+    });
+    return prev;
+  };
   const instantiate = useMutation({
     mutationFn: ({ templateIds, append } = {}) =>
       post(`/orgs/${org}/projects/${id}/instantiate`,
@@ -90,17 +111,26 @@ export default function ProjectDetail() {
   const check = useMutation({
     mutationFn: ({ itemId, done }) =>
       patch(`/orgs/${org}/checklist-items/${itemId}`, { done }),
+    onMutate: ({ itemId, done }) => optimisticItem(itemId, (i) => ({ ...i, done })),
     onSuccess: reload,
-    onError: (e) => toast.error(e.message),
+    onError: (e, _v, prev) => {
+      if (prev) qc.setQueryData(['project', org, id], prev);
+      toast.error(e.message);
+    },
   });
   const assign = useMutation({
     mutationFn: ({ itemId, assignee_ids }) =>
       patch(`/orgs/${org}/checklist-items/${itemId}`, { assignee_ids }),
+    onMutate: ({ itemId, assignee_ids }) =>
+      optimisticItem(itemId, (i) => ({ ...i, assignee_ids })),
     onSuccess: (_r, v) => {
       toast.success(v.assignee_ids?.length ? 'Assignees updated — new ones get notified.' : 'Task unassigned.');
       reload();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e, _v, prev) => {
+      if (prev) qc.setQueryData(['project', org, id], prev);
+      toast.error(e.message);
+    },
   });
   const setStatus = useMutation({
     mutationFn: (status) => patch(`/orgs/${org}/projects/${id}`, { status }),
@@ -155,6 +185,20 @@ export default function ProjectDetail() {
   const isLead = p.owner_id === myId;
   const canStructure = canAssign || isLead;   // adviser+ or the project lead
   const canMoveStatus = canAssign || isLead;
+  const canRegisterDocs = active ? atLeast(active.role, 'officer') : false;
+
+  const docRows = docs.data?.data ?? [];
+  const docsById = new Map(docRows.map((d) => [d.id, d]));
+  const logRows = logs.data?.data ?? [];
+  const logsTotal = logs.data?.pagination?.totalItems ?? logRows.length;
+  const logsShown = logRows.slice(0, 8);
+  // per-paper daily tallies — covers the entries this page loaded
+  const dailyCountByDoc = logRows.reduce((m, e) => {
+    if (e.document_id) m.set(e.document_id, (m.get(e.document_id) ?? 0) + 1);
+    return m;
+  }, new Map());
+  const docKind = (s) =>
+    s === 'signed' ? 'done' : ['routing', 'revision'].includes(s) ? 'pending' : s === 'filed' ? 'skip' : 'neutral';
 
   const items = q.data?.checklist ?? [];
   const diag = diagnoseChecklist(templates.data?.data, {
@@ -378,6 +422,94 @@ export default function ProjectDetail() {
             );
           })}
         </div>
+      </Card>
+
+      <Card>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="label-strong text-sm text-[var(--color-ink-2)]">
+            Papers{docRows.length ? ` · ${docRows.length}` : ''}
+          </div>
+          {canRegisterDocs && (
+            <Link to={`/documents?new=1&project=${id}`}>
+              <Button variant="secondary" className="min-h-[36px] px-3 text-xs">
+                <Plus size={14} /> Register a paper
+              </Button>
+            </Link>
+          )}
+        </div>
+        {docs.isLoading && <Skeleton className="h-16" />}
+        {docs.isError && <ErrorState error={docs.error} retry={docs.refetch} what="this project's papers" />}
+        {docs.data && docRows.length === 0 && (
+          <p className="text-xs text-[var(--color-ink-3)]">
+            No papers tied to this project yet
+            {canRegisterDocs
+              ? ' — register one and it lands here.'
+              : ' — officers register papers; ask one to add it.'}
+          </p>
+        )}
+        <div className="space-y-1">
+          {docRows.map((d) => (
+            <Link key={d.id} to={`/documents/${d.id}`}
+                  className="block rounded-[var(--radius-input)] p-2 hover:bg-[var(--color-surface-3)]">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">{d.title}</span>
+                <Chip kind="neutral" label={docTypeLabel(d.doc_type)} />
+                <Chip kind={docKind(d.status)} label={docStatusLabel(d.status)} />
+                {(dailyCountByDoc.get(d.id) ?? 0) > 0 && (
+                  <Chip kind="extra" label={`${dailyCountByDoc.get(d.id)} ${dailyCountByDoc.get(d.id) === 1 ? 'daily' : 'dailies'}`} />
+                )}
+              </div>
+              <div className="mt-0.5 text-xs text-[var(--color-ink-3)]">
+                {d.current_location
+                  ? `At ${d.current_location} — last handled by ${nameOf(d.last_moved_by) ?? 'someone'}${d.last_moved_at ? ` · ${String(d.last_moved_at).slice(0, 10)}` : ''}`
+                  : 'Registered — no hand-offs yet.'}
+              </div>
+            </Link>
+          ))}
+        </div>
+      </Card>
+
+      <Card>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="label-strong text-sm text-[var(--color-ink-2)]">
+            Daily logs{logsTotal ? ` · ${logsTotal}` : ''}
+          </div>
+          <Link to={`/journal?compose=1&project=${id}`}
+                className="flex min-h-[36px] items-center text-xs text-[var(--color-accent)]">
+            Log work
+          </Link>
+        </div>
+        {logs.isLoading && <Skeleton className="h-16" />}
+        {logs.isError && <ErrorState error={logs.error} retry={logs.refetch} what="this project's daily logs" />}
+        {logs.data && logRows.length === 0 && (
+          <p className="text-xs text-[var(--color-ink-3)]">
+            No dailies filed against this project yet — an entry that picks this
+            project or one of its papers lands here.
+          </p>
+        )}
+        <div className="space-y-2">
+          {logsShown.map((e) => (
+            <div key={e.id} className="space-y-1 rounded-[var(--radius-input)] p-2 hover:bg-[var(--color-surface-3)]">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-ink-3)]">
+                <span className="label-strong text-[var(--color-ink-2)]">
+                  {e.member_id === myId ? 'You' : nameOf(e.member_id) ?? 'Someone'}
+                </span>
+                <span>{e.entry_date}</span>
+                {e.document_id && (
+                  <Chip kind="extra" label={docsById.get(e.document_id)?.title ?? 'a paper'} />
+                )}
+                {e.photos.length > 0 && <span>{e.photos.length} photo{e.photos.length === 1 ? '' : 's'}</span>}
+              </div>
+              <p className="line-clamp-2 text-sm text-[var(--color-ink-2)]">{e.description}</p>
+            </div>
+          ))}
+        </div>
+        {logsTotal > logsShown.length && (
+          <Link to={`/journal?project=${id}`}
+                className="mt-1 inline-block text-xs text-[var(--color-accent)]">
+            See all {logsTotal} entries →
+          </Link>
+        )}
       </Card>
 
       <BudgetSection org={org} projectId={id} active={active} myId={myId} />

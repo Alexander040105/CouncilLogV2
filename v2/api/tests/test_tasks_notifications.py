@@ -370,12 +370,12 @@ async def test_held_by_me_follows_latest_movement(session):
     await session.flush()
 
     r = await list_documents(org_id=org.id, session=session, held_by="me", member=m)
-    ids = {d.id for d in r["data"]}
+    ids = {d["id"] for d in r["data"]}
     assert ids == {d_mine.id}  # d_theirs moved on; d_idle never moved
 
     # from the other member's view, d_theirs is theirs
     r = await list_documents(org_id=org.id, session=session, held_by="me", member=om)
-    assert {d.id for d in r["data"]} == {d_theirs.id}
+    assert {d["id"] for d in r["data"]} == {d_theirs.id}
 
     # without the param the list is unchanged
     r = await list_documents(org_id=org.id, session=session, member=m)

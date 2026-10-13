@@ -45,9 +45,28 @@ async def assignee_map(session, kind: str, entity_ids: list[uuid.UUID]) -> dict[
 
 
 async def set_assignees(session, kind: str, entity_id: uuid.UUID, ids: list[uuid.UUID]) -> list[uuid.UUID]:
-    """Replace-all within the caller's transaction; returns the deduped list."""
+    """Replace-all within the caller's transaction; returns the deduped list.
+    Diff-based: only removed rows are deleted and only new rows inserted, so
+    rapid consecutive patches (one per checkbox tap) can't collide on the
+    junction PK — and the conflict-safe insert keeps even a true race benign."""
     deduped = list(dict.fromkeys(ids))
-    await session.execute(delete(_MODEL[kind]).where(_fk(kind) == entity_id))
+    current = set(await assignees_of(session, kind, entity_id))
+    wanted = set(deduped)
+    removed = current - wanted
+    added = wanted - current
+    if removed:
+        await session.execute(delete(_MODEL[kind]).where(
+            _fk(kind) == entity_id, _MODEL[kind].user_id.in_(removed)))
     for uid in deduped:
-        session.add(_MODEL[kind](**{_FK[kind]: entity_id, "user_id": uid}))
+        if uid not in added:
+            continue
+        dialect = session.bind.dialect.name
+        if dialect == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert as _insert
+        else:
+            from sqlalchemy.dialects.postgresql import insert as _insert
+        await session.execute(
+            _insert(_MODEL[kind])
+            .values(**{_FK[kind]: entity_id, "user_id": uid})
+            .on_conflict_do_nothing())
     return deduped

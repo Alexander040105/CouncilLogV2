@@ -1,9 +1,9 @@
 /** Port of web/pages/Documents.jsx — custody list + register sheet with
  *  doc-type picker, project pre-tick flags, live ChainPreview, override chain. */
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, FileText, Plus, Route } from 'lucide-react-native';
 import { get, post, queuedMsg } from '../../src/lib/api';
@@ -130,6 +130,7 @@ export default function Documents() {
   const [customType, setCustomType] = useState('');
   const [err, setErr] = useState(null);
   const [statusFilter, setStatusFilter] = useState('');
+  const params = useLocalSearchParams();
 
   const docs = useQuery({
     queryKey: ['documents', org],
@@ -160,6 +161,23 @@ export default function Documents() {
       flags: proj ? { ...f.flags, ...(proj.flags ?? {}) } : f.flags,
     }));
   };
+
+  // Deep links from elsewhere ("Register a paper" on a project page):
+  // ?new=1 opens the sheet, ?project=<id> pre-ties it to that project.
+  // Waits for the projects list so pickProject can pre-tick its flags —
+  // the guard re-checks every render until the params are consumed.
+  const [handledNew, setHandledNew] = useState(false);
+  if (params.new === '1' && canWrite && projects.data && !handledNew) {
+    setHandledNew(true);
+    setOpen(true);
+    if (params.project) pickProject(params.project);
+  }
+  useEffect(() => {
+    if (handledNew && (params.new || params.project)) {
+      router.setParams({ new: undefined, project: undefined });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handledNew]);
 
   const create = useMutation({
     mutationFn: () => post(`/orgs/${org}/documents`, {

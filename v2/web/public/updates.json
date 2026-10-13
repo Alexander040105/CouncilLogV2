@@ -1,6 +1,20 @@
 {
   "updates": [
     {
+      "date": "2026-10-13",
+      "level": "notable",
+      "notes": [
+        "Activity page gathers everyone's dailies and new tasks in one feed",
+        "Dailies can point at a task, and task sheets show the logs linked to them",
+        "Comment on each other's daily logs right from the journal or Activity",
+        "Owners can recolor the org — pick a preset or enter your own accent and brand colors in Settings",
+        "Photos shrink before upload so attachments stay light on storage",
+        "Assigning tasks and ticking checklists respond instantly instead of waiting on the server",
+        "A project's page now lists its papers and the dailies logged against them",
+        "Checklists open on the Not done filter"
+      ]
+    },
+    {
       "date": "2026-10-08",
       "level": "notable",
       "notes": [

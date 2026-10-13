@@ -6,7 +6,7 @@
  *   - selected org         → falls back to first membership (writes through) */
 import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { StatusBar } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -15,9 +15,9 @@ import { ThemeProvider, useTheme } from '../src/lib/theme';
 import { ToastProvider } from '../src/lib/toast';
 import { ErrorBoundary } from '../src/components/ui';
 import { UpdateBanner } from '../src/components/UpdateBanner';
-import { setAuthFailureHandler } from '../src/lib/api';
+import { setAuthFailureHandler, get } from '../src/lib/api';
 import { supabase } from '../src/lib/supabase';
-import { currentOrgId, hydrateOrg, orgHydrated, orgPicked, setCurrentOrg, setOrgPicked } from '../src/lib/org';
+import { currentOrgId, hydrateOrg, orgHydrated, orgPicked, setCurrentOrg, setOrgPicked, useOrgId } from '../src/lib/org';
 import { useMe } from '../src/lib/me';
 import { startConnectivity } from '../src/lib/connectivity';
 import { hydrateQueryCache, persistQueryCache } from '../src/lib/qcache';
@@ -26,7 +26,16 @@ import * as ReactNative from 'react-native';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const qc = new QueryClient();
+const qc = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // same 30s floor as web — kills refetch-on-mount chatter; the offline
+      // outbox + invalidations already keep data honest between screens
+      staleTime: 30_000,
+      retry: 1,
+    },
+  },
+});
 
 // API 401s → kill the session and bounce to /login (registered once).
 setAuthFailureHandler(() => {
@@ -40,7 +49,19 @@ function Gate() {
   const segments = useSegments();
   const router = useRouter();
   const me = useMe();
-  const { t } = useTheme();
+  const { t, setOrgTheme } = useTheme();
+  const orgId = useOrgId();
+
+  // Org colors — the org's accent/brand ride on top of each member's own
+  // light/dark choice; cleared when the org has none or the user switches.
+  const orgDetail = useQuery({
+    queryKey: ['org', orgId],
+    queryFn: () => get(`/orgs/${orgId}`),
+    enabled: !!session && !!orgId,
+  });
+  useEffect(() => {
+    setOrgTheme(orgDetail.data?.data?.theme_json ?? null);
+  }, [orgDetail.data, orgId, setOrgTheme]);
 
   // Push: notification taps deep-link into tasks/papers/projects.
   useEffect(() => observeNotificationTaps(router), [router]);

@@ -11,7 +11,7 @@ import { useAuth } from '../../../src/lib/auth';
 import { useToast } from '../../../src/lib/toast';
 import { useTheme } from '../../../src/lib/theme';
 import { useMe, useActiveMembership } from '../../../src/lib/me';
-import { humanize, projectStatusLabel } from '../../../src/lib/labels';
+import { docStatusLabel, docTypeLabel, humanize, projectStatusLabel } from '../../../src/lib/labels';
 import { Button, Card, CheckRow, Chip, ConfirmDialog, Empty, ErrorState, Field, Input, Screen, Select, Sheet, Skeleton } from '../../../src/components/ui';
 import { ChecklistPreview } from '../../../src/components/ChecklistPreview';
 import { BudgetSection } from '../../../src/components/BudgetSection';
@@ -57,10 +57,20 @@ export default function ProjectDetail() {
     queryFn: () => get(`/orgs/${org}/checklist-templates`),
     enabled: !!org,
   });
+  const docs = useQuery({
+    queryKey: ['project-docs', org, id],
+    queryFn: () => get(`/orgs/${org}/documents?project_id=${id}&pageSize=100`),
+    enabled: !!org && !!id,
+  });
+  const logs = useQuery({
+    queryKey: ['project-journal', org, id],
+    queryFn: () => get(`/orgs/${org}/journal?project_id=${id}&pageSize=50`),
+    enabled: !!org && !!id,
+  });
   const [pickTemplate, setPickTemplate] = useState('');
   const [confirmPick, setConfirmPick] = useState(false);
   const [assignItem, setAssignItem] = useState(null);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('open');
   const [editItem, setEditItem] = useState(null);     // item object, or 'new'
   const [delItem, setDelItem] = useState(null);
   const [pendingStatus, setPendingStatus] = useState(null);
@@ -77,6 +87,17 @@ export default function ProjectDetail() {
   };
 
   const reload = () => qc.invalidateQueries({ queryKey: ['project', org, id] });
+  /** Optimistically patch one checklist row in the cached project; the server
+   *  (or the outbox replay when offline) still wins on settle. */
+  const optimisticItem = (itemId, fn) => {
+    qc.cancelQueries({ queryKey: ['project', org, id] });
+    const prev = qc.getQueryData(['project', org, id]);
+    qc.setQueryData(['project', org, id], (d) => d && {
+      ...d,
+      data: { ...d.data, checklist: (d.data.checklist ?? []).map((i) => i.id === itemId ? fn(i) : i) },
+    });
+    return prev;
+  };
   const instantiate = useMutation({
     mutationFn: ({ templateIds, append } = {}) =>
       post(`/orgs/${org}/projects/${id}/instantiate`,
@@ -101,17 +122,26 @@ export default function ProjectDetail() {
   const check = useMutation({
     mutationFn: ({ itemId, done }) =>
       patch(`/orgs/${org}/checklist-items/${itemId}`, { done }),
+    onMutate: ({ itemId, done }) => optimisticItem(itemId, (i) => ({ ...i, done })),
     onSuccess: reload,
-    onError: (e) => toast.error(e.message),
+    onError: (e, _v, prev) => {
+      if (prev) qc.setQueryData(['project', org, id], prev);
+      toast.error(e.message);
+    },
   });
   const assign = useMutation({
     mutationFn: ({ itemId, assignee_ids }) =>
       patch(`/orgs/${org}/checklist-items/${itemId}`, { assignee_ids }),
+    onMutate: ({ itemId, assignee_ids }) =>
+      optimisticItem(itemId, (i) => ({ ...i, assignee_ids })),
     onSuccess: (r, v) => {
       toast.success(queuedMsg(r, v.assignee_ids?.length ? 'Assignees updated — new ones get notified.' : 'Task unassigned.'));
       reload();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e, _v, prev) => {
+      if (prev) qc.setQueryData(['project', org, id], prev);
+      toast.error(e.message);
+    },
   });
   const setStatus = useMutation({
     mutationFn: (status) => patch(`/orgs/${org}/projects/${id}`, { status }),
@@ -166,6 +196,20 @@ export default function ProjectDetail() {
   const isLead = p.owner_id === myId;
   const canStructure = canAssign || isLead;   // adviser+ or the project lead
   const canMoveStatus = canAssign || isLead;
+  const canRegisterDocs = active ? atLeast(active.role, 'officer') : false;
+
+  const docRows = docs.data?.data ?? [];
+  const docsById = new Map(docRows.map((d) => [d.id, d]));
+  const logRows = logs.data?.data ?? [];
+  const logsTotal = logs.data?.pagination?.totalItems ?? logRows.length;
+  const logsShown = logRows.slice(0, 8);
+  // per-paper daily tallies — covers the entries this page loaded
+  const dailyCountByDoc = logRows.reduce((m, e) => {
+    if (e.document_id) m.set(e.document_id, (m.get(e.document_id) ?? 0) + 1);
+    return m;
+  }, new Map());
+  const docKind = (s) =>
+    s === 'signed' ? 'done' : ['routing', 'revision'].includes(s) ? 'pending' : s === 'filed' ? 'skip' : 'neutral';
 
   const items = q.data?.checklist ?? [];
   const diag = diagnoseChecklist(templates.data?.data, {
@@ -391,6 +435,90 @@ export default function ProjectDetail() {
             );
           })}
         </View>
+      </Card>
+
+      <Card style={{ gap: 10 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <Text style={{ fontSize: 13, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink2 }}>
+            Papers{docRows.length ? ` · ${docRows.length}` : ''}
+          </Text>
+          {canRegisterDocs ? (
+            <Button variant="secondary" style={{ minHeight: 36 }}
+                    onPress={() => router.push(`/documents?new=1&project=${id}`)}>
+              <Plus size={14} color={t.ink} /><Text style={{ fontSize: 12, fontWeight: '700', color: t.ink }}>Register a paper</Text>
+            </Button>
+          ) : null}
+        </View>
+        {docs.isLoading ? <Skeleton style={{ height: 64 }} /> : null}
+        {docs.isError ? <ErrorState error={docs.error} retry={docs.refetch} what="this project's papers" /> : null}
+        {docs.data && docRows.length === 0 ? (
+          <Text style={{ fontSize: 12, color: t.ink3 }}>
+            {canRegisterDocs
+              ? 'No papers tied to this project yet — register one and it lands here.'
+              : 'No papers tied to this project yet — officers register papers; ask one to add it.'}
+          </Text>
+        ) : null}
+        {docRows.map((d) => (
+          <Pressable key={d.id} accessibilityRole="link"
+                     onPress={() => router.push(`/document/${d.id}`)}
+                     style={{ padding: 8, borderRadius: t.radiusInput }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: t.ink }}>{d.title}</Text>
+              <Chip kind="neutral" label={docTypeLabel(d.doc_type)} />
+              <Chip kind={docKind(d.status)} label={docStatusLabel(d.status)} />
+              {(dailyCountByDoc.get(d.id) ?? 0) > 0 ? (
+                <Chip kind="extra" label={`${dailyCountByDoc.get(d.id)} ${dailyCountByDoc.get(d.id) === 1 ? 'daily' : 'dailies'}`} />
+              ) : null}
+            </View>
+            <Text style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
+              {d.current_location
+                ? `At ${d.current_location} — last handled by ${nameOf(d.last_moved_by) ?? 'someone'}${d.last_moved_at ? ` · ${String(d.last_moved_at).slice(0, 10)}` : ''}`
+                : 'Registered — no hand-offs yet.'}
+            </Text>
+          </Pressable>
+        ))}
+      </Card>
+
+      <Card style={{ gap: 10 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <Text style={{ fontSize: 13, fontWeight: t.labelWeight, textTransform: t.labelTransform, letterSpacing: t.labelTracking, color: t.ink2 }}>
+            Daily logs{logsTotal ? ` · ${logsTotal}` : ''}
+          </Text>
+          <Pressable accessibilityRole="link" onPress={() => router.push(`/journal?compose=1&project=${id}`)}
+                     style={{ minHeight: 32, justifyContent: 'center' }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: t.brand }}>Log work</Text>
+          </Pressable>
+        </View>
+        {logs.isLoading ? <Skeleton style={{ height: 64 }} /> : null}
+        {logs.isError ? <ErrorState error={logs.error} retry={logs.refetch} what="this project's daily logs" /> : null}
+        {logs.data && logRows.length === 0 ? (
+          <Text style={{ fontSize: 12, color: t.ink3 }}>
+            No dailies filed against this project yet — an entry that picks this project or one of its papers lands here.
+          </Text>
+        ) : null}
+        {logsShown.map((e) => (
+          <View key={e.id} style={{ gap: 4, padding: 8, borderRadius: t.radiusInput }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: t.ink2 }}>
+                {e.member_id === myId ? 'You' : nameOf(e.member_id) ?? 'Someone'}
+              </Text>
+              <Text style={{ fontSize: 12, color: t.ink3 }}>{e.entry_date}</Text>
+              {e.document_id ? (
+                <Chip kind="extra" label={docsById.get(e.document_id)?.title ?? 'a paper'} />
+              ) : null}
+              {e.photos.length > 0 ? (
+                <Text style={{ fontSize: 12, color: t.ink3 }}>{e.photos.length} photo{e.photos.length === 1 ? '' : 's'}</Text>
+              ) : null}
+            </View>
+            <Text style={{ fontSize: 14, color: t.ink2 }} numberOfLines={2}>{e.description}</Text>
+          </View>
+        ))}
+        {logsTotal > logsShown.length ? (
+          <Pressable accessibilityRole="link" onPress={() => router.push(`/journal?project=${id}`)}
+                     style={{ minHeight: 32, justifyContent: 'center' }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: t.brand }}>See all {logsTotal} entries →</Text>
+          </Pressable>
+        ) : null}
       </Card>
 
       <BudgetSection org={org} projectId={id} active={active} myId={myId} />

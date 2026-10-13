@@ -24,6 +24,9 @@ class Organization(SQLModel, table=True):
     name: str
     slug: str = Field(unique=True, index=True)
     logo_url: str | None = None
+    # {"preset"?: str, "accent"?: "#RRGGBB", "brand"?: "#RRGGBB"} — API-validated;
+    # NULL = default CounciLog colors. Clients derive fg contrast themselves.
+    theme_json: dict | None = Field(default=None, sa_column=Column(JSONB))
     created_by: uuid.UUID
     # soft delete: set = invisible/inaccessible to members, restorable by admins
     archived_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
@@ -128,9 +131,22 @@ class JournalEntry(SQLModel, table=True):
     entry_date: date = Field(sa_column=Column(Date))
     description: str
     project_id: uuid.UUID | None = Field(default=None, foreign_key="projects.id")
+    document_id: uuid.UUID | None = Field(default=None, foreign_key="documents.id")
+    # the task this daily advanced — inverse edge of tasks.journal_entry_id
+    # (which marks the entry a task was *created from*); keep them distinct.
+    task_id: uuid.UUID | None = Field(default=None, foreign_key="tasks.id")
     client_request_id: str | None = None
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
     updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
+
+
+class JournalEntryComment(SQLModel, table=True):
+    __tablename__ = "journal_entry_comments"
+    id: uuid.UUID = Field(default_factory=_uuid, primary_key=True)
+    entry_id: uuid.UUID = Field(foreign_key="journal_entries.id")
+    author_id: uuid.UUID
+    body: str
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), server_default=func.now()))
 
 
 class JournalPhoto(SQLModel, table=True):

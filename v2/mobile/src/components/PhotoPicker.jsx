@@ -6,6 +6,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Camera, ImageUp, X } from 'lucide-react-native';
+import { compressImageUri } from '../lib/images';
 import { useToast } from '../lib/toast';
 import { useTheme } from '../lib/theme';
 
@@ -24,12 +25,14 @@ async function normalize(asset) {
     const info = await FileSystem.getInfoAsync(asset.uri).catch(() => null);
     if (info?.exists) size = info.size ?? 0;
   }
-  return {
+  // downscale/recompress before upload — camera shots blow past the 5MB cap
+  return compressImageUri({
     uri: asset.uri,
     name: asset.fileName ?? `photo-${Date.now()}.${ext}`,
     type,
     size,
-  };
+    width: asset.width,
+  });
 }
 
 export function PhotoPicker({ photos, onChange, max = 4 }) {
