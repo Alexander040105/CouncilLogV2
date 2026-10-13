@@ -6,10 +6,12 @@ import { del, get, patch, post } from '../lib/api';
 import { atLeast, todayOrg } from '../lib/org';
 import { useToast } from '../lib/toast';
 import { peso, toCentavos } from '../lib/money';
+import { compressImageFile } from '../lib/images';
 import { Button, Card, Chip, Field, Input, Select, Sheet } from './ui';
 import { FilePicker } from './FilePicker';
 
 async function uploadSigned(org, signPath, f) {
+  f = await compressImageFile(f); // images shrink before upload; PDFs pass through
   const sign = await post(signPath, { mime: f.type, byte_size: f.size });
   const put = await fetch(sign.upload_url, { method: 'PUT', body: f });
   if (!put.ok) throw new Error('File upload failed');

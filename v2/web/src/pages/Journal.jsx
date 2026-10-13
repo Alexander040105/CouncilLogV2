@@ -1,13 +1,64 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useSearchParams, useOutletContext } from 'react-router-dom';
-import { NotebookPen, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { MessageSquare, NotebookPen, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { del, get, patch, post } from '../lib/api';
 import { currentOrgId, todayOrg } from '../lib/org';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import { PhotoPicker } from '../components/PhotoPicker';
 import { Button, Card, Chip, ConfirmDialog, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
+
+/** Expandable comment thread under a daily — lazy-loads on first open. */
+function EntryComments({ org, entry, open, onToggle }) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [text, setText] = useState('');
+  const q = useQuery({
+    queryKey: ['journal-comments', org, entry.id],
+    queryFn: () => get(`/orgs/${org}/journal/${entry.id}/comments`),
+    enabled: open,
+  });
+  const add = useMutation({
+    mutationFn: () => post(`/orgs/${org}/journal/${entry.id}/comments`, { body: text }),
+    onSuccess: () => {
+      setText('');
+      q.refetch();
+      qc.invalidateQueries({ queryKey: ['journal', org] }); // count chip updates
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  return (
+    <div>
+      <button onClick={onToggle} aria-expanded={open}
+              className="flex min-h-[36px] items-center gap-1.5 rounded-[var(--radius-input)] px-2 text-xs text-[var(--color-ink-2)] hover:bg-[var(--color-surface-3)]">
+        <MessageSquare size={13} />
+        {entry.comment_count ? `${entry.comment_count} comment${entry.comment_count === 1 ? '' : 's'}` : 'Comment'}
+      </button>
+      {open && (
+        <div className="mt-1 space-y-2 rounded-[var(--radius-input)] [border:var(--border-dash)] p-2">
+          {(q.data?.data ?? []).map((c) => (
+            <div key={c.id} className="text-xs">
+              <span className="font-medium">{c.author_name}</span>
+              <span className="ml-1 text-[var(--color-ink-3)]">{new Date(c.created_at).toLocaleString()}</span>
+              <div className="text-sm text-[var(--color-ink-2)]">{c.body}</div>
+            </div>
+          ))}
+          {(q.data?.data ?? []).length === 0 && (
+            <p className="text-xs text-[var(--color-ink-3)]">No comments yet — the author gets pinged when one lands.</p>
+          )}
+          <div className="flex gap-2">
+            <Input value={text} onChange={(e) => setText(e.target.value)}
+                   placeholder="Say something helpful…"
+                   onKeyDown={(e) => { if (e.key === 'Enter' && text.trim()) add.mutate(); }} />
+            <Button variant="secondary" onClick={() => add.mutate()}
+                    disabled={!text.trim() || add.isPending}>Send</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function PhotoThumb({ org, photo, onRemove }) {
   const q = useQuery({
@@ -45,6 +96,8 @@ export default function Journal() {
   const [desc, setDesc] = useState('');
   const [projectId, setProjectId] = useState(params.get('project') ?? '');
   const [docId, setDocId] = useState('');
+  const [taskId, setTaskId] = useState(params.get('task') ?? '');
+  const [commentsFor, setCommentsFor] = useState(null); // entry id with open thread
   const [photos, setPhotos] = useState([]);          // new File[] to upload
   const [keepIds, setKeepIds] = useState(null);      // edit mode: photo ids to keep
   const [busy, setBusy] = useState(false);
@@ -56,12 +109,13 @@ export default function Journal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ?project=<id> scopes the feed and pre-picks it in the compose sheet —
-  // the "see all" / "log work" links on a project page land here.
+  // ?project=<id> / ?task=<id> scope the feed and pre-pick them in the
+  // compose sheet — the "see all" / "log work" links elsewhere land here.
   const projParam = params.get('project');
+  const taskParam = params.get('task');
   const feed = useQuery({
-    queryKey: ['journal', org, projParam ?? ''],
-    queryFn: () => get(`/orgs/${org}/journal?pageSize=50${projParam ? `&project_id=${projParam}` : ''}`),
+    queryKey: ['journal', org, projParam ?? '', taskParam ?? ''],
+    queryFn: () => get(`/orgs/${org}/journal?pageSize=50${projParam ? `&project_id=${projParam}` : ''}${taskParam ? `&task_id=${taskParam}` : ''}`),
     enabled: !!org,
   });
   const projects = useQuery({
@@ -72,6 +126,11 @@ export default function Journal() {
   const documents = useQuery({
     queryKey: ['documents', org],
     queryFn: () => get(`/orgs/${org}/documents?pageSize=100`),
+    enabled: !!org,
+  });
+  const tasks = useQuery({
+    queryKey: ['tasks-open', org],
+    queryFn: () => get(`/orgs/${org}/tasks?status=open&pageSize=100`),
     enabled: !!org,
   });
 
@@ -94,6 +153,7 @@ export default function Journal() {
     setDesc(e.description);
     setProjectId(e.project_id ?? '');
     setDocId(e.document_id ?? '');
+    setTaskId(e.task_id ?? '');
     setPhotos([]);
     setKeepIds(new Set(e.photos.map((p) => p.id)));   // all kept; X drops one
     setErr(null);
@@ -102,7 +162,8 @@ export default function Journal() {
 
   const openCompose = () => {
     setEditing(null); setDesc(''); setPhotos([]);
-    setProjectId(projParam ?? ''); setDocId(''); setKeepIds(null); setErr(null);
+    setProjectId(projParam ?? ''); setDocId(''); setTaskId(taskParam ?? '');
+    setKeepIds(null); setErr(null);
     setComposeOpen(true);
   };
 
@@ -112,11 +173,16 @@ export default function Journal() {
   // rejects a paper that belongs to a different project
   const paperOptions = (documents.data?.data ?? [])
     .filter((d) => !projectId || d.project_id === projectId);
+  // same scoping rule for tasks — the API rejects a task from another project
+  const taskOptions = (tasks.data?.data ?? [])
+    .filter((x) => !projectId || !x.project_id || x.project_id === projectId);
   const pickProjectId = (pid) => {
     setProjectId(pid);
-    // a paper tied to another project can't stay selected under this one
+    // a paper/task tied to another project can't stay selected under this one
     const cur = (documents.data?.data ?? []).find((d) => d.id === docId);
     if (cur?.project_id && cur.project_id !== pid) setDocId('');
+    const curTask = (tasks.data?.data ?? []).find((x) => x.id === taskId);
+    if (curTask?.project_id && curTask.project_id !== pid) setTaskId('');
   };
 
   const submit = async () => {
@@ -135,6 +201,7 @@ export default function Journal() {
           description: desc,
           project_id: projectId || null,
           document_id: docId || null,
+          task_id: taskId || null,
           add_photos: uploaded.length ? uploaded : null,
           remove_photo_ids: editing.photos.filter((p) => !keepIds.has(p.id)).map((p) => p.id),
         });
@@ -144,11 +211,12 @@ export default function Journal() {
           description: desc,
           project_id: projectId || null,
           document_id: docId || null,
+          task_id: taskId || null,
           photos: uploaded,
         });
         toast.success('Entry posted — day documented.');
       }
-      setComposeOpen(false); setEditing(null); setDesc(''); setPhotos([]); setProjectId(''); setDocId('');
+      setComposeOpen(false); setEditing(null); setDesc(''); setPhotos([]); setProjectId(''); setDocId(''); setTaskId('');
       qc.invalidateQueries({ queryKey: ['journal', org] });
       qc.invalidateQueries({ queryKey: ['attendance'] });
     } catch (e) {
@@ -195,6 +263,15 @@ export default function Journal() {
           </button>
         </div>
       )}
+      {taskParam && (
+        <div className="flex items-center gap-2 rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 py-2 text-xs text-[var(--color-ink-2)]">
+          <span>Showing entries logged against <b>this task</b></span>
+          <button className="ml-auto flex min-h-[28px] items-center gap-1 text-[var(--color-accent)]"
+                  onClick={() => setParams((p) => { p.delete('task'); return p; })}>
+            <X size={12} /> Show everything
+          </button>
+        </div>
+      )}
       {feed.isLoading && <Skeleton className="h-48" />}
       {feed.isError && <ErrorState error={feed.error} retry={feed.refetch} />}
       {feed.data?.data.length === 0 && (
@@ -214,6 +291,7 @@ export default function Journal() {
                 <span className="flex flex-wrap items-center gap-1">
                   {e.project_id && <Chip kind="neutral" label={projTitle(e.project_id)} />}
                   {e.document_id && <Chip kind="extra" label={docTitle(e.document_id)} />}
+                  {e.task_id && <Chip kind="pending" label={e.task_title ?? 'a task'} />}
                 </span>
                 {canModify(e) && (
                   <span className="flex gap-1">
@@ -228,6 +306,9 @@ export default function Journal() {
                   </span>
                 )}
               </div>
+              <EntryComments org={org} entry={e}
+                             open={commentsFor === e.id}
+                             onToggle={() => setCommentsFor(commentsFor === e.id ? null : e.id)} />
             </Card>
           ))}
         </div>
@@ -266,6 +347,14 @@ export default function Journal() {
                     value={docId} onChange={(e) => setDocId(e.target.value)}>
               <option value="">No paper</option>
               {paperOptions.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
+            </select>
+          </Field>
+          <Field label="Task (optional)"
+                 hint="Which task this work moved forward — it shows on the task's page.">
+            <select className="min-h-[44px] w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 text-sm"
+                    value={taskId} onChange={(e) => setTaskId(e.target.value)}>
+              <option value="">No task</option>
+              {taskOptions.map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}
             </select>
           </Field>
           {err && <p className="text-sm text-[var(--color-status-alert)]">{err}</p>}

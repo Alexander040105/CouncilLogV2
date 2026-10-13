@@ -78,6 +78,17 @@ export default function ProjectDetail() {
   };
 
   const reload = () => qc.invalidateQueries({ queryKey: ['project', org, id] });
+  /** Optimistically patch one checklist row in the cached project; returns the
+   *  snapshot for rollback. The server response still wins on settle. */
+  const optimisticItem = (itemId, fn) => {
+    qc.cancelQueries({ queryKey: ['project', org, id] });
+    const prev = qc.getQueryData(['project', org, id]);
+    qc.setQueryData(['project', org, id], (d) => d && {
+      ...d,
+      data: { ...d.data, checklist: (d.data.checklist ?? []).map((i) => i.id === itemId ? fn(i) : i) },
+    });
+    return prev;
+  };
   const instantiate = useMutation({
     mutationFn: ({ templateIds, append } = {}) =>
       post(`/orgs/${org}/projects/${id}/instantiate`,
@@ -100,17 +111,26 @@ export default function ProjectDetail() {
   const check = useMutation({
     mutationFn: ({ itemId, done }) =>
       patch(`/orgs/${org}/checklist-items/${itemId}`, { done }),
+    onMutate: ({ itemId, done }) => optimisticItem(itemId, (i) => ({ ...i, done })),
     onSuccess: reload,
-    onError: (e) => toast.error(e.message),
+    onError: (e, _v, prev) => {
+      if (prev) qc.setQueryData(['project', org, id], prev);
+      toast.error(e.message);
+    },
   });
   const assign = useMutation({
     mutationFn: ({ itemId, assignee_ids }) =>
       patch(`/orgs/${org}/checklist-items/${itemId}`, { assignee_ids }),
+    onMutate: ({ itemId, assignee_ids }) =>
+      optimisticItem(itemId, (i) => ({ ...i, assignee_ids })),
     onSuccess: (_r, v) => {
       toast.success(v.assignee_ids?.length ? 'Assignees updated — new ones get notified.' : 'Task unassigned.');
       reload();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e, _v, prev) => {
+      if (prev) qc.setQueryData(['project', org, id], prev);
+      toast.error(e.message);
+    },
   });
   const setStatus = useMutation({
     mutationFn: (status) => patch(`/orgs/${org}/projects/${id}`, { status }),

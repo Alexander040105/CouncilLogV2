@@ -4,6 +4,7 @@ import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { Check, Copy, Plus } from 'lucide-react';
 import { get, post, put, patch, del as delApi } from '../lib/api';
 import { atLeast, currentOrgId, setCurrentOrg } from '../lib/org';
+import { ORG_PRESETS, contrastFg } from '../lib/orgTheme';
 import { collectFlagNames, describeCondition, describeItemRule } from '../lib/rules';
 import { useToast } from '../lib/toast';
 import { Button, Card, ConfirmDialog, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Skeleton, ThemePicker } from '../components/ui';
@@ -68,6 +69,8 @@ export default function Settings() {
         </p>
       </Card>
 
+      <OrgColors canWrite={canWrite} />
+
       <div className="flex flex-wrap gap-1 rounded-[var(--radius-input)] [border:var(--border-box)] p-0.5 text-sm">
         {TABS.filter((t) => t !== 'invites' || canWrite).map((t) => (
           <button key={t} onClick={() => setTab(t)}
@@ -95,6 +98,102 @@ export default function Settings() {
 
       {canWrite && <DangerZone orgName={active?.org_name} />}
     </div>
+  );
+}
+
+// ── Org colors ──────────────────────────────────────────────────────────
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+function OrgColors({ canWrite }) {
+  const org = currentOrgId();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const detail = useQuery({
+    queryKey: ['org', org],
+    queryFn: () => get(`/orgs/${org}`),
+    enabled: !!org,
+  });
+  const saved = detail.data?.data?.theme_json ?? null;
+  const [preset, setPreset] = useState(null);   // null = untouched → mirrors saved
+  const [accent, setAccent] = useState('');
+  const [brand, setBrand] = useState('');
+  const cur = preset === null
+    ? { preset: saved?.preset ?? 'default', accent: saved?.accent ?? '', brand: saved?.brand ?? '' }
+    : { preset, accent, brand };
+  const eff = {
+    accent: HEX_RE.test(cur.accent) ? cur.accent : ORG_PRESETS[cur.preset]?.accent,
+    brand: HEX_RE.test(cur.brand) ? cur.brand : ORG_PRESETS[cur.preset]?.brand,
+  };
+  const hexOk = (v) => v === '' || HEX_RE.test(v);
+  const dirty = preset !== null;
+  const save = useMutation({
+    mutationFn: () => patch(`/orgs/${org}`, {
+      theme: { preset: cur.preset === 'default' ? undefined : cur.preset,
+               accent: cur.accent || undefined, brand: cur.brand || undefined },
+    }),
+    onSuccess: () => {
+      toast.success('Org colors saved — everyone sees them on their next load.');
+      setPreset(null);
+      qc.invalidateQueries({ queryKey: ['org', org] });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  return (
+    <Card className="space-y-3">
+      <div className="text-sm font-medium">Organization colors</div>
+      <div className="text-xs text-[var(--color-ink-3)]">
+        Accent (buttons &amp; highlights) and brand (headings &amp; nav) everyone sees
+        in this org — on top of each member's own light/dark choice.
+        {!canWrite && ' Only owners can change these.'}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {Object.entries(ORG_PRESETS).map(([id, p]) => (
+          <button key={id} type="button" disabled={!canWrite}
+                  onClick={() => { setPreset(id); setAccent(cur.accent); setBrand(cur.brand); }}
+                  aria-pressed={cur.preset === id}
+                  className={`flex items-center gap-1.5 rounded-[var(--radius-input)] px-2 py-1.5 text-xs [border:var(--border-el)] ${cur.preset === id ? 'bg-[var(--color-surface-3)]' : ''} disabled:opacity-60`}>
+            <span className="h-4 w-4 rounded-[3px] border border-black/30" style={{ background: p.accent }} />
+            <span className="h-4 w-4 rounded-[3px] border border-black/30" style={{ background: p.brand }} />
+            {p.label}
+          </button>
+        ))}
+      </div>
+      {canWrite && (
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Custom accent" hint="#RRGGBB — overrides the preset">
+            <Input className="w-32 font-mono" placeholder="#f4be04" value={cur.accent}
+                   onChange={(e) => { setPreset(cur.preset); setAccent(e.target.value); setBrand(cur.brand); }} />
+          </Field>
+          <Field label="Custom brand" hint="#RRGGBB">
+            <Input className="w-32 font-mono" placeholder="#27146e" value={cur.brand}
+                   onChange={(e) => { setPreset(cur.preset); setBrand(e.target.value); setAccent(cur.accent); }} />
+          </Field>
+          {/* live preview before anything is saved */}
+          <div className="flex items-center gap-2 pb-1">
+            <span className="label-strong rounded-[var(--radius-input)] px-3 py-1.5 text-xs"
+                  style={{ background: eff.accent, color: contrastFg(eff.accent), border: '2px solid #000' }}>
+              Preview button
+            </span>
+            <span className="label-strong rounded-[var(--radius-input)] px-3 py-1.5 text-xs"
+                  style={{ background: eff.brand, color: contrastFg(eff.brand), border: '2px solid #000' }}>
+              Brand
+            </span>
+          </div>
+          <div className="flex gap-2 pb-1">
+            <Button onClick={() => save.mutate()}
+                    disabled={!dirty || !hexOk(cur.accent) || !hexOk(cur.brand) || save.isPending}>
+              Save colors
+            </Button>
+            {saved && (
+              <Button variant="secondary" disabled={save.isPending}
+                      onClick={() => { setPreset('default'); setAccent(''); setBrand(''); }}>
+                Reset
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 

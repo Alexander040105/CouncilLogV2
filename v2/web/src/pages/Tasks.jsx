@@ -195,8 +195,28 @@ export default function Tasks() {
 
   const update = useMutation({
     mutationFn: (patchBody) => patch(`/orgs/${org}/tasks/${focusId}`, patchBody),
+    // status flips feel instant — optimistic write to both the open sheet and
+    // the list; rolled back on error, server response wins on settle
+    onMutate: (patchBody) => {
+      if (!('status' in patchBody)) return undefined;
+      qc.cancelQueries({ queryKey: ['task', org, focusId] });
+      qc.cancelQueries({ queryKey: ['tasks', org] });
+      const prevDetail = qc.getQueryData(['task', org, focusId]);
+      const prevList = qc.getQueryData(['tasks', org]);
+      qc.setQueryData(['task', org, focusId], (d) => d && {
+        ...d, data: { ...d.data, status: patchBody.status },
+      });
+      qc.setQueryData(['tasks', org], (d) => d && {
+        ...d, data: (d.data ?? []).map((x) => x.id === focusId ? { ...x, status: patchBody.status } : x),
+      });
+      return { prevDetail, prevList };
+    },
     onSuccess: () => { toast.success('Saved.'); invalidate(); detail.refetch(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e, _v, ctx) => {
+      if (ctx?.prevDetail) qc.setQueryData(['task', org, focusId], ctx.prevDetail);
+      if (ctx?.prevList) qc.setQueryData(['tasks', org], ctx.prevList);
+      toast.error(e.message);
+    },
   });
 
   const remove = useMutation({
@@ -367,6 +387,9 @@ export default function Tasks() {
               )}
             </div>
 
+            {/* dailies logged against this task — who did what and when */}
+            <TaskDailies org={org} taskId={focusId} nameOf={nameOf} />
+
             <div className="space-y-2 [border-top:var(--border-box)] pt-3">
               <div className="label-strong text-sm">Comments</div>
               {(detail.data?.comments ?? []).map((c) => (
@@ -400,6 +423,36 @@ export default function Tasks() {
         body="The task and its comments are removed for everyone. Comments and notifications already sent stay in inboxes."
         confirmLabel="Delete task"
       />
+    </div>
+  );
+}
+
+/** Dailies logged against this task — who did what, linked to the Journal. */
+function TaskDailies({ org, taskId, nameOf }) {
+  const q = useQuery({
+    queryKey: ['journal', org, 'task', taskId],
+    queryFn: () => get(`/orgs/${org}/journal?task_id=${taskId}&pageSize=20`),
+    enabled: !!taskId,
+  });
+  const rows = q.data?.data ?? [];
+  return (
+    <div className="space-y-2 [border-top:var(--border-box)] pt-3">
+      <div className="label-strong text-sm">Daily logs</div>
+      {rows.map((e) => (
+        <Link key={e.id} to={`/journal?task=${taskId}`}
+              className="block rounded-[var(--radius-input)] bg-[var(--color-surface-3)] px-3 py-2 text-sm hover:bg-[var(--hover-fill)]">
+          <div className="text-xs font-medium text-[var(--color-ink-3)]">
+            {nameOf(e.member_id)} · {e.entry_date}
+          </div>
+          {e.description}
+        </Link>
+      ))}
+      {rows.length === 0 && (
+        <p className="text-xs text-[var(--color-ink-3)]">
+          No dailies reference this task yet — when someone logs work against it
+          (the "Task" field in Log work), it shows here.
+        </p>
+      )}
     </div>
   );
 }

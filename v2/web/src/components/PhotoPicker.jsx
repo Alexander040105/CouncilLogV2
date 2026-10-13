@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, CameraOff, ImageUp, X } from 'lucide-react';
+import { compressImageFile } from '../lib/images';
 import { useToast } from '../lib/toast';
 import { Button, Skeleton } from './ui';
 
@@ -55,9 +56,10 @@ export function PhotoPicker({ photos, onChange, max = 4 }) {
   // revoke preview object URLs on unmount
   useEffect(() => () => urlsRef.current.forEach((u) => URL.revokeObjectURL(u)), []);
 
-  const add = (f) => {
+  const add = async (f) => {
     if (!f) return;
     if (!ACCEPT.split(',').includes(f.type)) { toast.error('Photos must be JPG, PNG, or WebP.'); return; }
+    f = await compressImageFile(f);
     if (f.size > MAX_BYTES) { toast.error('Photo too large — 5 MB max.'); return; }
     onChange([...photos, f].slice(0, max));
     toast.success(`Photo added — ${Math.min(photos.length + 1, max)} of ${max}.`);
