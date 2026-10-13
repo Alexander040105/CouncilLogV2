@@ -147,12 +147,13 @@ export function Empty({ icon, title, hint, action }) {
   );
 }
 
-/** Error state for failed queries: names the cause + offers a retry. */
-export function ErrorState({ error, retry }) {
+/** Error state for failed queries: names the cause + offers a retry.
+ *  `what` names the surface ("Couldn't load this project's papers"). */
+export function ErrorState({ error, retry, what }) {
   return (
     <Empty
       icon={<AlertTriangle size={24} />}
-      title="Couldn't load this"
+      title={what ? `Couldn't load ${what}` : "Couldn't load this"}
       hint={error?.message ?? 'Something went wrong — check your connection.'}
       action={retry ? <Button variant="secondary" onClick={retry}>Try again</Button> : undefined}
     />

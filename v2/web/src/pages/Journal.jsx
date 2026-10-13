@@ -43,7 +43,8 @@ export default function Journal() {
   const [editing, setEditing] = useState(null);   // entry object being edited
   const [deleting, setDeleting] = useState(null); // entry object pending confirm
   const [desc, setDesc] = useState('');
-  const [projectId, setProjectId] = useState('');
+  const [projectId, setProjectId] = useState(params.get('project') ?? '');
+  const [docId, setDocId] = useState('');
   const [photos, setPhotos] = useState([]);          // new File[] to upload
   const [keepIds, setKeepIds] = useState(null);      // edit mode: photo ids to keep
   const [busy, setBusy] = useState(false);
@@ -55,14 +56,22 @@ export default function Journal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ?project=<id> scopes the feed and pre-picks it in the compose sheet —
+  // the "see all" / "log work" links on a project page land here.
+  const projParam = params.get('project');
   const feed = useQuery({
-    queryKey: ['journal', org],
-    queryFn: () => get(`/orgs/${org}/journal?pageSize=50`),
+    queryKey: ['journal', org, projParam ?? ''],
+    queryFn: () => get(`/orgs/${org}/journal?pageSize=50${projParam ? `&project_id=${projParam}` : ''}`),
     enabled: !!org,
   });
   const projects = useQuery({
     queryKey: ['projects', org],
     queryFn: () => get(`/orgs/${org}/projects?pageSize=100`),
+    enabled: !!org,
+  });
+  const documents = useQuery({
+    queryKey: ['documents', org],
+    queryFn: () => get(`/orgs/${org}/documents?pageSize=100`),
     enabled: !!org,
   });
 
@@ -84,6 +93,7 @@ export default function Journal() {
     setEditing(e);
     setDesc(e.description);
     setProjectId(e.project_id ?? '');
+    setDocId(e.document_id ?? '');
     setPhotos([]);
     setKeepIds(new Set(e.photos.map((p) => p.id)));   // all kept; X drops one
     setErr(null);
@@ -91,8 +101,22 @@ export default function Journal() {
   };
 
   const openCompose = () => {
-    setEditing(null); setDesc(''); setPhotos([]); setProjectId(''); setKeepIds(null); setErr(null);
+    setEditing(null); setDesc(''); setPhotos([]);
+    setProjectId(projParam ?? ''); setDocId(''); setKeepIds(null); setErr(null);
     setComposeOpen(true);
+  };
+
+  const projTitle = (pid) => (projects.data?.data ?? []).find((p) => p.id === pid)?.title ?? 'a project';
+  const docTitle = (did) => (documents.data?.data ?? []).find((d) => d.id === did)?.title ?? 'a paper';
+  // with a project picked, only its papers are valid targets — the API
+  // rejects a paper that belongs to a different project
+  const paperOptions = (documents.data?.data ?? [])
+    .filter((d) => !projectId || d.project_id === projectId);
+  const pickProjectId = (pid) => {
+    setProjectId(pid);
+    // a paper tied to another project can't stay selected under this one
+    const cur = (documents.data?.data ?? []).find((d) => d.id === docId);
+    if (cur?.project_id && cur.project_id !== pid) setDocId('');
   };
 
   const submit = async () => {
@@ -110,6 +134,7 @@ export default function Journal() {
         await patch(`/orgs/${org}/journal/${editing.id}`, {
           description: desc,
           project_id: projectId || null,
+          document_id: docId || null,
           add_photos: uploaded.length ? uploaded : null,
           remove_photo_ids: editing.photos.filter((p) => !keepIds.has(p.id)).map((p) => p.id),
         });
@@ -118,11 +143,12 @@ export default function Journal() {
         await post(`/orgs/${org}/journal`, {
           description: desc,
           project_id: projectId || null,
+          document_id: docId || null,
           photos: uploaded,
         });
         toast.success('Entry posted — day documented.');
       }
-      setComposeOpen(false); setEditing(null); setDesc(''); setPhotos([]); setProjectId('');
+      setComposeOpen(false); setEditing(null); setDesc(''); setPhotos([]); setProjectId(''); setDocId('');
       qc.invalidateQueries({ queryKey: ['journal', org] });
       qc.invalidateQueries({ queryKey: ['attendance'] });
     } catch (e) {
@@ -160,6 +186,15 @@ export default function Journal() {
         filings count as extra duty.
       </HintBanner>
 
+      {projParam && (
+        <div className="flex items-center gap-2 rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 py-2 text-xs text-[var(--color-ink-2)]">
+          <span>Showing entries for <b>{projParam && projects.data ? projTitle(projParam) : 'this project'}</b></span>
+          <button className="ml-auto flex min-h-[28px] items-center gap-1 text-[var(--color-accent)]"
+                  onClick={() => setParams((p) => { p.delete('project'); return p; })}>
+            <X size={12} /> Show everything
+          </button>
+        </div>
+      )}
       {feed.isLoading && <Skeleton className="h-48" />}
       {feed.isError && <ErrorState error={feed.error} retry={feed.refetch} />}
       {feed.data?.data.length === 0 && (
@@ -176,7 +211,10 @@ export default function Journal() {
               {e.photos.map((p) => <PhotoThumb key={p.id} org={org} photo={p} />)}
               <div className="text-sm">{e.description}</div>
               <div className="flex items-center justify-between gap-2">
-                <span>{e.project_id && <Chip kind="neutral" label="project" />}</span>
+                <span className="flex flex-wrap items-center gap-1">
+                  {e.project_id && <Chip kind="neutral" label={projTitle(e.project_id)} />}
+                  {e.document_id && <Chip kind="extra" label={docTitle(e.document_id)} />}
+                </span>
                 {canModify(e) && (
                   <span className="flex gap-1">
                     <Button variant="ghost" className="min-h-[36px] px-2 text-xs"
@@ -215,9 +253,19 @@ export default function Journal() {
           </Field>
           <Field label="Project (optional)">
             <select className="min-h-[44px] w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 text-sm"
-                    value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                    value={projectId} onChange={(e) => pickProjectId(e.target.value)}>
               <option value="">No project</option>
               {projects.data?.data.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+            </select>
+          </Field>
+          <Field label="Paper (optional)"
+                 hint={projectId
+                   ? 'Only papers registered to that project are listed.'
+                   : 'Tagging a paper counts the entry under its project too.'}>
+            <select className="min-h-[44px] w-full rounded-[var(--radius-input)] [border:var(--border-box)] bg-[var(--color-surface-2)] px-3 text-sm"
+                    value={docId} onChange={(e) => setDocId(e.target.value)}>
+              <option value="">No paper</option>
+              {paperOptions.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
             </select>
           </Field>
           {err && <p className="text-sm text-[var(--color-status-alert)]">{err}</p>}

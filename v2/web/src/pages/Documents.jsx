@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, FileText, LayoutGrid, List, Plus, Route } from 'lucide-react';
 import { get, post } from '../lib/api';
 import { atLeast, currentOrgId } from '../lib/org';
@@ -82,6 +82,7 @@ export default function Documents() {
   const [customType, setCustomType] = useState('');
   const [err, setErr] = useState(null);
   const [view, setView] = useState('list');   // 'list' | 'board'
+  const [params, setParams] = useSearchParams();
 
   const docs = useQuery({
     queryKey: ['documents', org],
@@ -103,6 +104,18 @@ export default function Documents() {
   const knownTypes = [...new Set((chains.data?.data ?? []).map((c) => c.doc_type))].sort();
   const docType = typeSel === '__custom' ? customType.trim() : typeSel;
   const linkedProject = (projects.data?.data ?? []).find((p) => p.id === form.project_id) ?? null;
+
+  // Deep links from elsewhere ("Register a paper" on a project page):
+  // ?new=1 opens the sheet, ?project=<id> pre-ties it to that project.
+  // Waits for the projects list so pickProject can pre-tick its flags.
+  useEffect(() => {
+    if (params.get('new') !== '1' || !canWrite || !projects.data) return;
+    setOpen(true);
+    const pid = params.get('project');
+    if (pid) pickProject(pid);
+    setParams((p) => { p.delete('new'); p.delete('project'); return p; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, canWrite, projects.data]);
 
   // Linking a project pre-ticks its flags (the officer can still untick) —
   // flag-gated steps like "RFP for international webinars" evaluate against
