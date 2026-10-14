@@ -77,19 +77,21 @@ async def list_tasks(org_id: uuid.UUID, session: Session,
                      member: Membership = Depends(authorize())):
     page, page_size = page_params(page, pageSize)
     q = select(Task).where(Task.org_id == org_id)
-    if assignee == "me":
-        uid = uuid.UUID(member.user_id)
-    elif assignee:
-        uid = uuid.UUID(assignee)
-    else:
-        uid = None
-    if uid:
+    def _user_param(value: str, name: str) -> uuid.UUID:
+        # "me" resolves to the caller; anything else must be a UUID — a bad
+        # value is a client error, not a 500.
+        if value == "me":
+            return uuid.UUID(member.user_id)
+        try:
+            return uuid.UUID(value)
+        except ValueError:
+            raise APIError(422, "BAD_PARAM",
+                           f"{name} must be a user id or 'me'")
+    if assignee:
         q = q.where(Task.id.in_(select(TaskAssignee.task_id).where(
-            TaskAssignee.user_id == uid)))
-    if creator == "me":
-        q = q.where(Task.creator_id == uuid.UUID(member.user_id))
-    elif creator:
-        q = q.where(Task.creator_id == uuid.UUID(creator))
+            TaskAssignee.user_id == _user_param(assignee, "assignee"))))
+    if creator:
+        q = q.where(Task.creator_id == _user_param(creator, "creator"))
     if status:
         if status not in STATUSES:
             raise APIError(422, "BAD_STATUS", f"status must be one of {STATUSES}")
