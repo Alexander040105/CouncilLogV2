@@ -41,7 +41,8 @@ async def list_all_orgs(session: Session, _admin: Admin, page: int = 1, pageSize
             .offset((page - 1) * page_size).limit(page_size)
         )
     ).all()
-    total = len((await session.execute(select(Organization))).all())
+    total = (await session.execute(
+        select(func.count()).select_from(Organization))).scalar_one()
     return envelope(
         [{"id": str(o.id), "name": o.name, "slug": o.slug,
           "archived_at": o.archived_at, "created_at": o.created_at,
