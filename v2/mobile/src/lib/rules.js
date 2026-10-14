@@ -32,8 +32,11 @@ export function autoMatchedChain(chains, docType) {
     .sort((a, b) => a.name.localeCompare(b.name))[0] ?? null;
 }
 
-/** Steps that will actually instantiate — chain steps carry condition_json. */
-export function visibleChainSteps(chain, { eventType = null, flags = {} } = {}) {
+/** Steps that will actually instantiate — chain steps carry condition_json.
+ *  `opts ?? {}`: a caller passing null positionally must degrade to
+ *  defaults, not crash the page. */
+export function visibleChainSteps(chain, opts) {
+  const { eventType = null, flags = {} } = opts ?? {};
   return [...(chain?.steps ?? [])]
     .sort((a, b) => a.ord - b.ord)
     .filter((s) => eventOk(s.condition_json, eventType) && flagOk(s.condition_json, flags));
@@ -41,7 +44,8 @@ export function visibleChainSteps(chain, { eventType = null, flags = {} } = {}) 
 
 /** Templates the project will instantiate from — server rule:
  *  track matches paper/logistics needs AND (no event_type OR == project's). */
-export function matchedTemplates(templates, { paper, logistics, eventType }) {
+export function matchedTemplates(templates, opts) {
+  const { paper, logistics, eventType } = opts ?? {};
   const wanted = [...(paper ? ['paper', 'both'] : []), ...(logistics ? ['logistics', 'both'] : [])];
   return (templates ?? [])
     .filter((t) => wanted.includes(t.track)
@@ -49,7 +53,8 @@ export function matchedTemplates(templates, { paper, logistics, eventType }) {
 }
 
 /** Items a template will produce for a given event_type/flags/target_date. */
-export function templateItems(template, { eventType = null, flags = {}, targetDate = null } = {}) {
+export function templateItems(template, opts) {
+  const { eventType = null, flags = {}, targetDate = null } = opts ?? {};
   return [...(template?.items ?? [])]
     .sort((a, b) => a.ord - b.ord)
     .filter((i) => eventOk(i.rule_json, eventType) && flagOk(i.rule_json, flags))
@@ -58,7 +63,8 @@ export function templateItems(template, { eventType = null, flags = {}, targetDa
 
 /** Why auto-match will/won't produce items — mirrors diagnose_checklist in
  *  api/app/services/instantiate.py (same enum, same precedence; keep in sync). */
-export function diagnoseChecklist(templates, { paper, logistics, eventType = null, flags = {}, targetDate = null } = {}) {
+export function diagnoseChecklist(templates, opts) {
+  const { paper, logistics, eventType = null, flags = {}, targetDate = null } = opts ?? {};
   const all = templates ?? [];
   const matched = matchedTemplates(all, { paper, logistics, eventType });
   const items = matched.flatMap((t) =>

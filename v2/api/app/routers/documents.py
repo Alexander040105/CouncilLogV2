@@ -129,6 +129,10 @@ async def list_documents(org_id: uuid.UUID, session: Session, status: str | None
         q = q.where(Document.status == status)
     if project_id:
         q = q.where(Document.project_id == project_id)
+    if held_by is not None and held_by != "me":
+        # Only "me" is supported — silently ignoring an unknown value would be
+        # an invisible no-op (papers you expected filtered would all show).
+        raise APIError(422, "BAD_FILTER", "held_by only supports 'me'")
     if held_by == "me":
         # papers physically with me = my movement is the newest on the doc.
         # "Newest" = max(created_at), ties broken by id so equal timestamps

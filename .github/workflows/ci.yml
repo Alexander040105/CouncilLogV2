@@ -51,6 +51,9 @@ jobs:
       - name: Install web dependencies
         working-directory: v2/web
         run: npm ci
+      - name: Unit + component tests
+        working-directory: v2/web
+        run: npm test               # vitest — rules engine + ChainPreview regression
       - name: Build the web app
         working-directory: v2/web
         run: npm run build
@@ -75,9 +78,9 @@ jobs:
         # the hosted notes and the bundled snapshot must ship identical
         # bytes in the same commit — see v2/DEPLOY.md release checklist
         run: cmp -s v2/web/public/updates.json v2/mobile/src/lib/changelog-data.json
-      - name: Run offline-engine unit tests
+      - name: Run unit tests (rules engine + offline outbox)
         working-directory: v2/mobile
-        run: node --test "src/lib/offline/outbox.test.js" "src/lib/offline/store.test.js"
+        run: node --test "src/lib/rules.test.js" "src/lib/offline/outbox.test.js" "src/lib/offline/store.test.js"
       - name: Bundle the Expo app (compile check)
         working-directory: v2/mobile
         env:

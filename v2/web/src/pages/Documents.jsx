@@ -10,8 +10,9 @@ import { autoMatchedChain, collectFlagNames, visibleChainSteps } from '../lib/ru
 import { Button, Card, Chip, Empty, ErrorState, Field, HintBanner, Input, PageHeader, Sheet, Skeleton } from '../components/ui';
 import { FlagCheckboxes } from '../components/RuleFields';
 
-/** Live preview of the signatory route a new document will follow. */
-function ChainPreview({ chains, docType, overrideId, eventType = null, flags = {} }) {
+/** Live preview of the signatory route a new document will follow.
+ *  Exported for component tests. */
+export function ChainPreview({ chains, docType, overrideId, eventType = null, flags = {} }) {
   const { active } = useOutletContext() ?? {};
   const isOwner = active ? atLeast(active.role, 'owner') : false;
   const override = (chains ?? []).find((c) => c.id === overrideId);
@@ -35,7 +36,7 @@ function ChainPreview({ chains, docType, overrideId, eventType = null, flags = {
     );
   }
 
-  const steps = visibleChainSteps(chain, eventType, flags);
+  const steps = visibleChainSteps(chain, { eventType, flags });
   return (
     <div className="rounded-[var(--radius-card)] border border-[var(--color-line)] bg-[var(--color-surface-3)] p-3 text-sm">
       <div className="flex items-center gap-1.5 font-medium text-[var(--color-ink-2)]">

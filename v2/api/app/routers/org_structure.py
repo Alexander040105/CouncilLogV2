@@ -74,6 +74,10 @@ async def create_position(org_id: uuid.UUID, body: PositionIn, session: Session,
     sy = await _current_year(session, org_id)
     if body.holder:
         await require_user_in_org(session, org_id, str(body.holder))
+    if body.reports_to is not None:
+        parent = await session.get(Position, body.reports_to)
+        if parent is None or parent.org_id != org_id:
+            raise not_found("parent position")
     pos = Position(org_id=org_id, school_year_id=sy.id, **body.model_dump())
     session.add(pos)
     await audit(session, org_id=org_id, actor_id=member.user_id, action="position.created",
@@ -82,17 +86,33 @@ async def create_position(org_id: uuid.UUID, body: PositionIn, session: Session,
     return {"data": pos}
 
 
+class PositionPatch(BaseModel):
+    # all optional; holder/reports_to are tri-state — explicit null clears
+    # (unassign the seat / detach from the chart), absent leaves untouched
+    title: str | None = Field(default=None, min_length=1, max_length=80)
+    rank: int | None = None
+    holder: uuid.UUID | None = None
+    reports_to: uuid.UUID | None = None
+
+
 @router.patch("/orgs/{org_id}/positions/{position_id}")
-async def patch_position(org_id: uuid.UUID, position_id: uuid.UUID, body: PositionIn, session: Session, member: Membership = Depends(authorize("owner"))):
+async def patch_position(org_id: uuid.UUID, position_id: uuid.UUID, body: PositionPatch, session: Session, member: Membership = Depends(authorize("owner"))):
     pos = await session.get(Position, position_id)
     if pos is None or pos.org_id != org_id:
         raise not_found("position")
     if body.holder:
         await require_user_in_org(session, org_id, str(body.holder))
-    for k, v in body.model_dump(exclude_none=True).items():
+    if body.reports_to is not None:
+        if body.reports_to == position_id:
+            raise APIError(422, "SELF_PARENT", "A position can't report to itself")
+        parent = await session.get(Position, body.reports_to)
+        if parent is None or parent.org_id != org_id:
+            raise not_found("parent position")
+    for k, v in body.model_dump(exclude_unset=True).items():
         setattr(pos, k, v)
     await audit(session, org_id=org_id, actor_id=member.user_id, action="position.updated",
-                entity_type="position", entity_id=pos.id, metadata=body.model_dump(exclude_none=True))
+                entity_type="position", entity_id=pos.id,
+                metadata=body.model_dump(exclude_unset=True, mode="json"))
     await session.commit()
     return {"data": pos}
 

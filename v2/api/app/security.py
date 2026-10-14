@@ -6,6 +6,7 @@ JWT secret. Supports both: JWKS first (cached), secret as fallback.
 """
 
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -88,5 +89,11 @@ async def verify_token(token: str) -> AuthUser:
     sub = payload.get("sub")
     if not sub:
         raise APIError(401, "UNAUTHENTICATED", "Token missing subject")
+    try:
+        # Every downstream consumer does UUID(user.id) — reject a non-UUID sub
+        # here as 401 instead of letting a ValueError surface as a 500.
+        uuid.UUID(sub)
+    except (ValueError, AttributeError, TypeError):
+        raise APIError(401, "UNAUTHENTICATED", "Token subject is not a user id")
 
     return AuthUser(id=sub, email=payload.get("email"), claims=payload)

@@ -16,6 +16,9 @@ from ..errors import APIError
 log = logging.getLogger("councilog.storage")
 
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
+# Journal photos render as <img> in the feed — a PDF can't, so the photo
+# signer accepts raster images only (receipts/resolutions still allow pdf).
+ALLOWED_IMAGE_MIME = ALLOWED_MIME - {"application/pdf"}
 MAX_BYTES = 5 * 1024 * 1024
 
 _MAGIC = {
@@ -26,11 +29,12 @@ _MAGIC = {
 }
 
 
-def validate_upload_declared(mime: str, byte_size: int) -> None:
-    if mime not in ALLOWED_MIME:
+def validate_upload_declared(mime: str, byte_size: int,
+                             allowed: set[str] | None = None) -> None:
+    if mime not in (allowed or ALLOWED_MIME):
         raise APIError(422, "BAD_FILE_TYPE", "Only jpeg/png/webp/pdf files are allowed")
     if byte_size <= 0 or byte_size > MAX_BYTES:
-        raise APIError(422, "FILE_TOO_LARGE", "Image must be ≤ 5MB")
+        raise APIError(422, "FILE_TOO_LARGE", "File must be ≤ 5MB")
 
 
 def check_magic_bytes(head: bytes, declared_mime: str) -> bool:

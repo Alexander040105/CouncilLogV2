@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlmodel import select
 
 from ..deps import CurrentUser, Membership, Session, authorize
@@ -135,7 +135,9 @@ async def list_members(org_id: uuid.UUID, session: Session, page: int = 1, pageS
             .offset((page - 1) * page_size).limit(page_size)
         )
     ).all()
-    total = len((await session.execute(select(OrgMember).where(OrgMember.org_id == org_id))).all())
+    total = (await session.execute(
+        select(func.count()).select_from(OrgMember)
+        .where(OrgMember.org_id == org_id))).scalar_one()
     return envelope(
         [{"user_id": str(m.user_id), "role": m.role, "status": m.status,
           "display_name": p.display_name, "avatar_url": p.avatar_url} for m, p in rows],
@@ -264,7 +266,15 @@ async def redeem_invite(code: str, user: CurrentUser, session: Session):
         existing.status = "active"
     else:
         session.add(OrgMember(org_id=inv.org_id, user_id=uid, role=inv.role, status="active"))
-    inv.uses += 1
+    # Atomic conditional increment — a bare read-check-write lets two
+    # concurrent redeems both pass the max_uses check and overshoot the cap.
+    bumped = (await session.execute(
+        update(Invite)
+        .where(Invite.id == inv.id, Invite.uses < Invite.max_uses)
+        .values(uses=Invite.uses + 1))).rowcount
+    if not bumped:
+        raise APIError(410, "INVITE_EXPIRED", "Invite is expired or exhausted")
+    inv.uses += 1  # keep the loaded row in sync for the audit metadata
     await audit(session, org_id=inv.org_id, actor_id=user.id, action="invite.redeemed",
                 entity_type="invite", entity_id=inv.id, metadata={"role": inv.role})
     await session.commit()

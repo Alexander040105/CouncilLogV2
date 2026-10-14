@@ -29,12 +29,18 @@ router = APIRouter(tags=["internal"])
 STALE_DESK_DAYS = 3
 
 
+def _ref_match():
+    """payload->>ref comparison in SQL — both postgres JSONB and sqlite's
+    JSON1 understand this extract; nothing has to be loaded into memory."""
+    return Notification.payload["ref"].as_string()
+
+
 async def _ever_sent(session, user_id, kind: str, ref: str) -> bool:
     """Has this ref ever fired for this user (any day)? Used by the stale-
     desk nag, which pings a step once ever — not once per day."""
-    rows = (await session.execute(select(Notification).where(
-        Notification.user_id == user_id, Notification.kind == kind))).scalars().all()
-    return any((n.payload or {}).get("ref") == ref for n in rows)
+    return (await session.execute(select(Notification.id).where(
+        Notification.user_id == user_id, Notification.kind == kind,
+        _ref_match() == ref))).first() is not None
 
 
 async def _already_sent(session, user_id, kind: str, ref: str, today) -> bool:
@@ -46,11 +52,11 @@ async def _already_sent(session, user_id, kind: str, ref: str, today) -> bool:
     day_start = (datetime.combine(today, time.min, tzinfo=tz)
                  .astimezone(timezone.utc).replace(tzinfo=None))
     day_end = day_start + timedelta(days=1)
-    rows = (await session.execute(select(Notification).where(
+    return (await session.execute(select(Notification.id).where(
         Notification.user_id == user_id, Notification.kind == kind,
         Notification.created_at >= day_start,
-        Notification.created_at < day_end))).scalars().all()
-    return any((n.payload or {}).get("ref") == ref for n in rows)
+        Notification.created_at < day_end,
+        _ref_match() == ref))).first() is not None
 
 
 @router.post("/internal/reminders")
