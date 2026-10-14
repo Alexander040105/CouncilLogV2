@@ -38,3 +38,15 @@ Scope: `v2/` only (legacy_code excluded). Branch: `UI/UX-improvements`.
 After Phase 3, each fix was re-checked against the surrounding code paths
 and covered by new tests (see individual commits on this branch). No new
 findings were introduced by the fixes themselves.
+
+## Final verification
+
+| Check | Result |
+|---|---|
+| API pytest | 157 passed (149 baseline + 8 regression) |
+| Web vitest | 36 passed |
+| Web `vite build` | passed |
+| Mobile `node --test` | 38 passed |
+| Mobile `expo lint` | passed (0 findings) |
+| Mobile `tsc --noEmit` | not applicable — codebase is `.jsx`, no tsconfig |
+| Web Playwright e2e | manual suite only — needs live API + real Supabase (A13) |
