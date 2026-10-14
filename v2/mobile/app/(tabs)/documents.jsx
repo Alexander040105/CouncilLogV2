@@ -56,7 +56,7 @@ function ChainPreview({ chains, docType, overrideId, eventType = null, flags = {
     );
   }
 
-  const steps = visibleChainSteps(chain, eventType, flags);
+  const steps = visibleChainSteps(chain, { eventType, flags });
   return (
     <View style={{
       borderRadius: t.radiusCard, borderWidth: Math.max(t.boxWidth, 1), borderColor: t.line,
