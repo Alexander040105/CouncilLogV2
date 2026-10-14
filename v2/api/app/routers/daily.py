@@ -61,7 +61,8 @@ class PhotoSign(BaseModel):
 @router.post("/orgs/{org_id}/journal/photos/sign", status_code=201)
 async def sign_photo(org_id: uuid.UUID, body: PhotoSign, session: Session, member: Membership = Depends(authorize("member"))):
     await check_rate_limit(session, f"photosign:{member.user_id}", limit=60, window_seconds=3600)
-    storage.validate_upload_declared(body.mime, body.byte_size)
+    storage.validate_upload_declared(body.mime, body.byte_size,
+                                     allowed=storage.ALLOWED_IMAGE_MIME)
     entry_hint = uuid.uuid4()
     path = f"{org_id}/uploads/{entry_hint}"
     url = await storage.signed_upload_url(path)
@@ -76,6 +77,34 @@ class EntryIn(BaseModel):
     task_id: uuid.UUID | None = None
     photos: list[dict] = []  # [{storage_path, mime, byte_size}]
     client_request_id: str | None = Field(default=None, max_length=64)
+
+
+async def _photo_row(session, org_id: uuid.UUID, entry_id: uuid.UUID,
+                     p: dict) -> JournalPhoto:
+    """Validate one client-supplied photo dict → JournalPhoto. Keys arrive as
+    a bare dict, so missing/wrong-typed fields must 422 — not KeyError → 500."""
+    if not isinstance(p, dict):
+        raise APIError(422, "BAD_PHOTO",
+                       "Each photo needs storage_path, mime, and a positive byte_size")
+    path = p.get("storage_path")
+    mime = p.get("mime")
+    byte_size = p.get("byte_size")
+    if (not isinstance(path, str) or not isinstance(mime, str)
+            or not isinstance(byte_size, int) or isinstance(byte_size, bool)
+            or byte_size <= 0):
+        raise APIError(422, "BAD_PHOTO",
+                       "Each photo needs storage_path, mime, and a positive byte_size")
+    if mime not in storage.ALLOWED_IMAGE_MIME:
+        raise APIError(422, "BAD_FILE_TYPE", "Photos must be jpeg, png, or webp")
+    if not path.startswith(f"{org_id}/"):
+        raise APIError(422, "BAD_PATH", "Photo path not scoped to org")
+    head = await storage.object_head(path)
+    if head is None:
+        raise APIError(422, "UPLOAD_MISSING", "Uploaded object not found in storage")
+    if not storage.check_magic_bytes(head, mime):
+        raise APIError(422, "BAD_FILE_TYPE", "File content is not a valid image")
+    return JournalPhoto(entry_id=entry_id, org_id=org_id, storage_path=path,
+                        mime=mime, byte_size=byte_size)
 
 
 async def _linked_doc(session, org_id: uuid.UUID, document_id: uuid.UUID,
@@ -107,6 +136,10 @@ async def _linked_task(session, org_id: uuid.UUID, task_id: uuid.UUID,
 @router.post("/orgs/{org_id}/journal", status_code=201)
 async def create_entry(org_id: uuid.UUID, body: EntryIn, session: Session, member: Membership = Depends(authorize("member"))):
     day = body.entry_date or org_today()
+    if day > org_today():
+        # a daily documents work already done — a future date would also
+        # inflate attendance compliance with days that haven't elapsed
+        raise APIError(422, "FUTURE_DAY", "Cannot log a future day")
     uid = uuid.UUID(member.user_id)
     if body.project_id:
         proj = await session.get(Project, body.project_id)
@@ -131,16 +164,7 @@ async def create_entry(org_id: uuid.UUID, body: EntryIn, session: Session, membe
     if deduped:
         return deduped_response(entry)
     for p in body.photos:
-        path = p.get("storage_path", "")
-        if not path.startswith(f"{org_id}/"):
-            raise APIError(422, "BAD_PATH", "Photo path not scoped to org")
-        head = await storage.object_head(path)
-        if head is None:
-            raise APIError(422, "UPLOAD_MISSING", "Uploaded object not found in storage")
-        if not storage.check_magic_bytes(head, p.get("mime", "")):
-            raise APIError(422, "BAD_FILE_TYPE", "File content is not a valid image")
-        session.add(JournalPhoto(entry_id=entry.id, org_id=org_id,
-                                 storage_path=path, mime=p["mime"], byte_size=p["byte_size"]))
+        session.add(await _photo_row(session, org_id, entry.id, p))
     att = await _upsert_attendance(session, org_id, uid, day, "documented")
     await audit(session, org_id=org_id, actor_id=member.user_id, action="journal.created",
                 entity_type="journal_entry", entity_id=entry.id,
@@ -240,13 +264,16 @@ async def patch_entry(org_id: uuid.UUID, entry_id: uuid.UUID, body: EntryPatch, 
                 raise not_found("project")
             e.project_id = body.project_id
     # document_id is tri-state the same way; the paper's project must not
-    # contradict the entry's project
+    # contradict the entry's project. When the entry has no project yet it
+    # inherits the paper's — same rule as create and the task link below.
     if "document_id" in body.model_fields_set:
         if body.document_id is None:
             e.document_id = None
         else:
-            await _linked_doc(session, org_id, body.document_id, e.project_id)
+            doc = await _linked_doc(session, org_id, body.document_id, e.project_id)
             e.document_id = body.document_id
+            if e.project_id is None and doc.project_id is not None:
+                e.project_id = doc.project_id
     # task_id too — linking a task whose project differs is a 422; when the
     # entry has no project yet it inherits the task's, matching create
     if "task_id" in body.model_fields_set:
@@ -271,19 +298,7 @@ async def patch_entry(org_id: uuid.UUID, entry_id: uuid.UUID, body: EntryPatch, 
             await session.delete(p)
     if body.add_photos:
         for p in body.add_photos:
-            path = p.get("storage_path", "")
-            if not path.startswith(f"{org_id}/"):
-                raise APIError(422, "BAD_PATH", "Photo path not scoped to org")
-            head = await storage.object_head(path)
-            if head is None:
-                raise APIError(422, "UPLOAD_MISSING",
-                               "Uploaded object not found in storage")
-            if not storage.check_magic_bytes(head, p.get("mime", "")):
-                raise APIError(422, "BAD_FILE_TYPE",
-                               "File content is not a valid image")
-            session.add(JournalPhoto(entry_id=e.id, org_id=org_id,
-                                     storage_path=path, mime=p["mime"],
-                                     byte_size=p["byte_size"]))
+            session.add(await _photo_row(session, org_id, e.id, p))
 
     if not (is_own and same_day):
         await audit(session, org_id=org_id, actor_id=member.user_id, action="journal.edited_post_day",
